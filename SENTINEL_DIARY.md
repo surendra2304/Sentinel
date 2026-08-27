@@ -15,8 +15,8 @@ Welcome to the **Sentinel Engineering Diary**. This document acts as the master 
 
 ### 2. Engineering Diary Logs
 
-### 📈 [Day 1 — 2026-08-28: Genesis, Domain Models, Gateway, Policy & Execution Engine](diary/2026-08-28.md)
-- **🎯 Focus**: Exact modular layout, domain models, Task Gateway, Scope/Policy Engine, SubprocessSandbox, ToolAdapters (DNS, HTTP, Network), and ExecutionEngine.
-- **💡 What I Accomplished**: Built the 54-directory structure, Target/Task/Action models, ScopeResolver, 6-dimension PolicyEngine, SubprocessSandbox, DNS/HTTP/Network reference adapters, ExecutionEngine with auto-evidence hashing, and docs/policy.md.
-- **🛡️ Fixes & Hardening**: Fixed pytest collector warning with mock handlers, enforced injection-safe subprocess execution (shell=False), added automatic retries with exponential backoff, and eliminated port conflicts.
-- **📊 Test Results**: **28 passed** (100% green pass rate across unit, integration, policy, execution, and diary verification suites).
+### 📈 [Day 1 — 2026-08-28: Genesis, Gateway, Execution Engine & Intelligence Backbone](diary/2026-08-28.md)
+- **🎯 Focus**: Exact modular layout, Task Gateway, Scope/Policy Engine, SubprocessSandbox, ToolAdapters, ExecutionEngine, EvidenceStore, FindingEngine, and RiskEngine.
+- **💡 What I Accomplished**: Built the 54-directory structure, Target/Task/Action models, ScopeResolver, 6-dimension PolicyEngine, SubprocessSandbox, DNS/HTTP/Network adapters, ExecutionEngine, forensics-grade EvidenceStore (custody chain, bundle export), FindingEngine (deduplication, lifecycles), and multi-factor RiskEngine.
+- **🛡️ Fixes & Hardening**: Fixed datetime JSON serialization in evidence bundles, enforced Evidence-First observation validation, resolved Typer CLI parameter routing, and eliminated port collisions.
+- **📊 Test Results**: **31 passed** (100% green pass rate across unit, integration, policy, execution, intelligence, and diary verification suites).

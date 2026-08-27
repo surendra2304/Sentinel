@@ -17,12 +17,18 @@ from sentinel.config.settings import get_settings
 from sentinel.core.events.bus import event_bus
 from sentinel.core.models import (
     Event,
+    Finding,
+    FindingStatus,
+    SeverityLevel,
     Task,
     TaskMode,
 )
 from sentinel.core.orchestrator.lifecycle import lifecycle_manager
 from sentinel.core.policy.engine import ApprovalRecord, policy_engine
+from sentinel.intelligence.risk.finding_engine import finding_engine
+from sentinel.intelligence.risk.risk_engine import TaskRiskSummary, risk_engine
 from sentinel.logging.logger import get_correlation_id, get_logger, setup_logging
+from sentinel.storage.evidence.store import evidence_store
 
 settings = get_settings()
 setup_logging(settings.log_level.value)
@@ -193,7 +199,7 @@ async def get_task(task_id: str) -> Task:
 
 
 @app.post(f"{settings.api_prefix}/tasks/{{task_id}}/cancel", response_model=CancelTaskResponse, tags=["Task Gateway"])
-async def cancel_task(task_id: str, reason: str = Query("Operator Kill Switch")) -> CancelTaskResponse:
+async def cancel_task(task_id: str, reason: str = Query("Operator Kill Switch")) -> CancelTaskResponse:  # noqa: B008
     """Kill-switch: Immediately halt execution of a specific task."""
     try:
         task = await lifecycle_manager.cancel_task(task_id, reason=reason)
@@ -212,7 +218,7 @@ async def cancel_task(task_id: str, reason: str = Query("Operator Kill Switch"))
 # ---------------------------------------------------------------------------
 
 @app.get(f"{settings.api_prefix}/approvals", response_model=list[ApprovalRecord], tags=["Policy & Approvals"])
-async def list_pending_approvals(task_id: str | None = Query(None)) -> list[ApprovalRecord]:
+async def list_pending_approvals(task_id: str | None = Query(None)) -> list[ApprovalRecord]:  # noqa: B008
     """List pending operator approval requests."""
     return policy_engine.get_pending_approvals(task_id=task_id)
 
@@ -232,6 +238,42 @@ async def decide_approval(approval_id: str, request: DecideApprovalRequest) -> A
         raise HTTPException(status_code=404, detail=str(err)) from err
     except ValueError as err:
         raise HTTPException(status_code=400, detail=str(err)) from err
+
+
+# ---------------------------------------------------------------------------
+# Findings & Risk Intelligence Endpoints
+# ---------------------------------------------------------------------------
+
+@app.get(f"{settings.api_prefix}/findings", response_model=list[Finding], tags=["Findings & Evidence"])
+async def list_findings(
+    task_id: str | None = Query(None),  # noqa: B008
+    severity: SeverityLevel | None = Query(None),  # noqa: B008
+    status: FindingStatus | None = Query(None),  # noqa: B008
+) -> list[Finding]:
+    """List and filter security findings."""
+    return finding_engine.list_findings(task_id=task_id, severity=severity, status=status)
+
+
+@app.get(f"{settings.api_prefix}/findings/{{finding_id}}", response_model=Finding, tags=["Findings & Evidence"])
+async def get_finding_detail(finding_id: str) -> Finding:
+    """Get finding details including evidence references."""
+    finding = finding_engine.get_finding(finding_id)
+    if not finding:
+        raise HTTPException(status_code=404, detail=f"Finding '{finding_id}' not found.")
+    return finding
+
+
+@app.get(f"{settings.api_prefix}/tasks/{{task_id}}/risk-summary", response_model=TaskRiskSummary, tags=["Risk Intelligence"])
+async def get_task_risk_summary(task_id: str) -> TaskRiskSummary:
+    """Retrieve computed risk summary and breakdown for a task."""
+    findings = finding_engine.list_findings(task_id=task_id)
+    return risk_engine.get_task_risk_summary(task_id, findings)
+
+
+@app.get(f"{settings.api_prefix}/tasks/{{task_id}}/evidence-bundle", tags=["Findings & Evidence"])
+async def export_evidence_bundle(task_id: str) -> dict[str, Any]:
+    """Export self-contained, hash-verified evidence bundle."""
+    return await evidence_store.export_evidence_bundle(task_id=task_id)
 
 
 # ---------------------------------------------------------------------------
@@ -273,25 +315,21 @@ async def stream_task_events(task_id: str, request: Request) -> EventSourceRespo
 
 @app.get(f"{settings.api_prefix}/tasks/{{task_id}}/findings", tags=["Findings & Evidence"])
 async def get_task_findings(task_id: str) -> dict[str, Any]:
-    task = await lifecycle_manager.get_task(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail=f"Task {task_id} not found.")
+    findings = finding_engine.list_findings(task_id=task_id)
     return {
         "task_id": task_id,
-        "findings": [],
-        "count": 0,
+        "findings": [f.model_dump() for f in findings],
+        "count": len(findings),
     }
 
 
 @app.get(f"{settings.api_prefix}/tasks/{{task_id}}/evidence", tags=["Findings & Evidence"])
 async def get_task_evidence(task_id: str) -> dict[str, Any]:
-    task = await lifecycle_manager.get_task(task_id)
-    if not task:
-        raise HTTPException(status_code=404, detail=f"Task {task_id} not found.")
+    evidence_list = evidence_store.query_evidence(task_id=task_id)
     return {
         "task_id": task_id,
-        "evidence": [],
-        "count": 0,
+        "evidence": [e.model_dump() for e in evidence_list],
+        "count": len(evidence_list),
     }
 
 
@@ -300,10 +338,13 @@ async def get_task_report(task_id: str) -> dict[str, Any]:
     task = await lifecycle_manager.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail=f"Task {task_id} not found.")
+    findings = finding_engine.list_findings(task_id=task_id)
+    risk_summary = risk_engine.get_task_risk_summary(task_id, findings)
     return {
         "task_id": task_id,
         "title": f"Security Assessment Report: {task.objective}",
         "status": task.status.value,
-        "executive_summary": "Initial baseline assessment initialized.",
-        "findings_summary": {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0},
+        "executive_summary": f"Assessment identified {len(findings)} security findings. Overall risk tier: {risk_summary.highest_risk_tier.value.upper()}.",
+        "findings_summary": risk_summary.severity_counts,
+        "risk_summary": risk_summary.model_dump(),
     }

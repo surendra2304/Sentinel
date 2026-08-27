@@ -15,6 +15,9 @@ from sentinel.config.settings import get_settings
 from sentinel.core.models import TaskMode
 from sentinel.core.orchestrator.lifecycle import lifecycle_manager
 from sentinel.core.policy.engine import policy_engine
+from sentinel.intelligence.risk.finding_engine import finding_engine
+from sentinel.intelligence.risk.risk_engine import risk_engine
+from sentinel.storage.evidence.store import evidence_store
 
 app = typer.Typer(
     name="sentinel",
@@ -26,6 +29,12 @@ app.add_typer(task_app, name="task")
 
 approval_app = typer.Typer(help="Policy approvals and governance gates")
 app.add_typer(approval_app, name="approval")
+
+findings_app = typer.Typer(help="Findings and Vulnerability intelligence")
+app.add_typer(findings_app, name="findings")
+
+evidence_app = typer.Typer(help="Evidence artifacts and chain of custody")
+app.add_typer(evidence_app, name="evidence")
 
 console = Console(legacy_windows=False)
 
@@ -76,13 +85,21 @@ def report(task_id: str):
         console.print(f"[bold red]Task {task_id} not found.[/bold red]")
         raise typer.Exit(code=1)
 
+    findings = finding_engine.list_findings(task_id=task_id)
+    risk_summary = risk_engine.get_task_risk_summary(task_id, findings)
+
     panel = Panel(
         f"[bold]Task Objective:[/bold] {task.objective}\n"
         f"[bold]Status:[/bold] {task.status.value.upper()}\n"
         f"[bold]Mode:[/bold] {task.mode.value}\n"
-        f"[bold]Targets Assessed:[/bold] {len(task.target_set.targets)}\n\n"
-        f"[bold cyan]Executive Summary:[/bold cyan]\n"
-        f"Baseline security assessment complete. Zero critical vulnerabilities found in preliminary triage.",
+        f"[bold]Targets Assessed:[/bold] {len(task.target_set.targets)}\n"
+        f"[bold]Total Findings:[/bold] {len(findings)}\n"
+        f"[bold]Overall Risk Score:[/bold] {risk_summary.overall_risk_score} ([bold yellow]{risk_summary.highest_risk_tier.value.upper()}[/bold yellow])\n\n"
+        f"[bold cyan]Findings Summary:[/bold cyan]\n"
+        f"Critical: {risk_summary.severity_counts.get('critical',0)} | "
+        f"High: {risk_summary.severity_counts.get('high',0)} | "
+        f"Medium: {risk_summary.severity_counts.get('medium',0)} | "
+        f"Low: {risk_summary.severity_counts.get('low',0)}",
         title=f"Security Assessment Report — {task.id}",
         border_style="cyan",
     )
@@ -165,13 +182,59 @@ def task_cancel(
 @task_app.command("findings")
 def task_findings(task_id: str):
     """View findings registered for a task."""
-    task = asyncio.run(lifecycle_manager.get_task(task_id))
-    if not task:
-        console.print(f"[bold red]Task {task_id} not found.[/bold red]")
-        raise typer.Exit(code=1)
+    findings = finding_engine.list_findings(task_id=task_id)
+    if not findings:
+        console.print(f"[bold green]No open vulnerabilities identified for task {task_id}.[/bold green]")
+        return
 
-    console.print(f"\n[bold cyan]Findings for Task {task_id}:[/bold cyan]")
-    console.print("No open vulnerabilities identified in current scan cycle.")
+    table = Table(title=f"Findings for Task {task_id}")
+    table.add_column("Finding ID", style="cyan")
+    table.add_column("Severity", style="red")
+    table.add_column("Title", style="yellow")
+    table.add_column("Target", style="magenta")
+
+    for f in findings:
+        table.add_row(f.id, f.severity.value.upper(), f.title, f.target_ref)
+
+    console.print(table)
+
+
+# ---------------------------------------------------------------------------
+# Findings Commands
+# ---------------------------------------------------------------------------
+
+@findings_app.command("list")
+def findings_list(task_id: str | None = typer.Option(None, "--task", "-t", help="Filter by Task ID")):  # noqa: B008
+    """List security findings."""
+    findings = finding_engine.list_findings(task_id=task_id)
+    if not findings:
+        console.print("[bold green]No findings recorded for this query.[/bold green]")
+        return
+
+    table = Table(title="Security Findings")
+    table.add_column("Finding ID", style="cyan")
+    table.add_column("Severity", style="red")
+    table.add_column("Title", style="yellow")
+    table.add_column("Target", style="magenta")
+    table.add_column("Evidence Refs", style="blue")
+
+    for f in findings:
+        table.add_row(f.id, f.severity.value.upper(), f.title, f.target_ref, str(len(f.evidence_refs)))
+
+    console.print(table)
+
+
+# ---------------------------------------------------------------------------
+# Evidence Commands
+# ---------------------------------------------------------------------------
+
+@evidence_app.command("export")
+def evidence_export(task_id: str = typer.Argument(..., help="Task ID")):
+    """Export self-contained, hash-verified evidence bundle."""
+    bundle = asyncio.run(evidence_store.export_evidence_bundle(task_id=task_id))
+    console.print(f"[bold green][OK] Exported evidence bundle for task {task_id}[/bold green]")
+    console.print(f"[bold]Total Artifacts:[/bold] {bundle['evidence_count']}")
+    console.print(f"[bold]Bundle SHA-256 Digest:[/bold] {bundle['bundle_sha256_digest']}")
 
 
 # ---------------------------------------------------------------------------
