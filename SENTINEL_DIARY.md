@@ -15,8 +15,8 @@ Welcome to the **Sentinel Engineering Diary**. This document acts as the master 
 
 ### 2. Engineering Diary Logs
 
-### 📈 [Day 1 — 2026-08-28: Genesis, Platform Foundation & Architecture](diary/2026-08-28.md)
-- **🎯 Focus**: Exact modular directory layout, typed settings, cryptographic audit logging, data contracts, and CI pipeline.
-- **💡 What I Accomplished**: Built the 54-directory structure, FastAPI Task Gateway, Typer CLI, ScopePolicyEngine, Docker Compose services, and GitHub Actions workflow.
-- **🛡️ Fixes & Hardening**: Fixed Windows console Unicode encoding in CLI, cleaned pyproject BOM byte markers, and enforced cryptographic SHA-256 hash chains on audit trails.
-- **📊 Test Results**: **3 passed** (100% green pass rate across test suite and diary validator).
+### 📈 [Day 1 — 2026-08-28: Genesis, Platform Foundation & Core Domain Models](diary/2026-08-28.md)
+- **🎯 Focus**: Exact modular directory layout, typed settings, core domain models, JSON schema generation, Alembic migrations, and CI pipeline.
+- **💡 What I Accomplished**: Built the 54-directory structure, Target/Task/Action/Evidence/Finding/Risk domain models, object storage abstractions, 8 versioned contracts, 13-table Alembic migration, and unit test suite.
+- **🛡️ Fixes & Hardening**: Fixed sync/async Alembic engine routing, enforced Evidence-First validation anchors, eliminated Mypy typing discrepancies, and resolved console encoding on Windows.
+- **📊 Test Results**: **16 passed** (100% green pass rate across test suite and diary validator).

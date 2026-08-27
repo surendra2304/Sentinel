@@ -1,0 +1,109 @@
+{
+  "$defs": {
+    "AssetCriticality": {
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "title": "AssetCriticality",
+      "type": "string"
+    },
+    "RiskTier": {
+      "enum": [
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "title": "RiskTier",
+      "type": "string"
+    },
+    "SeverityLevel": {
+      "enum": [
+        "info",
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "title": "SeverityLevel",
+      "type": "string"
+    }
+  },
+  "description": "Contextual risk score model combining severity, asset criticality, exposure, exploitability, and confidence.",
+  "properties": {
+    "schema_version": {
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "finding_id": {
+      "title": "Finding Id",
+      "type": "string"
+    },
+    "task_id": {
+      "title": "Task Id",
+      "type": "string"
+    },
+    "severity": {
+      "$ref": "#/$defs/SeverityLevel"
+    },
+    "asset_criticality": {
+      "$ref": "#/$defs/AssetCriticality"
+    },
+    "exposure_score": {
+      "default": 1.0,
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Exposure Score",
+      "type": "number"
+    },
+    "exploitability_score": {
+      "default": 1.0,
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Exploitability Score",
+      "type": "number"
+    },
+    "confidence_score": {
+      "default": 1.0,
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Confidence Score",
+      "type": "number"
+    },
+    "computed_risk_score": {
+      "default": 0.0,
+      "maximum": 100.0,
+      "minimum": 0.0,
+      "title": "Computed Risk Score",
+      "type": "number"
+    },
+    "risk_tier": {
+      "$ref": "#/$defs/RiskTier",
+      "default": "low"
+    },
+    "rationale": {
+      "default": "",
+      "title": "Rationale",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "finding_id",
+    "task_id",
+    "severity",
+    "asset_criticality"
+  ],
+  "title": "Risk",
+  "type": "object",
+  "schema_version": "1.0.0"
+}

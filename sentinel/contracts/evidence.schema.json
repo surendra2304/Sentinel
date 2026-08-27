@@ -1,0 +1,125 @@
+{
+  "$defs": {
+    "ChainOfCustodyEvent": {
+      "description": "Handled event in evidence lifecycle.",
+      "properties": {
+        "timestamp": {
+          "format": "date-time",
+          "title": "Timestamp",
+          "type": "string"
+        },
+        "actor": {
+          "title": "Actor",
+          "type": "string"
+        },
+        "action": {
+          "title": "Action",
+          "type": "string"
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Notes"
+        }
+      },
+      "required": [
+        "actor",
+        "action"
+      ],
+      "title": "ChainOfCustodyEvent",
+      "type": "object"
+    }
+  },
+  "description": "Raw evidence artifact with cryptographic integrity.",
+  "properties": {
+    "schema_version": {
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "task_id": {
+      "title": "Task Id",
+      "type": "string"
+    },
+    "target_ref": {
+      "title": "Target Ref",
+      "type": "string"
+    },
+    "source_agent": {
+      "title": "Source Agent",
+      "type": "string"
+    },
+    "source_module": {
+      "title": "Source Module",
+      "type": "string"
+    },
+    "source_tool": {
+      "title": "Source Tool",
+      "type": "string"
+    },
+    "timestamp": {
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    },
+    "artifact_storage_key": {
+      "title": "Artifact Storage Key",
+      "type": "string"
+    },
+    "content_type": {
+      "title": "Content Type",
+      "type": "string"
+    },
+    "sha256_hash": {
+      "title": "Sha256 Hash",
+      "type": "string"
+    },
+    "integrity_metadata": {
+      "additionalProperties": true,
+      "title": "Integrity Metadata",
+      "type": "object"
+    },
+    "collected_by": {
+      "title": "Collected By",
+      "type": "string"
+    },
+    "chain_of_custody": {
+      "items": {
+        "$ref": "#/$defs/ChainOfCustodyEvent"
+      },
+      "title": "Chain Of Custody",
+      "type": "array"
+    },
+    "context_metadata": {
+      "additionalProperties": true,
+      "title": "Context Metadata",
+      "type": "object"
+    }
+  },
+  "required": [
+    "id",
+    "task_id",
+    "target_ref",
+    "source_agent",
+    "source_module",
+    "source_tool",
+    "artifact_storage_key",
+    "content_type",
+    "sha256_hash",
+    "collected_by"
+  ],
+  "title": "Evidence",
+  "type": "object",
+  "schema_version": "1.0.0"
+}
