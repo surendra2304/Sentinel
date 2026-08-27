@@ -1,0 +1,43 @@
+﻿name: Sentinel CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate:
+    name: Lint, Type Check & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Verify Diary Rules
+        run: |
+          python verify_diary.py
+
+      - name: Run Ruff Linting
+        run: |
+          ruff check .
+
+      - name: Run Mypy Type Checks
+        run: |
+          mypy sentinel
+
+      - name: Run Test Suite
+        run: |
+          pytest --maxfail=1 --disable-warnings -q

@@ -1,0 +1,76 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sentinel"
+version = "0.1.0"
+description = "Autonomous, Production-Grade Cybersecurity & Intelligence Platform"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    { name = "Surendra", email = "surendra@sentinel.security" }
+]
+keywords = ["cybersecurity", "reconnaissance", "vulnerability", "threat-intel", "guardrails", "security-operations"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+]
+dependencies = [
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.28.0",
+    "pydantic>=2.6.0",
+    "pydantic-settings>=2.2.0",
+    "sqlalchemy[asyncio]>=2.0.28",
+    "asyncpg>=0.29.0",
+    "alembic>=1.13.1",
+    "minio>=7.2.5",
+    "aiofiles>=23.2.1",
+    "typer>=0.9.0",
+    "rich>=13.7.0",
+    "httpx>=0.27.0",
+    "structlog>=24.1.0",
+    "cryptography>=42.0.5",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.1.0",
+    "pytest-asyncio>=0.23.5",
+    "pytest-cov>=4.1.0",
+    "ruff>=0.3.2",
+    "mypy>=1.9.0",
+    "types-aiofiles>=23.2.0.0",
+]
+
+[project.scripts]
+sentinel = "sentinel.apps.cli.main:app"
+
+[tool.setuptools.packages.find]
+include = ["sentinel*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q --strict-markers"
+testpaths = ["tests"]
+asyncio_mode = "auto"
+python_files = ["test_*.py"]
