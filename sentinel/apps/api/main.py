@@ -21,6 +21,7 @@ from sentinel.core.models import (
     TaskMode,
 )
 from sentinel.core.orchestrator.lifecycle import lifecycle_manager
+from sentinel.core.policy.engine import ApprovalRecord, policy_engine
 from sentinel.logging.logger import get_correlation_id, get_logger, setup_logging
 
 settings = get_settings()
@@ -36,7 +37,6 @@ async def lifespan(app: FastAPI):
     if recovered > 0:
         logger.warning("Recovered pending tasks during startup", extra={"recovered_count": recovered})
     yield
-    # Shutdown logic if needed
 
 
 app = FastAPI(
@@ -94,6 +94,12 @@ class CancelTaskResponse(BaseModel):
     task_id: str
     status: str
     message: str
+
+
+class DecideApprovalRequest(BaseModel):
+    approve: bool
+    operator: str
+    justification: str
 
 
 # ---------------------------------------------------------------------------
@@ -201,6 +207,37 @@ async def cancel_task(task_id: str, reason: str = Query("Operator Kill Switch"))
     )
 
 
+# ---------------------------------------------------------------------------
+# Scope & Policy Approvals Endpoints
+# ---------------------------------------------------------------------------
+
+@app.get(f"{settings.api_prefix}/approvals", response_model=list[ApprovalRecord], tags=["Policy & Approvals"])
+async def list_pending_approvals(task_id: str | None = Query(None)) -> list[ApprovalRecord]:
+    """List pending operator approval requests."""
+    return policy_engine.get_pending_approvals(task_id=task_id)
+
+
+@app.post(f"{settings.api_prefix}/approvals/{{approval_id}}/decide", response_model=ApprovalRecord, tags=["Policy & Approvals"])
+async def decide_approval(approval_id: str, request: DecideApprovalRequest) -> ApprovalRecord:
+    """Approve or deny an action requiring operator authorization."""
+    try:
+        record = await policy_engine.decide_approval(
+            approval_id=approval_id,
+            approve=request.approve,
+            operator=request.operator,
+            justification=request.justification,
+        )
+        return record
+    except KeyError as err:
+        raise HTTPException(status_code=404, detail=str(err)) from err
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail=str(err)) from err
+
+
+# ---------------------------------------------------------------------------
+# Telemetry & Telemetry Streaming Endpoints
+# ---------------------------------------------------------------------------
+
 @app.get(f"{settings.api_prefix}/tasks/{{task_id}}/events", tags=["Telemetry & Events"])
 async def stream_task_events(task_id: str, request: Request) -> EventSourceResponse:
     """Stream live Server-Sent Events (SSE) for task state changes, findings, and logs."""
@@ -212,7 +249,6 @@ async def stream_task_events(task_id: str, request: Request) -> EventSourceRespo
 
     async def event_generator() -> AsyncGenerator[dict[str, str], None]:
         try:
-            # Yield initial status
             yield {
                 "event": "connected",
                 "data": json.dumps({"task_id": task.id, "status": task.status.value}),
@@ -228,7 +264,6 @@ async def stream_task_events(task_id: str, request: Request) -> EventSourceRespo
                         "data": event.model_dump_json(),
                     }
                 except TimeoutError:
-                    # Keep-alive ping
                     yield {"event": "ping", "data": ""}
         finally:
             event_bus.unregister_queue(task.correlation_id, queue)
@@ -238,7 +273,6 @@ async def stream_task_events(task_id: str, request: Request) -> EventSourceRespo
 
 @app.get(f"{settings.api_prefix}/tasks/{{task_id}}/findings", tags=["Findings & Evidence"])
 async def get_task_findings(task_id: str) -> dict[str, Any]:
-    """Retrieve security findings associated with a task."""
     task = await lifecycle_manager.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail=f"Task {task_id} not found.")
@@ -251,7 +285,6 @@ async def get_task_findings(task_id: str) -> dict[str, Any]:
 
 @app.get(f"{settings.api_prefix}/tasks/{{task_id}}/evidence", tags=["Findings & Evidence"])
 async def get_task_evidence(task_id: str) -> dict[str, Any]:
-    """Retrieve raw cryptographic evidence artifacts associated with a task."""
     task = await lifecycle_manager.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail=f"Task {task_id} not found.")
@@ -264,7 +297,6 @@ async def get_task_evidence(task_id: str) -> dict[str, Any]:
 
 @app.get(f"{settings.api_prefix}/tasks/{{task_id}}/report", tags=["Reporting"])
 async def get_task_report(task_id: str) -> dict[str, Any]:
-    """Retrieve synthesized security assessment report for a task."""
     task = await lifecycle_manager.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail=f"Task {task_id} not found.")

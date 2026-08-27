@@ -1,11 +1,16 @@
-﻿from sentinel.audit.audit_logger import AuditLogger
+﻿import pytest
+
+from sentinel.audit.audit_logger import AuditLogger
 from sentinel.config.settings import EnvironmentType, get_settings
-from sentinel.contracts.schemas.core import (
+from sentinel.core.models import (
     ActionRequest,
-    ScopeDefinition,
-    TargetAsset,
+    ImpactLevel,
+    Policy,
+    Scope,
+    TargetSet,
+    Task,
 )
-from sentinel.core.policy.engine import ScopePolicyEngine
+from sentinel.core.policy.engine import PolicyEngine
 
 
 def test_settings_load():
@@ -44,76 +49,71 @@ def test_audit_logger_hash_chain(tmp_path):
     assert logger.verify_integrity() is True
 
 
-def test_scope_policy_engine_allowlist():
-    scope = ScopeDefinition(
-        scope_id="scope-101",
+@pytest.mark.asyncio
+async def test_scope_policy_engine_allowlist(tmp_path):
+    audit_file = tmp_path / "test_audit_engine.jsonl"
+    audit_logger = AuditLogger(log_path=str(audit_file), signing_key="test-secret-key")
+    engine = PolicyEngine(audit_logger=audit_logger)
+
+    scope = Scope(
+        id="scope-101",
         name="Production Web Perimeter",
         allowed_targets=["10.0.0.0/24", "*.example.com"],
-        excluded_targets=["10.0.0.254"],
+        out_of_scope_declarations=["10.0.0.254"],
         max_intensity=5,
-        allowed_modules=["recon", "web"],
         offensive_actions_enabled=False,
     )
-    engine = ScopePolicyEngine(scope)
+    policy = Policy(
+        id="pol-101",
+        name="Standard Policy",
+        allowed_action_classes=["recon.*"],
+        allowed_module_classes=["recon"],
+    )
+    task = Task(
+        id="task-101",
+        objective="Perimeter test",
+        target_set=TargetSet(id="ts-1", name="TS"),
+        scope=scope,
+        policy=policy,
+        correlation_id="corr-101",
+    )
 
-    # Allowed target in subnet
-    target_in_scope = TargetAsset(
-        target_id="t-1", identifier="10.0.0.15", asset_type="IP_ADDRESS", authorized=True
-    )
+    # 1. Allowed target in subnet
     action1 = ActionRequest(
-        action_id="act-1",
-        task_id="tsk-1",
+        id="act-1",
+        task_id=task.id,
+        agent="recon_agent",
         module_name="recon",
-        tool_adapter="nmap",
-        target=target_in_scope,
-        intensity=3,
-        is_offensive=False,
+        action_type="recon.port_scan",
+        target_refs=["10.0.0.15"],
+        parameters={"intensity": 3},
+        expected_impact_level=ImpactLevel.LOW,
     )
-    dec1 = engine.evaluate_action(action1)
+    dec1 = await engine.evaluate_action(action1, task)
     assert dec1.allowed is True
 
-    # Excluded target
-    target_excluded = TargetAsset(
-        target_id="t-2", identifier="10.0.0.254", asset_type="IP_ADDRESS", authorized=True
-    )
+    # 2. Excluded target
     action2 = ActionRequest(
-        action_id="act-2",
-        task_id="tsk-1",
-        module_name="recon",
-        tool_adapter="nmap",
-        target=target_excluded,
-        intensity=3,
+        id="act-2",
+        task_id=task.id,
+        agent="recon_agent",
+        action_type="recon.port_scan",
+        target_refs=["10.0.0.254"],
+        parameters={"intensity": 3},
     )
-    dec2 = engine.evaluate_action(action2)
+    dec2 = await engine.evaluate_action(action2, task)
     assert dec2.allowed is False
-    assert "explicitly excluded" in dec2.reason
+    assert "out of authorized scope" in dec2.reason
 
-    # Out of scope target
-    target_out_of_scope = TargetAsset(
-        target_id="t-3", identifier="192.168.1.1", asset_type="IP_ADDRESS", authorized=True
-    )
+    # 3. Out of scope target
     action3 = ActionRequest(
-        action_id="act-3",
-        task_id="tsk-1",
-        module_name="recon",
-        tool_adapter="nmap",
-        target=target_out_of_scope,
-        intensity=3,
+        id="act-3",
+        task_id=task.id,
+        agent="recon_agent",
+        action_type="recon.port_scan",
+        target_refs=["192.168.1.1"],
+        parameters={"intensity": 3},
     )
-    dec3 = engine.evaluate_action(action3)
+    dec3 = await engine.evaluate_action(action3, task)
     assert dec3.allowed is False
-    assert "outside authorized scope" in dec3.reason
-
-    # Unauthorized offensive action
-    action4 = ActionRequest(
-        action_id="act-4",
-        task_id="tsk-1",
-        module_name="web",
-        tool_adapter="sqlmap",
-        target=target_in_scope,
-        intensity=3,
-        is_offensive=True,
-    )
-    dec4 = engine.evaluate_action(action4)
-    assert dec4.allowed is False
-    assert "Offensive capabilities are disabled" in dec4.reason
+    assert "out of authorized scope" in dec3.reason

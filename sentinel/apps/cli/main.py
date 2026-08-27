@@ -14,6 +14,7 @@ from sentinel.audit.audit_logger import AuditLogger
 from sentinel.config.settings import get_settings
 from sentinel.core.models import TaskMode
 from sentinel.core.orchestrator.lifecycle import lifecycle_manager
+from sentinel.core.policy.engine import policy_engine
 
 app = typer.Typer(
     name="sentinel",
@@ -22,6 +23,9 @@ app = typer.Typer(
 )
 task_app = typer.Typer(help="Task lifecycle management commands")
 app.add_typer(task_app, name="task")
+
+approval_app = typer.Typer(help="Policy approvals and governance gates")
+app.add_typer(approval_app, name="approval")
 
 console = Console(legacy_windows=False)
 
@@ -168,6 +172,57 @@ def task_findings(task_id: str):
 
     console.print(f"\n[bold cyan]Findings for Task {task_id}:[/bold cyan]")
     console.print("No open vulnerabilities identified in current scan cycle.")
+
+
+# ---------------------------------------------------------------------------
+# Approval Commands
+# ---------------------------------------------------------------------------
+
+@approval_app.command("list")
+def approval_list(task_id: str | None = typer.Option(None, "--task", "-t", help="Filter by Task ID")):  # noqa: B008
+    """List pending approvals requiring operator intervention."""
+    pending = policy_engine.get_pending_approvals(task_id=task_id)
+    if not pending:
+        console.print("[bold green]No pending approvals requiring authorization.[/bold green]")
+        return
+
+    table = Table(title="Pending Human Approval Requests")
+    table.add_column("Approval ID", style="cyan")
+    table.add_column("Task ID", style="magenta")
+    table.add_column("Action Type", style="yellow")
+    table.add_column("Requested By", style="blue")
+    table.add_column("Expires At", style="red")
+
+    for p in pending:
+        table.add_row(p.approval_id, p.task_id, p.action_type, p.requested_by, p.expires_at.isoformat())
+
+    console.print(table)
+
+
+@approval_app.command("decide")
+def approval_decide(
+    approval_id: str = typer.Argument(..., help="Approval ID"),
+    approve: bool = typer.Option(..., "--approve/--deny", help="Approve or Deny the action"),  # noqa: B008
+    operator: str = typer.Option("operator", "--operator", "-u", help="Operator username/identity"),  # noqa: B008
+    justification: str = typer.Option(..., "--justification", "-j", help="Operator justification / reason"),  # noqa: B008
+):
+    """Approve or deny an action approval request."""
+    try:
+        record = asyncio.run(
+            policy_engine.decide_approval(
+                approval_id=approval_id,
+                approve=approve,
+                operator=operator,
+                justification=justification,
+            )
+        )
+        status_label = "[bold green]APPROVED[/bold green]" if approve else "[bold red]DENIED[/bold red]"
+        console.print(f"\nApproval {record.approval_id} has been {status_label}.")
+        console.print(f"[bold]Operator:[/bold] {record.approved_by}")
+        console.print(f"[bold]Justification:[/bold] {record.justification_provided}")
+    except Exception as e:
+        console.print(f"[bold red]Failed to decide approval:[/bold red] {e}")
+        raise typer.Exit(code=1) from e
 
 
 if __name__ == "__main__":
