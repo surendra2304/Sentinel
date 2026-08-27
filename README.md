@@ -57,6 +57,55 @@ Unlike simple scanner wrappers, SENTINEL is an autonomous intelligence platform 
 
 ---
 
+## 💻 CLI & API Usage Examples
+
+### 1. Command Line Interface (Typer CLI)
+```bash
+# View platform status and module matrix
+python -m sentinel.apps.cli.main status
+
+# Verify cryptographic integrity of the audit hash chain
+python -m sentinel.apps.cli.main verify-audit
+
+# Submit a security task (Domain or IP Target)
+python -m sentinel.apps.cli.main task submit --objective "Audit perimeter web application" --target "api.sentinel.security" --mode assessment
+
+# Check task status and progress
+python -m sentinel.apps.cli.main task status <task_id>
+
+# Immediate Kill-Switch cancellation
+python -m sentinel.apps.cli.main task cancel <task_id> --reason "Operator manual halt"
+
+# View task findings & generated report
+python -m sentinel.apps.cli.main task findings <task_id>
+python -m sentinel.apps.cli.main report <task_id>
+```
+
+### 2. Task Gateway REST API (FastAPI)
+```bash
+# 1. Health and Readiness probes
+curl http://localhost:8000/health
+curl http://localhost:8000/ready
+
+# 2. Submit Security Task
+curl -X POST http://localhost:8000/api/v1/tasks \
+  -H "Content-Type: application/json" \
+  -d '{
+    "objective": "Scan internal subnet for exposed management ports",
+    "targets": [{"type": "cidr", "value": "10.0.0.0/24"}],
+    "mode": "passive_recon",
+    "requested_output": "comprehensive_report"
+  }'
+
+# 3. Stream Live Task Events via SSE
+curl -N http://localhost:8000/api/v1/tasks/<task_id>/events
+
+# 4. Immediate Task Kill-Switch
+curl -X POST "http://localhost:8000/api/v1/tasks/<task_id>/cancel?reason=OperatorEmergencyHalt"
+```
+
+---
+
 ## 📦 Directory Structure
 
 ```
@@ -66,67 +115,20 @@ sentinel/
 │   ├── dashboard/        # Web Dashboard & Visualizer
 │   └── cli/              # Typer-powered CLI utility
 ├── core/                 # Execution & Governance Engine
-│   ├── orchestrator/     # Task orchestration & tool coordinator
+│   ├── orchestrator/     # Task lifecycle manager & tool coordinator
 │   ├── agents/           # Domain agents (Recon, Web, Cloud, IR)
 │   ├── planner/          # Model-agnostic AI planning & step selection
 │   ├── policy/           # Scope boundaries & authorization rules
 │   ├── scope/            # Subnet/domain allowlist matchers
-│   ├── events/           # Asynchronous internal event bus
+│   ├── events/           # Asynchronous internal event bus (Pub/Sub)
 │   └── memory/           # Agent context memory & state
-├── modules/              # Pluggable Domain Modules
-│   ├── recon/            # Passive & active asset discovery
-│   ├── dns/              # Subdomain, DNSSEC, zone auditing
-│   ├── network/          # Port scanning, service fingerprinting
-│   ├── wireless/         # 802.11, rogue AP, signal auditing
-│   ├── web/              # Web app security, dynamic crawling
-│   ├── api_security/     # REST/GraphQL/gRPC schema & auth audit
-│   ├── mobile/           # iOS/Android static & dynamic analysis
-│   ├── endpoint/         # Process inspection & host telemetry
-│   ├── cloud/            # CSPM, IAM & Kubernetes security
-│   ├── vulnerability/    # CVE intelligence & exploitability checks
-│   ├── forensics/        # Artifact extraction & memory analysis
-│   ├── threat_intel/     # MITRE ATT&CK & IOC correlation
-│   └── incident_response/# Containment playbooks & triage
+├── modules/              # Pluggable Domain Modules (13 total)
 ├── integrations/         # Tool Adapters & Connectors
-│   ├── scanners/         # Nmap, Nuclei, ZAP, OpenVAS, Masscan
-│   ├── browsers/         # Headless browser automation
-│   ├── threat_feeds/     # MISP, AlienVault, OSINT feeds
-│   └── external_apis/    # Shodan, Censys, SecurityTrails
 ├── intelligence/         # Correlation & Risk Modeling
-│   ├── correlation/      # Multi-source deduplication & fusion
-│   ├── attack_paths/     # Graph-based path modeling
-│   ├── risk/             # Contextual CVSS & EPSS calculations
-│   └── recommendations/  # Actionable remediation playbooks
-├── storage/              # Persistence Layer
-│   ├── database/         # PostgreSQL async models & migrations
-│   ├── evidence/         # Cryptographically hashed evidence store
-│   └── artifacts/        # MinIO/S3 object storage adapter
-├── contracts/            # Typed Data Contracts & JSON Schemas
-│   └── schemas/          # Task, Action, Evidence, Finding, Risk
+├── storage/              # Persistence Layer (SQLAlchemy 2.0 + MinIO)
+├── contracts/            # Typed Data Contracts & JSON Schemas (v1.0.0)
 ├── audit/                # Append-only Tamper-Evident Audit Trail
 └── config/               # Typed Pydantic Settings
-```
-
----
-
-## 🚀 Quick Start
-
-### 1. Run with Docker Compose
-```bash
-docker compose up -d
-```
-Services started:
-- **API Gateway**: `http://localhost:8000/api/v1/docs`
-- **PostgreSQL**: `localhost:5432` (`sentinel_db`)
-- **MinIO S3**: `http://localhost:9001` (Console) / `http://localhost:9000` (API)
-
-### 2. Local CLI Usage
-```bash
-# View system status and module matrix
-python -m sentinel.apps.cli.main status
-
-# Verify tamper-evident audit log integrity
-python -m sentinel.apps.cli.main verify-audit
 ```
 
 ---

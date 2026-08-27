@@ -15,8 +15,8 @@ Welcome to the **Sentinel Engineering Diary**. This document acts as the master 
 
 ### 2. Engineering Diary Logs
 
-### 📈 [Day 1 — 2026-08-28: Genesis, Platform Foundation & Core Domain Models](diary/2026-08-28.md)
-- **🎯 Focus**: Exact modular directory layout, typed settings, core domain models, JSON schema generation, Alembic migrations, and CI pipeline.
-- **💡 What I Accomplished**: Built the 54-directory structure, Target/Task/Action/Evidence/Finding/Risk domain models, object storage abstractions, 8 versioned contracts, 13-table Alembic migration, and unit test suite.
-- **🛡️ Fixes & Hardening**: Fixed sync/async Alembic engine routing, enforced Evidence-First validation anchors, eliminated Mypy typing discrepancies, and resolved console encoding on Windows.
-- **📊 Test Results**: **16 passed** (100% green pass rate across test suite and diary validator).
+### 📈 [Day 1 — 2026-08-28: Genesis, Domain Models & Task Gateway](diary/2026-08-28.md)
+- **🎯 Focus**: Exact modular layout, core domain models, JSON schema generation, Task Gateway REST API, SSE streaming, Typer CLI, and async Event Bus.
+- **💡 What I Accomplished**: Built the 54-directory structure, Target/Task/Action/Evidence models, TaskLifecycleManager state machine, FastAPI Gateway (/tasks, /cancel, /events), Typer CLI commands, and InMemoryEventBus.
+- **🛡️ Fixes & Hardening**: Fixed target ID auto-generation on API submission, implemented crash recovery guarantees, enforced sliding-window rate limiting, and resolved console encoding.
+- **📊 Test Results**: **20 passed** (100% green pass rate across unit, integration, and diary verification suites).
