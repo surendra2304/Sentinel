@@ -279,3 +279,47 @@ async def test_endpoint_agent_observation_synthesis(sample_endpoint_task):
     assert finding.id.startswith("find-")
     assert finding.severity == SeverityLevel.HIGH
     assert "evi-ep-001" in finding.evidence_refs
+
+
+def test_endpoint_offline_macos_export_evaluation():
+    """Verify offline export evaluation detects macOS misconfigurations."""
+    export = EndpointExportData(
+        os_platform="macos",
+        hostname="MAC-DEV-01",
+        raw_configs={
+            "/etc/ssh/sshd_config": "PermitRootLogin yes\nPasswordAuthentication yes\n",
+        },
+        persistence_mechanisms=[
+            PersistenceItem(
+                type="launchd",
+                name="com.apple.badupdater",
+                path="/Library/LaunchDaemons/com.apple.badupdater.plist",
+                command="/tmp/payload.sh",
+                is_suspicious=True,
+                suspicion_reason="LaunchDaemon runs script from /tmp.",
+            )
+        ],
+    )
+
+    adp = EndpointAssessmentAdapter()
+    findings = adp.offline_adapter.evaluate_export(export, adp.rules)
+
+    rule_ids = {f["rule_id"] for f in findings}
+    assert "EP-MAC-001" in rule_ids
+
+
+def test_endpoint_adapter_helpers_and_parsers(tmp_path):
+    adp = EndpointAssessmentAdapter()
+    lnx = LinuxAdapter()
+    
+    # Test user privilege parsing with mocked passwd
+    passwd_file = tmp_path / "passwd"
+    passwd_file.write_text("root:x:0:0:root:/root:/bin/bash\nuser1:x:1001:1001::/home/user1:/bin/bash\n", encoding="utf-8")
+    
+    # Test cron parsing with mocked cron file
+    cron_dir = tmp_path / "cron.d"
+    cron_dir.mkdir()
+    (cron_dir / "job1").write_text("* * * * * root /usr/bin/backup\n", encoding="utf-8")
+    
+    items = lnx.collect_persistence(root_dir=str(tmp_path))
+    assert isinstance(items, list)

@@ -38,10 +38,14 @@ COPY --chown=sentinel:sentinel sentinel/ ./sentinel/
 COPY --chown=sentinel:sentinel contracts/ ./contracts/
 COPY --chown=sentinel:sentinel data/ ./data/
 COPY --chown=sentinel:sentinel pyproject.toml ./
+COPY --chown=sentinel:sentinel alembic.ini ./
+COPY --chown=sentinel:sentinel alembic/ ./alembic/
+COPY --chown=sentinel:sentinel docker/entrypoint.sh ./entrypoint.sh
 
 # Directories sentinel needs to write at runtime
 RUN mkdir -p /app/logs /app/data/artifacts && \
-    chown -R sentinel:sentinel /app/logs /app/data
+    chmod +x /app/entrypoint.sh && \
+    chown -R sentinel:sentinel /app/logs /app/data /app/entrypoint.sh
 
 # Drop to non-root
 USER sentinel
@@ -51,4 +55,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-CMD ["uvicorn", "sentinel.apps.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+ENTRYPOINT ["/bin/bash", "/app/entrypoint.sh"]

@@ -94,3 +94,50 @@ async def test_aws_cloud_adapter_posture_assessment():
     # Assert credentials did NOT leak into evidence
     assert "SecretPassword123!" not in raw_bytes.decode("utf-8")
     assert "AKIAIOSFODNN7EXAMPLE" not in raw_bytes.decode("utf-8")
+
+
+@pytest.mark.asyncio
+async def test_azure_and_gcp_cloud_adapter_posture_assessment():
+    # 1. Azure Cloud Adapter Run
+    azure_adp = AzureCloudAdapter()
+    req_az = ActionRequest(
+        id="act-az-01",
+        task_id="task-az-01",
+        agent="cloud_agent",
+        action_type="cloud.azure_posture_assess",
+        target_refs=["/subscriptions/sub-001"],
+        parameters={
+            "credentials": {
+                "subscription_id": "sub-1234-5678",
+                "client_secret": "SuperSecretKey!",
+            }
+        }
+    )
+    res_az, raw_az, _ = await azure_adp.run(req_az)
+    assert res_az.success is True
+    data_az = json.loads(raw_az.decode("utf-8"))
+    assert data_az["findings_count"] >= 1
+    assert data_az["findings"][0]["rule_id"] == "AZ-BLOB-001"
+    assert "SuperSecretKey!" not in raw_az.decode("utf-8")
+
+    # 2. GCP Cloud Adapter Run
+    gcp_adp = GCPCloudAdapter()
+    req_gcp = ActionRequest(
+        id="act-gcp-01",
+        task_id="task-gcp-01",
+        agent="cloud_agent",
+        action_type="cloud.gcp_posture_assess",
+        target_refs=["projects/sentinel-sec-test"],
+        parameters={
+            "credentials": {
+                "project_id": "sentinel-sec-test",
+                "private_key": "-----BEGIN RSA PRIVATE KEY-----...",
+            }
+        }
+    )
+    res_gcp, raw_gcp, _ = await gcp_adp.run(req_gcp)
+    assert res_gcp.success is True
+    data_gcp = json.loads(raw_gcp.decode("utf-8"))
+    assert data_gcp["findings_count"] >= 1
+    assert data_gcp["findings"][0]["rule_id"] == "GCP-GCS-001"
+    assert "-----BEGIN RSA PRIVATE KEY-----" not in raw_gcp.decode("utf-8")

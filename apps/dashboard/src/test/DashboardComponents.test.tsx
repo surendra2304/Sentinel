@@ -153,4 +153,104 @@ describe('Dashboard Component Test Suite', () => {
       expect(screen.getByText(/Vulnerability Criticality Matrix/i)).toBeInTheDocument();
     });
   });
+
+  it('supports findings table severity filtering and empty results state', async () => {
+    vi.spyOn(api, 'fetchFindings').mockResolvedValue([
+      {
+        id: 'find-01',
+        task_id: 'task-e2e-01',
+        title: 'Critical RCE Vector',
+        description: 'Command injection vulnerability',
+        target_ref: 'http://lab.local',
+        severity: 'critical',
+        confidence: 0.99,
+        evidence_refs: ['evi-01'],
+        remediation: 'Sanitize inputs',
+        status: 'open',
+        first_seen: '2026-08-28T12:00:00Z',
+      },
+      {
+        id: 'find-02',
+        task_id: 'task-e2e-01',
+        title: 'Low Info Leak',
+        description: 'Server version disclosed',
+        target_ref: 'http://lab.local',
+        severity: 'low',
+        confidence: 0.8,
+        evidence_refs: ['evi-02'],
+        remediation: 'Hide headers',
+        status: 'open',
+        first_seen: '2026-08-28T12:00:00Z',
+      },
+    ]);
+
+    render(
+      <BrowserRouter>
+        <FindingsPage />
+      </BrowserRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Critical RCE Vector')).toBeInTheDocument();
+      expect(screen.getByText('Low Info Leak')).toBeInTheDocument();
+    });
+
+    // Filter to CRITICAL only
+    const select = screen.getByRole('combobox');
+    fireEvent.change(select, { target: { value: 'critical' } });
+
+    expect(screen.getByText('Critical RCE Vector')).toBeInTheDocument();
+    expect(screen.queryByText('Low Info Leak')).not.toBeInTheDocument();
+
+    // Filter to MEDIUM (expect empty state)
+    fireEvent.change(select, { target: { value: 'medium' } });
+    expect(screen.getByText(/No findings match the selected criteria/i)).toBeInTheDocument();
+  });
+
+  it('updates task progress in real time upon task list polling / refresh', async () => {
+    const fetchSpy = vi.spyOn(api, 'fetchTasks');
+    fetchSpy.mockResolvedValueOnce([
+      {
+        id: 'task-live-01',
+        objective: 'Continuous scan',
+        mode: 'authorized_assessment',
+        status: 'executing',
+        progress_percentage: 25,
+        correlation_id: 'c1',
+        created_at: '2026-08-28T12:00:00Z',
+        target_count: 1,
+      },
+    ]);
+
+    render(
+      <BrowserRouter>
+        <TasksPage />
+      </BrowserRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('25%')).toBeInTheDocument();
+    });
+
+    // Mock subsequent refresh with 85% progress
+    fetchSpy.mockResolvedValueOnce([
+      {
+        id: 'task-live-01',
+        objective: 'Continuous scan',
+        mode: 'authorized_assessment',
+        status: 'executing',
+        progress_percentage: 85,
+        correlation_id: 'c1',
+        created_at: '2026-08-28T12:00:00Z',
+        target_count: 1,
+      },
+    ]);
+
+    const refreshBtn = screen.getByRole('button', { name: /Refresh/i });
+    fireEvent.click(refreshBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('85%')).toBeInTheDocument();
+    });
+  });
 });
