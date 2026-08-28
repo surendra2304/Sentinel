@@ -1,4 +1,4 @@
-﻿"""Reporting Service and Template Rendering Engine for Sentinel.
+"""Reporting Service and Template Rendering Engine for Sentinel.
 
 Supports:
 1. Executive Reports (Business risk, attack paths, strategic roadmap)
@@ -41,6 +41,7 @@ class ReportFormat(StrEnum):
 class SecurityReport(BaseModel):
     report_id: str
     task_id: str
+    task_status: str = "complete"
     report_type: ReportType
     title: str
     generated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
@@ -99,6 +100,7 @@ class ReportGenerator:
         report = SecurityReport(
             report_id=rep_id,
             task_id=task.id,
+            task_status=task.status.value,
             report_type=report_type,
             title=f"Sentinel {report_type.value.capitalize()} Assessment Report",
             overall_risk_score=min(10.0, float(sev_counts["critical"] * 3.5 + sev_counts["high"] * 2.0 + sev_counts["medium"] * 0.5)),
@@ -141,7 +143,9 @@ class ReportGenerator:
         return html
 
     def export_machine_json(self, report: SecurityReport) -> str:
-        return json.dumps(report.model_dump(mode="json"), indent=2)
+        data = report.model_dump(mode="json")
+        data["status"] = report.task_status
+        return json.dumps(data, indent=2)
 
 
 # Global Report Generator Singleton

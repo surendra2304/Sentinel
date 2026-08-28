@@ -1,4 +1,4 @@
-﻿"""Sentinel Command Line Interface.
+"""Sentinel Command Line Interface.
 
 Provides uniform operator control matching the Task Gateway REST API.
 """
@@ -15,6 +15,9 @@ from sentinel.config.settings import get_settings
 from sentinel.core.models import TaskMode
 from sentinel.core.orchestrator.lifecycle import lifecycle_manager
 from sentinel.core.policy.engine import policy_engine
+from sentinel.intelligence.attack_paths.analyzer import attack_path_analyzer
+from sentinel.intelligence.recommendations.engine import recommendation_engine
+from sentinel.intelligence.reporting.generator import ReportType, report_generator
 from sentinel.intelligence.risk.finding_engine import finding_engine
 from sentinel.intelligence.risk.risk_engine import risk_engine
 from sentinel.modules.recon.graph import asset_graph_store
@@ -317,6 +320,51 @@ def approval_decide(
     except Exception as e:
         console.print(f"[bold red]Failed to decide approval:[/bold red] {e}")
         raise typer.Exit(code=1) from e
+
+
+# ---------------------------------------------------------------------------
+# Report Commands
+# ---------------------------------------------------------------------------
+
+@app.command("report")
+def generate_report(
+    task_id: str = typer.Argument(..., help="Task ID"),
+    report_type: str = typer.Option("technical", "--type", "-t", help="Report type: executive, technical, soc_ir, json"),  # noqa: B008
+    format: str = typer.Option("md", "--format", "-f", help="Output format: md, html, json"),  # noqa: B008
+):
+    """Generate and display or export security assessment reports."""
+    task = asyncio.run(lifecycle_manager.get_task(task_id))
+    if not task:
+        console.print(f"[bold red]Task {task_id} not found.[/bold red]")
+        raise typer.Exit(code=1)
+
+    findings = finding_engine.list_findings(task_id=task_id)
+    attack_paths = attack_path_analyzer.analyze_paths(asset_graph_store, findings)
+    recommendations = recommendation_engine.generate_recommendations(findings, attack_paths)
+
+    try:
+        rep_enum = ReportType(report_type.lower())
+    except ValueError:
+        rep_enum = ReportType.TECHNICAL
+
+    report = report_generator.generate_report(
+        task=task,
+        findings=findings,
+        attack_paths=attack_paths,
+        recommendations=recommendations,
+        report_type=rep_enum,
+    )
+
+    fmt_lower = format.lower()
+    if fmt_lower in ("md", "markdown"):
+        content = report_generator.render_markdown(report)
+        console.print(content)
+    elif fmt_lower == "html":
+        content = report_generator.render_html(report)
+        console.print(content)
+    else:
+        content = report_generator.export_machine_json(report)
+        console.print(content)
 
 
 if __name__ == "__main__":

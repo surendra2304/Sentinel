@@ -1,4 +1,4 @@
-﻿"""Sentinel Task Gateway & REST API Service."""
+"""Sentinel Task Gateway & REST API Service."""
 
 import asyncio
 import json
@@ -8,6 +8,7 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, PlainTextResponse, Response
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
@@ -25,6 +26,9 @@ from sentinel.core.models import (
 )
 from sentinel.core.orchestrator.lifecycle import lifecycle_manager
 from sentinel.core.policy.engine import ApprovalRecord, policy_engine
+from sentinel.intelligence.attack_paths.analyzer import attack_path_analyzer
+from sentinel.intelligence.recommendations.engine import recommendation_engine
+from sentinel.intelligence.reporting.generator import ReportType, report_generator
 from sentinel.intelligence.risk.finding_engine import finding_engine
 from sentinel.intelligence.risk.risk_engine import TaskRiskSummary, risk_engine
 from sentinel.logging.logger import get_correlation_id, get_logger, setup_logging
@@ -341,25 +345,38 @@ async def get_task_evidence(task_id: str) -> dict[str, Any]:
 
 
 @app.get(f"{settings.api_prefix}/tasks/{{task_id}}/report", tags=["Reporting"])
-async def get_task_report(task_id: str) -> dict[str, Any]:
+async def get_task_report(
+    task_id: str,
+    type: ReportType = Query(ReportType.TECHNICAL, description="Report type: executive, technical, soc_ir, json"),  # noqa: B008
+    format: str = Query("json", description="Report format: json, md, html, pdf"),  # noqa: B008
+) -> Response:
+    """Generate and return on-demand, evidence-anchored security assessment reports."""
     task = await lifecycle_manager.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail=f"Task {task_id} not found.")
+
     findings = finding_engine.list_findings(task_id=task_id)
-    risk_summary = risk_engine.get_task_risk_summary(task_id, findings)
-    attack_surface = asset_graph_store.get_task_attack_surface(task_id)
-    return {
-        "task_id": task_id,
-        "title": f"Security Assessment Report: {task.objective}",
-        "status": task.status.value,
-        "executive_summary": f"Assessment identified {len(findings)} security findings across {attack_surface.total_nodes} attack surface nodes. Overall risk tier: {risk_summary.highest_risk_tier.value.upper()}.",
-        "findings_summary": risk_summary.severity_counts,
-        "attack_surface_summary": {
-            "total_assets": attack_surface.total_nodes,
-            "domains": attack_surface.domains_count,
-            "ips": attack_surface.ips_count,
-            "services": attack_surface.services_count,
-            "technologies": attack_surface.technologies,
-        },
-        "risk_summary": risk_summary.model_dump(),
-    }
+    attack_paths = attack_path_analyzer.analyze_paths(asset_graph_store, findings)
+    recommendations = recommendation_engine.generate_recommendations(findings, attack_paths)
+
+    report = report_generator.generate_report(
+        task=task,
+        findings=findings,
+        attack_paths=attack_paths,
+        recommendations=recommendations,
+        report_type=type,
+    )
+
+    fmt_lower = format.lower()
+    if fmt_lower in ("md", "markdown"):
+        content = report_generator.render_markdown(report)
+        return PlainTextResponse(content=content, media_type="text/markdown")
+    elif fmt_lower == "html":
+        content = report_generator.render_html(report)
+        return HTMLResponse(content=content)
+    elif fmt_lower == "pdf":
+        # Return structured HTML as printable document format
+        content = report_generator.render_html(report)
+        return Response(content=content.encode("utf-8"), media_type="application/pdf", headers={"Content-Disposition": f"inline; filename=sentinel-report-{task_id}.html"})
+    else:
+        return Response(content=report_generator.export_machine_json(report), media_type="application/json")
