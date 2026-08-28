@@ -1,0 +1,34 @@
+﻿# Sentinel API Security Misconfiguration Baseline Rules
+version: "1.0.0"
+
+# API Endpoints & Schemas to Probe
+well_known_specs:
+  - "/openapi.json"
+  - "/swagger.json"
+  - "/v2/swagger.json"
+  - "/v3/api-docs"
+  - "/docs"
+  - "/redoc"
+  - "/graphql"
+
+# Sensitive Information Patterns in JWT Claims
+jwt_sensitive_claims:
+  - "password"
+  - "secret"
+  - "ssn"
+  - "api_key"
+  - "private_key"
+  - "credit_card"
+
+# CORS Misconfiguration Rules
+cors_rules:
+  - id: "CORS-001"
+    name: "Wildcard CORS with Credentials"
+    severity: "HIGH"
+    description: "CORS header Access-Control-Allow-Origin is '*' or reflects arbitrary Origin alongside Access-Control-Allow-Credentials: true."
+    remediation: "Restrict Access-Control-Allow-Origin to explicit trusted domain origins."
+  - id: "CORS-002"
+    name: "Arbitrary Origin Reflection in CORS"
+    severity: "MEDIUM"
+    description: "Server reflects attacker-controlled Origin in Access-Control-Allow-Origin header."
+    remediation: "Validate requested Origin against an explicit server-side allowlist."

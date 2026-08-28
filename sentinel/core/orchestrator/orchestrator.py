@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 
 from sentinel.audit.audit_logger import AuditLogger
 from sentinel.config.settings import get_settings
+from sentinel.core.agents.api_agent import APISecurityAgent
 from sentinel.core.agents.base import AgentRegistry, agent_registry
 from sentinel.core.agents.network_agent import NetworkAgent
 from sentinel.core.agents.recon_agent import ReconAgent
@@ -40,6 +41,7 @@ logger = get_logger("sentinel.orchestrator")
 agent_registry.register(ReconAgent())
 agent_registry.register(NetworkAgent())
 agent_registry.register(WebSecurityAgent())
+agent_registry.register(APISecurityAgent())
 
 
 class AutonomousOrchestrator:
