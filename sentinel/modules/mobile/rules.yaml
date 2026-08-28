@@ -1,0 +1,32 @@
+﻿# Sentinel Mobile Security Permissions & Risk Baseline
+version: "1.0.0"
+
+# Dangerous Android Permissions
+dangerous_permissions:
+  - permission: "android.permission.READ_SMS"
+    severity: "HIGH"
+    description: "Allows application to read SMS messages, potentially intercepting 2FA OTP codes."
+  - permission: "android.permission.ACCESS_FINE_LOCATION"
+    severity: "MEDIUM"
+    description: "Allows access to precise GPS location."
+  - permission: "android.permission.RECORD_AUDIO"
+    severity: "HIGH"
+    description: "Allows recording audio via microphone without user confirmation."
+  - permission: "android.permission.CAMERA"
+    severity: "MEDIUM"
+    description: "Allows taking photos and recording video."
+  - permission: "android.permission.READ_CONTACTS"
+    severity: "MEDIUM"
+    description: "Allows reading user address book and contacts."
+
+# Hardcoded Secret Regex Patterns
+secret_patterns:
+  - name: "Generic API Key"
+    pattern: "(?i)(api_key|apikey|secret_key|access_token|auth_token)[\\s]*[=:][\\s]*['\"][a-zA-Z0-9_\\-]{16,}['\"]"
+    severity: "HIGH"
+  - name: "AWS Access Key ID"
+    pattern: "AKIA[0-9A-Z]{16}"
+    severity: "CRITICAL"
+  - name: "Google API Key"
+    pattern: "AIza[0-9A-Za-z\\-_]{35}"
+    severity: "HIGH"

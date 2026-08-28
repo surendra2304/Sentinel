@@ -38,6 +38,11 @@ from sentinel.modules.api_security.adapters import (
     OpenAPISchemaParserAdapter,
 )
 from sentinel.modules.dns.dns_intel import DNSIntelligenceAdapter
+from sentinel.modules.endpoint.adapters import EndpointAssessmentAdapter
+from sentinel.modules.mobile.adapters import (
+    AndroidAPKStaticAnalysisAdapter,
+    iOSIPAStaticAnalysisAdapter,
+)
 from sentinel.modules.network.adapters import (
     FirewallConfigReviewAdapter,
     HostDiscoveryAdapter,
@@ -57,6 +62,11 @@ from sentinel.modules.web.adapters import (
     VulnerabilityValidatorAdapter,
     WebConfigAnalysisAdapter,
     WebCrawlerAdapter,
+)
+from sentinel.modules.wireless.adapters import (
+    WirelessConfigAssessmentAdapter,
+    WirelessInventoryAdapter,
+    WirelessTrafficAnalysisAdapter,
 )
 from sentinel.storage.artifacts.storage import ArtifactStorage, get_artifact_storage
 from sentinel.storage.evidence.store import EvidenceStore, evidence_store
@@ -279,6 +289,14 @@ adapter_registry.register(OpenAPISchemaParserAdapter())
 adapter_registry.register(JWTAuthAnalysisAdapter())
 adapter_registry.register(InputValidationProbeAdapter())
 adapter_registry.register(APIMisconfigAdapter())
+
+# Register Wireless, Mobile & Endpoint adapters
+adapter_registry.register(WirelessInventoryAdapter())
+adapter_registry.register(WirelessConfigAssessmentAdapter())
+adapter_registry.register(WirelessTrafficAnalysisAdapter())
+adapter_registry.register(AndroidAPKStaticAnalysisAdapter())
+adapter_registry.register(iOSIPAStaticAnalysisAdapter())
+adapter_registry.register(EndpointAssessmentAdapter())
 
 # Global Execution Engine Singleton
 execution_engine = ExecutionEngine()

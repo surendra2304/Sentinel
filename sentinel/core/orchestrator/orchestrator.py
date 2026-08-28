@@ -16,6 +16,7 @@ from sentinel.audit.audit_logger import AuditLogger
 from sentinel.config.settings import get_settings
 from sentinel.core.agents.api_agent import APISecurityAgent
 from sentinel.core.agents.base import AgentRegistry, agent_registry
+from sentinel.core.agents.device_agents import EndpointAgent, MobileAgent, WirelessAgent
 from sentinel.core.agents.network_agent import NetworkAgent
 from sentinel.core.agents.recon_agent import ReconAgent
 from sentinel.core.agents.web_agent import WebSecurityAgent
@@ -42,6 +43,9 @@ agent_registry.register(ReconAgent())
 agent_registry.register(NetworkAgent())
 agent_registry.register(WebSecurityAgent())
 agent_registry.register(APISecurityAgent())
+agent_registry.register(WirelessAgent())
+agent_registry.register(MobileAgent())
+agent_registry.register(EndpointAgent())
 
 
 class AutonomousOrchestrator:

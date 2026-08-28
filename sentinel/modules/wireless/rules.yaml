@@ -1,0 +1,25 @@
+﻿# Sentinel Wireless Security Hardening Baseline Rules
+version: "1.0.0"
+
+# Wireless AP Configuration Hardening Rules
+wireless_rules:
+  - id: "WIFI-001"
+    name: "Insecure Encryption Protocol (WEP/Open/WPA1)"
+    severity: "HIGH"
+    description: "Access Point utilizes obsolete or insecure encryption (WEP/Open/WPA1)."
+    remediation: "Upgrade wireless network encryption to WPA3-SAE or WPA2-AES (CCMP)."
+  - id: "WIFI-002"
+    name: "WPS (Wi-Fi Protected Setup) Enabled"
+    severity: "HIGH"
+    description: "WPS is enabled on the Access Point, exposing the network to PIN brute-force."
+    remediation: "Disable WPS in the Access Point configuration."
+  - id: "WIFI-003"
+    name: "Management Interface Exposed on Wireless SSID"
+    severity: "MEDIUM"
+    description: "Router/AP administrative web interface is accessible directly from client wireless subnet."
+    remediation: "Isolate administrative access to a dedicated wired management VLAN."
+  - id: "WIFI-004"
+    name: "Guest Network Lacks Client Isolation"
+    severity: "MEDIUM"
+    description: "Guest SSID allows inter-client communication and lacks network segmentation."
+    remediation: "Enable Client Isolation and isolate Guest SSID on a separate VLAN."

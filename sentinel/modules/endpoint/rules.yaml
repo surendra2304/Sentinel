@@ -1,0 +1,28 @@
+﻿# Sentinel Endpoint Security Hardening Baseline
+version: "1.0.0"
+
+# Linux Hardening Rules
+linux_rules:
+  - id: "EP-LNX-001"
+    name: "SSH PermitRootLogin Enabled"
+    severity: "HIGH"
+    description: "SSH daemon permits direct root login."
+    remediation: "Set 'PermitRootLogin no' in /etc/ssh/sshd_config."
+  - id: "EP-LNX-002"
+    name: "Passwordless Sudo Misconfiguration"
+    severity: "HIGH"
+    description: "User has NOPASSWD configured in /etc/sudoers."
+    remediation: "Require password authentication for sudo actions."
+
+# Windows Hardening Rules
+windows_rules:
+  - id: "EP-WIN-001"
+    name: "AlwaysInstallElevated Registry Key Enabled"
+    severity: "HIGH"
+    description: "AlwaysInstallElevated is enabled, allowing standard users to install packages with SYSTEM privileges."
+    remediation: "Set AlwaysInstallElevated to 0 in HKLM and HKCU."
+  - id: "EP-WIN-002"
+    name: "Windows AutoAdminLogon Enabled"
+    severity: "HIGH"
+    description: "AutoAdminLogon is enabled with stored credentials."
+    remediation: "Disable AutoAdminLogon in Winlogon registry."
