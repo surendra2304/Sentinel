@@ -17,6 +17,7 @@ from sentinel.config.settings import get_settings
 from sentinel.core.agents.base import AgentRegistry, agent_registry
 from sentinel.core.agents.network_agent import NetworkAgent
 from sentinel.core.agents.recon_agent import ReconAgent
+from sentinel.core.agents.web_agent import WebSecurityAgent
 from sentinel.core.events.bus import emit_event
 from sentinel.core.memory.working_memory import MemoryStore, memory_store
 from sentinel.core.models import (
@@ -38,6 +39,7 @@ logger = get_logger("sentinel.orchestrator")
 # Register reference and domain agents
 agent_registry.register(ReconAgent())
 agent_registry.register(NetworkAgent())
+agent_registry.register(WebSecurityAgent())
 
 
 class AutonomousOrchestrator:

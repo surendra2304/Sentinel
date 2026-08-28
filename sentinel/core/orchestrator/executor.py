@@ -25,6 +25,7 @@ from sentinel.core.models import (
 )
 from sentinel.core.orchestrator.adapter import ToolAdapterRegistry, adapter_registry
 from sentinel.core.policy.engine import PolicyDecisionType, PolicyEngine, policy_engine
+from sentinel.integrations.browsers.playwright_adapter import BrowserAdapter
 from sentinel.integrations.scanners.dns_adapter import DNSAdapter
 from sentinel.integrations.scanners.http_adapter import HTTPObserverAdapter
 from sentinel.integrations.scanners.network_adapter import NetworkScannerAdapter
@@ -43,6 +44,12 @@ from sentinel.modules.recon.adapters import (
     OSINTAdapter,
     SubdomainEnumAdapter,
     TechnologyFingerprintAdapter,
+)
+from sentinel.modules.web.adapters import (
+    AuthSessionTestingAdapter,
+    VulnerabilityValidatorAdapter,
+    WebConfigAnalysisAdapter,
+    WebCrawlerAdapter,
 )
 from sentinel.storage.artifacts.storage import ArtifactStorage, get_artifact_storage
 from sentinel.storage.evidence.store import EvidenceStore, evidence_store
@@ -251,6 +258,13 @@ adapter_registry.register(NetworkExposureAdapter())
 adapter_registry.register(SegmentationAnalyzerAdapter())
 adapter_registry.register(FirewallConfigReviewAdapter())
 adapter_registry.register(TrafficAnalysisAdapter())
+
+# Register web security & browser adapters
+adapter_registry.register(BrowserAdapter())
+adapter_registry.register(WebCrawlerAdapter())
+adapter_registry.register(WebConfigAnalysisAdapter())
+adapter_registry.register(AuthSessionTestingAdapter())
+adapter_registry.register(VulnerabilityValidatorAdapter())
 
 # Global Execution Engine Singleton
 execution_engine = ExecutionEngine()
