@@ -29,6 +29,11 @@ from sentinel.integrations.browsers.playwright_adapter import BrowserAdapter
 from sentinel.integrations.scanners.dns_adapter import DNSAdapter
 from sentinel.integrations.scanners.http_adapter import HTTPObserverAdapter
 from sentinel.integrations.scanners.network_adapter import NetworkScannerAdapter
+from sentinel.integrations.threat_feeds.adapters import (
+    AbuseIPFeedAdapter,
+    CISAKEVFeedAdapter,
+    CustomThreatFeedAdapter,
+)
 from sentinel.logging.logger import get_logger
 from sentinel.modules.api_security.adapters import (
     APIDiscoveryAdapter,
@@ -62,6 +67,7 @@ from sentinel.modules.recon.adapters import (
     SubdomainEnumAdapter,
     TechnologyFingerprintAdapter,
 )
+from sentinel.modules.vulnerability.correlation import VulnerabilityCorrelationAdapter
 from sentinel.modules.web.adapters import (
     AuthSessionTestingAdapter,
     VulnerabilityValidatorAdapter,
@@ -307,6 +313,12 @@ adapter_registry.register(EndpointAssessmentAdapter())
 adapter_registry.register(AWSCloudAdapter())
 adapter_registry.register(AzureCloudAdapter())
 adapter_registry.register(GCPCloudAdapter())
+
+# Register Vulnerability & Threat Intel adapters
+adapter_registry.register(VulnerabilityCorrelationAdapter())
+adapter_registry.register(CISAKEVFeedAdapter())
+adapter_registry.register(AbuseIPFeedAdapter())
+adapter_registry.register(CustomThreatFeedAdapter())
 
 # Global Execution Engine Singleton
 execution_engine = ExecutionEngine()
