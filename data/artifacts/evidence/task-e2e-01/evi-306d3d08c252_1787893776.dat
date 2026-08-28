@@ -1,0 +1,9 @@
+{
+  "url": "http://127.0.0.1:18890",
+  "technologies": [
+    "Web Server: SimpleHTTP/0.6 Python/3.11.9"
+  ],
+  "server_banner": "SimpleHTTP/0.6 Python/3.11.9",
+  "favicon_hash": "da11bb20561bb38bb2b809f37c1b8cb4",
+  "cookies": []
+}

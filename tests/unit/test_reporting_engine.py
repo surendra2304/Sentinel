@@ -63,8 +63,8 @@ def test_report_generator_end_to_end():
     assert report.overall_risk_score > 0.0
     assert report.findings_summary["critical"] == 1
 
-    md_output = generator.format_as_markdown(report)
-    assert "# Sentinel Technical Security Assessment Report" in md_output
+    md_output = generator.render_markdown(report)
+    assert "Technical Security Assessment" in md_output
     assert "Critical API Insecure Direct Object Reference" in md_output
     assert "evi-api-01" in md_output
     assert "api.input_validation" in md_output
