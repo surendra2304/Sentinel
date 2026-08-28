@@ -22,6 +22,7 @@ from sentinel.core.agents.dfir_agents import ForensicsAgent, IncidentResponseAge
 from sentinel.core.agents.intel_agents import ThreatIntelligenceAgent, VulnerabilityAgent
 from sentinel.core.agents.network_agent import NetworkAgent
 from sentinel.core.agents.recon_agent import ReconAgent
+from sentinel.core.agents.security_intelligence_agent import SecurityIntelligenceAgent
 from sentinel.core.agents.web_agent import WebSecurityAgent
 from sentinel.core.events.bus import emit_event
 from sentinel.core.memory.working_memory import MemoryStore, memory_store
@@ -41,7 +42,7 @@ from sentinel.storage.evidence.store import EvidenceStore, evidence_store
 
 logger = get_logger("sentinel.orchestrator")
 
-# Register reference and domain agents
+# Register reference, domain, and intelligence agents
 agent_registry.register(ReconAgent())
 agent_registry.register(NetworkAgent())
 agent_registry.register(WebSecurityAgent())
@@ -54,6 +55,7 @@ agent_registry.register(VulnerabilityAgent())
 agent_registry.register(ThreatIntelligenceAgent())
 agent_registry.register(ForensicsAgent())
 agent_registry.register(IncidentResponseAgent())
+agent_registry.register(SecurityIntelligenceAgent())
 
 
 class AutonomousOrchestrator:
