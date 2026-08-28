@@ -37,6 +37,11 @@ from sentinel.modules.api_security.adapters import (
     JWTAuthAnalysisAdapter,
     OpenAPISchemaParserAdapter,
 )
+from sentinel.modules.cloud.adapters import (
+    AWSCloudAdapter,
+    AzureCloudAdapter,
+    GCPCloudAdapter,
+)
 from sentinel.modules.dns.dns_intel import DNSIntelligenceAdapter
 from sentinel.modules.endpoint.adapters import EndpointAssessmentAdapter
 from sentinel.modules.mobile.adapters import (
@@ -297,6 +302,11 @@ adapter_registry.register(WirelessTrafficAnalysisAdapter())
 adapter_registry.register(AndroidAPKStaticAnalysisAdapter())
 adapter_registry.register(iOSIPAStaticAnalysisAdapter())
 adapter_registry.register(EndpointAssessmentAdapter())
+
+# Register Cloud Security adapters
+adapter_registry.register(AWSCloudAdapter())
+adapter_registry.register(AzureCloudAdapter())
+adapter_registry.register(GCPCloudAdapter())
 
 # Global Execution Engine Singleton
 execution_engine = ExecutionEngine()
