@@ -1,4 +1,4 @@
-﻿"""FRIDAY Integration Contract Models and Summarizer Service.
+"""FRIDAY Integration Contract Models and Summarizer Service.
 
 Provides:
 1. FridayDelegationRequest & FridayDelegationResponse models.
@@ -81,7 +81,7 @@ class FridayResultPayload(BaseModel):
 
 
 class FridaySummarizer:
-    """Generates concise, deterministic handoff summaries for FRIDAY."""
+    """Generates concise, deterministic handoff summaries for FRIDAY with zero LLM required."""
 
     @classmethod
     def generate_summary(
@@ -92,6 +92,8 @@ class FridaySummarizer:
     ) -> str:
         crit = sum(1 for f in findings if f.severity == SeverityLevel.CRITICAL)
         high = sum(1 for f in findings if f.severity == SeverityLevel.HIGH)
+        med = sum(1 for f in findings if f.severity == SeverityLevel.MEDIUM)
+        low = sum(1 for f in findings if f.severity == SeverityLevel.LOW)
 
         if task.status.value == "complete":
             status_text = "successfully concluded"
@@ -103,14 +105,21 @@ class FridaySummarizer:
         summary = (
             f"Sentinel security assessment for '{task.objective}' has {status_text}. "
             f"Evaluated {len(task.target_set.targets)} target(s) and identified {len(findings)} verified finding(s) "
-            f"({crit} Critical, {high} High)."
+            f"(Critical: {crit}, High: {high}, Medium: {med}, Low: {low})."
         )
 
         if blocked:
-            summary += f" Sentinel governance blocked {len(blocked)} elevated action(s) due to policy guardrails."
+            summary += f" Sentinel governance blocked {len(blocked)} action(s) due to policy/scope guardrails:"
+            for b in blocked:
+                summary += f" [{b.action_type} on {b.target} - {b.reason} ({b.policy_dimension})]"
 
-        if crit > 0:
-            top_crit = next(f for f in findings if f.severity == SeverityLevel.CRITICAL)
-            summary += f" Immediate attention required: {top_crit.title} on {top_crit.target_ref}."
+        if crit > 0 or high > 0:
+            top_findings = [f for f in findings if f.severity in (SeverityLevel.CRITICAL, SeverityLevel.HIGH)]
+            top = top_findings[0]
+            summary += f" Top Risk: {top.title} on {top.target_ref}."
+            rem_text = top.remediation or "Apply security hardening best practices and verify with Sentinel re-tests."
+            summary += f" Remediation Pointer: {rem_text}"
+        else:
+            summary += " Remediation Pointer: Maintain baseline security hardening and scheduled verification re-tests."
 
         return summary

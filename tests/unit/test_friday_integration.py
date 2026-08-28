@@ -1,4 +1,4 @@
-﻿import pytest
+import pytest
 from httpx import ASGITransport, AsyncClient
 
 from sentinel.apps.api.main import app
@@ -88,10 +88,103 @@ def test_friday_deterministic_summarizer():
             action_type="network.raw_packet_injection",
             target="pay.example.com",
             reason="Blocked by hardcoded safety policy",
+            policy_dimension="action_class_restriction",
         )
     ]
 
     summary = FridaySummarizer.generate_summary(task, [finding], blocked)
     assert "Sentinel security assessment for 'Assess payment gateway resilience'" in summary
-    assert "1 Critical" in summary
-    assert "Sentinel governance blocked 1 elevated action" in summary
+    assert "Critical: 1" in summary
+    assert "Top Risk: Unencrypted Payment Token Header" in summary
+    assert "Remediation Pointer:" in summary
+    assert "Sentinel governance blocked 1 action(s)" in summary
+    assert "action_class_restriction" in summary
+
+
+@pytest.mark.asyncio
+async def test_friday_delegation_blocked_out_of_scope_target():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # Submit delegation with allowed and out-of-scope targets
+        payload = {
+            "capability": "sentinel.security_assessment",
+            "objective": "Assess authorized and unauthorized hosts",
+            "targets": [
+                {"type": "domain", "value": "allowed.sentinel.security"},
+                {"type": "ip", "value": "198.51.100.1"},
+            ],
+            "mode": "authorized_assessment",
+            "requested_output": "summary",
+            "policy_context": {
+                "environment": "staging",
+                "authorization_reference": "CHG-FRIDAY-002",
+            },
+        }
+
+        res_del = await client.post("/api/v1/friday/delegate", json=payload)
+        assert res_del.status_code == 200
+        delegation_id = res_del.json()["delegation_id"]
+        task_id = res_del.json()["task_id"]
+
+        # Simulate policy denial for the out-of-scope IP
+        from sentinel.core.policy.engine import policy_engine
+        from sentinel.core.models import ActionRequest, ImpactLevel
+
+        task = await client.get(f"/api/v1/tasks/{task_id}")
+        assert task.status_code == 200
+
+        res_result = await client.get(f"/api/v1/friday/delegations/{delegation_id}")
+        assert res_result.status_code == 200
+        res_data = res_result.json()
+        assert res_data["delegation_id"] == delegation_id
+        assert "human_summary" in res_data
+
+
+@pytest.mark.asyncio
+async def test_friday_approval_relay_attribution_and_expiration_rejection():
+    from sentinel.core.policy.engine import policy_engine
+    from sentinel.core.models import ActionRequest, ImpactLevel, Task, TargetSet, Target, TargetType, Scope, Policy
+    from datetime import timedelta, datetime, UTC
+
+    task = Task(
+        id="task-fri-appr-01",
+        objective="Validate approval relay attribution and expiration",
+        target_set=TargetSet(id="ts-appr", name="TS", targets=[Target(id="t-1", type=TargetType.DOMAIN, value="auth.test")]),
+        scope=Scope(id="s-appr", name="S", allowed_targets=["auth.test"], offensive_actions_enabled=True),
+        policy=Policy(id="p-appr", name="P"),
+        correlation_id="corr-appr-01",
+    )
+
+    action = ActionRequest(
+        id="act-fri-appr-01",
+        task_id=task.id,
+        agent="exploit_agent",
+        action_type="web.exploit",
+        target_refs=["auth.test"],
+        expected_impact_level=ImpactLevel.HIGH,
+        requires_approval=True,
+    )
+
+    dec = await policy_engine.evaluate_action(action, task)
+    assert dec.approval_id is not None
+
+    # 1. Valid Approval Relay with user identity & authorization reference
+    record = await policy_engine.decide_approval(
+        approval_id=dec.approval_id,
+        approve=True,
+        operator="friday_operator_alex@corp.local",
+        justification="Verified emergency mitigation deployment window",
+        authorization_reference="AUTH-REF-8841",
+    )
+    assert record.status == "APPROVED"
+    assert record.approved_by == "friday_operator_alex@corp.local"
+    assert record.authorization_reference == "AUTH-REF-8841"
+
+    # 2. Re-decision on already decided or expired approval raises ValueError
+    with pytest.raises(ValueError, match="already"):
+        await policy_engine.decide_approval(
+            approval_id=dec.approval_id,
+            approve=True,
+            operator="second_operator@corp.local",
+            justification="Duplicate approval attempt",
+        )
