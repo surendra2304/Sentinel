@@ -49,6 +49,12 @@ from sentinel.modules.cloud.adapters import (
 )
 from sentinel.modules.dns.dns_intel import DNSIntelligenceAdapter
 from sentinel.modules.endpoint.adapters import EndpointAssessmentAdapter
+from sentinel.modules.forensics.adapters import (
+    ForensicEventCorrelationAdapter,
+    LogArtifactCollectorAdapter,
+    SuperTimelineConstructorAdapter,
+)
+from sentinel.modules.incident_response.adapters import IncidentResponseTriageAdapter
 from sentinel.modules.mobile.adapters import (
     AndroidAPKStaticAnalysisAdapter,
     iOSIPAStaticAnalysisAdapter,
@@ -319,6 +325,12 @@ adapter_registry.register(VulnerabilityCorrelationAdapter())
 adapter_registry.register(CISAKEVFeedAdapter())
 adapter_registry.register(AbuseIPFeedAdapter())
 adapter_registry.register(CustomThreatFeedAdapter())
+
+# Register DFIR adapters
+adapter_registry.register(LogArtifactCollectorAdapter())
+adapter_registry.register(SuperTimelineConstructorAdapter())
+adapter_registry.register(ForensicEventCorrelationAdapter())
+adapter_registry.register(IncidentResponseTriageAdapter())
 
 # Global Execution Engine Singleton
 execution_engine = ExecutionEngine()

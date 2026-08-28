@@ -18,6 +18,7 @@ from sentinel.core.agents.api_agent import APISecurityAgent
 from sentinel.core.agents.base import AgentRegistry, agent_registry
 from sentinel.core.agents.cloud_agent import CloudAgent
 from sentinel.core.agents.device_agents import EndpointAgent, MobileAgent, WirelessAgent
+from sentinel.core.agents.dfir_agents import ForensicsAgent, IncidentResponseAgent
 from sentinel.core.agents.intel_agents import ThreatIntelligenceAgent, VulnerabilityAgent
 from sentinel.core.agents.network_agent import NetworkAgent
 from sentinel.core.agents.recon_agent import ReconAgent
@@ -51,6 +52,8 @@ agent_registry.register(EndpointAgent())
 agent_registry.register(CloudAgent())
 agent_registry.register(VulnerabilityAgent())
 agent_registry.register(ThreatIntelligenceAgent())
+agent_registry.register(ForensicsAgent())
+agent_registry.register(IncidentResponseAgent())
 
 
 class AutonomousOrchestrator:

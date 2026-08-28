@@ -1,0 +1,16 @@
+﻿# Sentinel Digital Forensics & IR Event Correlation Rules
+version: "1.0.0"
+
+# Forensic Event Sequence Detection Rules
+correlation_rules:
+  - id: "SEQ-001"
+    name: "Brute Force Followed by Successful Interactive Login"
+    severity: "HIGH"
+    description: "Multiple failed authentication attempts followed by a successful login from the same IP within a short window."
+    remediation: "Revoke compromised credentials, enforce MFA, and block attacker IP at firewall."
+
+  - id: "SEQ-002"
+    name: "Suspicious Shell Execution Following Remote Service Ingress"
+    severity: "CRITICAL"
+    description: "Spawning of cmd.exe/bash directly from web server processes (nginx/w3wp/httpd)."
+    remediation: "Isolate compromised host, terminate suspicious process tree, and audit web application logs."
