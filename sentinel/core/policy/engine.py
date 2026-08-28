@@ -1,4 +1,4 @@
-﻿"""Scope & Policy Engine for Sentinel.
+"""Scope & Policy Engine for Sentinel.
 
 Evaluates every executable ActionRequest against all policy dimensions:
 1. Target Allowlists & Exclusions (via ScopeResolver)
@@ -65,6 +65,7 @@ class ApprovalRecord(BaseModel):
     justification_needed: str
     justification_provided: str | None = None
     approved_by: str | None = None
+    authorization_reference: str | None = None
     requested_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     decided_at: datetime | None = None
     expires_at: datetime = Field(default_factory=lambda: datetime.now(UTC) + timedelta(hours=24))
@@ -277,8 +278,9 @@ class PolicyEngine:
         approve: bool,
         operator: str,
         justification: str,
+        authorization_reference: str | None = None,
     ) -> ApprovalRecord:
-        """Approve or deny a pending action approval request."""
+        """Approve or deny a pending action approval request with full attribution."""
         record = self._approvals.get(approval_id)
         if not record:
             raise KeyError(f"Approval record '{approval_id}' not found.")
@@ -292,6 +294,7 @@ class PolicyEngine:
 
         record.status = "APPROVED" if approve else "REJECTED"
         record.approved_by = operator
+        record.authorization_reference = authorization_reference
         record.justification_provided = justification
         record.decided_at = datetime.now(UTC)
 

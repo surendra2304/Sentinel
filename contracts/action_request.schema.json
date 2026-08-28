@@ -1,0 +1,90 @@
+{
+  "$defs": {
+    "ActionStatus": {
+      "enum": [
+        "pending_approval",
+        "approved",
+        "rejected",
+        "running",
+        "completed",
+        "failed",
+        "blocked_by_policy"
+      ],
+      "title": "ActionStatus",
+      "type": "string"
+    },
+    "ImpactLevel": {
+      "enum": [
+        "none",
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "title": "ImpactLevel",
+      "type": "string"
+    }
+  },
+  "description": "Structured, typed action execution request.",
+  "properties": {
+    "schema_version": {
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "task_id": {
+      "title": "Task Id",
+      "type": "string"
+    },
+    "agent": {
+      "title": "Agent",
+      "type": "string"
+    },
+    "action_type": {
+      "title": "Action Type",
+      "type": "string"
+    },
+    "parameters": {
+      "additionalProperties": true,
+      "title": "Parameters",
+      "type": "object"
+    },
+    "target_refs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Target Refs",
+      "type": "array"
+    },
+    "expected_impact_level": {
+      "$ref": "#/$defs/ImpactLevel",
+      "default": "low"
+    },
+    "requires_approval": {
+      "default": false,
+      "title": "Requires Approval",
+      "type": "boolean"
+    },
+    "status": {
+      "$ref": "#/$defs/ActionStatus",
+      "default": "pending_approval"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "task_id",
+    "agent",
+    "action_type"
+  ],
+  "title": "ActionRequest",
+  "type": "object"
+}

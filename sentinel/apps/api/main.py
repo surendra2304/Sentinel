@@ -119,6 +119,7 @@ class DecideApprovalRequest(BaseModel):
     approve: bool
     operator: str
     justification: str
+    authorization_reference: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -245,6 +246,7 @@ async def decide_approval(approval_id: str, request: DecideApprovalRequest) -> A
             approve=request.approve,
             operator=request.operator,
             justification=request.justification,
+            authorization_reference=request.authorization_reference,
         )
         return record
     except KeyError as err:
@@ -383,11 +385,27 @@ async def get_task_report(
         content = report_generator.render_html(report)
         return HTMLResponse(content=content)
     elif fmt_lower == "pdf":
-        # Return structured HTML as printable document format
-        content = report_generator.render_html(report)
-        return Response(content=content.encode("utf-8"), media_type="application/pdf", headers={"Content-Disposition": f"inline; filename=sentinel-report-{task_id}.html"})
+        pdf_bytes = report_generator.render_pdf(report)
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=sentinel-report-{task_id}.pdf"},
+        )
     else:
         return Response(content=report_generator.export_machine_json(report), media_type="application/json")
+
+
+@app.get(f"{settings.api_prefix}/tasks/{{task_id}}/evidence/bundle", tags=["Findings & Evidence"])
+async def download_evidence_bundle(task_id: str) -> Response:
+    """Export and download self-contained, hash-verified zip evidence bundle."""
+    findings = finding_engine.list_findings(task_id=task_id)
+    finding_map = {f.id: f.evidence_refs for f in findings}
+    zip_bytes = await evidence_store.create_evidence_zip_bundle(task_id=task_id, finding_links=finding_map)
+    return Response(
+        content=zip_bytes,
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename=sentinel-evidence-{task_id}.zip"},
+    )
 
 # FRIDAY Integration & Delegation Endpoints
 

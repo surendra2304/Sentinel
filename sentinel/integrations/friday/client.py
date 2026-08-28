@@ -41,11 +41,25 @@ class FridayClient:
             res.raise_for_status()
             return cast(dict[str, Any], res.json())
 
-    async def decide_approval(self, approval_id: str, approve: bool, operator: str, justification: str) -> dict[str, Any]:
+    async def decide_approval(
+        self,
+        approval_id: str,
+        approve: bool,
+        operator: str,
+        justification: str,
+        authorization_reference: str | None = None,
+    ) -> dict[str, Any]:
         async with httpx.AsyncClient(base_url=self.base_url, headers=self.headers, timeout=30.0) as client:
+            payload: dict[str, Any] = {
+                "approve": approve,
+                "operator": operator,
+                "justification": justification,
+            }
+            if authorization_reference:
+                payload["authorization_reference"] = authorization_reference
             res = await client.post(
                 f"/api/v1/approvals/{approval_id}/decide",
-                json={"approve": approve, "operator": operator, "justification": justification},
+                json=payload,
             )
             res.raise_for_status()
             return cast(dict[str, Any], res.json())

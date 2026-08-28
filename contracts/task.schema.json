@@ -1,0 +1,503 @@
+{
+  "$defs": {
+    "AssetCriticality": {
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "title": "AssetCriticality",
+      "type": "string"
+    },
+    "AuthorizationMetadata": {
+      "description": "Authorization context and legal boundaries.",
+      "properties": {
+        "authorization_type": {
+          "$ref": "#/$defs/AuthorizationType",
+          "default": "owned"
+        },
+        "reference_ticket_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reference Ticket Id"
+        },
+        "authorized_by": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Authorized By"
+        },
+        "expiry": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expiry"
+        }
+      },
+      "title": "AuthorizationMetadata",
+      "type": "object"
+    },
+    "AuthorizationType": {
+      "enum": [
+        "owned",
+        "written_consent",
+        "bug_bounty",
+        "authorized_engagement",
+        "unauthorized"
+      ],
+      "title": "AuthorizationType",
+      "type": "string"
+    },
+    "EnvironmentLabel": {
+      "enum": [
+        "development",
+        "testing",
+        "staging",
+        "production",
+        "external"
+      ],
+      "title": "EnvironmentLabel",
+      "type": "string"
+    },
+    "Policy": {
+      "description": "Security rules, module restrictions, and guardrail constraints.",
+      "properties": {
+        "schema_version": {
+          "default": "1.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "allowed_module_classes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Module Classes",
+          "type": "array"
+        },
+        "allowed_action_classes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Action Classes",
+          "type": "array"
+        },
+        "rate_limit_rps": {
+          "default": 50,
+          "maximum": 1000,
+          "minimum": 1,
+          "title": "Rate Limit Rps",
+          "type": "integer"
+        },
+        "max_intensity": {
+          "default": 5,
+          "maximum": 10,
+          "minimum": 1,
+          "title": "Max Intensity",
+          "type": "integer"
+        },
+        "credential_handling_rules": {
+          "additionalProperties": true,
+          "title": "Credential Handling Rules",
+          "type": "object"
+        },
+        "require_approval_for_offensive": {
+          "default": true,
+          "title": "Require Approval For Offensive",
+          "type": "boolean"
+        },
+        "kill_switch_active": {
+          "default": false,
+          "title": "Kill Switch Active",
+          "type": "boolean"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "Policy",
+      "type": "object"
+    },
+    "Scope": {
+      "description": "Scope boundaries, target allowlists, and restrictions.",
+      "properties": {
+        "schema_version": {
+          "default": "1.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "allowed_targets": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Targets",
+          "type": "array"
+        },
+        "in_scope_declarations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "In Scope Declarations",
+          "type": "array"
+        },
+        "out_of_scope_declarations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Out Of Scope Declarations",
+          "type": "array"
+        },
+        "environment": {
+          "$ref": "#/$defs/EnvironmentLabel",
+          "default": "production"
+        },
+        "authorization": {
+          "$ref": "#/$defs/AuthorizationMetadata"
+        },
+        "max_intensity": {
+          "default": 5,
+          "maximum": 10,
+          "minimum": 1,
+          "title": "Max Intensity",
+          "type": "integer"
+        },
+        "offensive_actions_enabled": {
+          "default": false,
+          "title": "Offensive Actions Enabled",
+          "type": "boolean"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "Scope",
+      "type": "object"
+    },
+    "Target": {
+      "description": "Target entity model with normalization.",
+      "properties": {
+        "schema_version": {
+          "default": "1.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/$defs/TargetType"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        },
+        "resolved_ips": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Resolved Ips",
+          "type": "array"
+        },
+        "parent_asset_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent Asset Id"
+        },
+        "metadata": {
+          "$ref": "#/$defs/TargetMetadata"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "value"
+      ],
+      "title": "Target",
+      "type": "object"
+    },
+    "TargetMetadata": {
+      "description": "Asset context metadata.",
+      "properties": {
+        "criticality": {
+          "$ref": "#/$defs/AssetCriticality",
+          "default": "medium"
+        },
+        "environment": {
+          "$ref": "#/$defs/EnvironmentLabel",
+          "default": "production"
+        },
+        "owner": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "tags": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "object"
+        }
+      },
+      "title": "TargetMetadata",
+      "type": "object"
+    },
+    "TargetSet": {
+      "description": "Collection of targets with task-level context.",
+      "properties": {
+        "schema_version": {
+          "default": "1.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "targets": {
+          "items": {
+            "$ref": "#/$defs/Target"
+          },
+          "title": "Targets",
+          "type": "array"
+        },
+        "context_notes": {
+          "additionalProperties": true,
+          "title": "Context Notes",
+          "type": "object"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "TargetSet",
+      "type": "object"
+    },
+    "TargetType": {
+      "enum": [
+        "domain",
+        "ip",
+        "cidr",
+        "url",
+        "host",
+        "device",
+        "wireless_network",
+        "cloud_account",
+        "mobile_app",
+        "file",
+        "other"
+      ],
+      "title": "TargetType",
+      "type": "string"
+    },
+    "TaskMode": {
+      "enum": [
+        "passive_recon",
+        "assessment",
+        "authorized_assessment",
+        "forensics",
+        "monitoring"
+      ],
+      "title": "TaskMode",
+      "type": "string"
+    },
+    "TaskStatus": {
+      "enum": [
+        "submitted",
+        "planning",
+        "executing",
+        "awaiting_approval",
+        "reporting",
+        "complete",
+        "failed",
+        "cancelled"
+      ],
+      "title": "TaskStatus",
+      "type": "string"
+    }
+  },
+  "description": "Top-level Sentinel security task state machine.",
+  "properties": {
+    "schema_version": {
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "objective": {
+      "title": "Objective",
+      "type": "string"
+    },
+    "target_set": {
+      "$ref": "#/$defs/TargetSet"
+    },
+    "scope": {
+      "$ref": "#/$defs/Scope"
+    },
+    "policy": {
+      "$ref": "#/$defs/Policy"
+    },
+    "mode": {
+      "$ref": "#/$defs/TaskMode",
+      "default": "assessment"
+    },
+    "status": {
+      "$ref": "#/$defs/TaskStatus",
+      "default": "submitted"
+    },
+    "requested_output_type": {
+      "default": "comprehensive_report",
+      "title": "Requested Output Type",
+      "type": "string"
+    },
+    "progress_percentage": {
+      "default": 0.0,
+      "maximum": 100.0,
+      "minimum": 0.0,
+      "title": "Progress Percentage",
+      "type": "number"
+    },
+    "correlation_id": {
+      "title": "Correlation Id",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "updated_at": {
+      "format": "date-time",
+      "title": "Updated At",
+      "type": "string"
+    },
+    "completed_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Completed At"
+    }
+  },
+  "required": [
+    "id",
+    "objective",
+    "target_set",
+    "scope",
+    "policy",
+    "correlation_id"
+  ],
+  "title": "Task",
+  "type": "object"
+}

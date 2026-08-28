@@ -57,10 +57,9 @@ def test_no_secrets_in_data_directory():
 
 
 def test_no_secrets_in_test_fixtures():
-    """Scan tests/fixtures/ for known test secret values."""
+    """Scan tests/fixtures/ for known test secret values unconditionally."""
     fixture_dir = Path("tests/fixtures")
-    if not fixture_dir.exists():
-        pytest.skip("No fixtures directory")
+    fixture_dir.mkdir(parents=True, exist_ok=True)
 
     violations: list[str] = []
     for fpath in fixture_dir.rglob("*"):

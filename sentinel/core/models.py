@@ -341,6 +341,7 @@ class Evidence(BaseModel):
     artifact_storage_key: str
     content_type: str
     sha256_hash: str
+    size_bytes: int = 0
     integrity_metadata: dict[str, Any] = Field(default_factory=dict)
     collected_by: str
     chain_of_custody: list[ChainOfCustodyEvent] = Field(default_factory=list)
@@ -352,6 +353,17 @@ class Evidence(BaseModel):
         if not re.match(r"^[a-fA-F0-9]{64}$", v):
             raise ValueError("Invalid SHA-256 hash format (must be 64 hex characters).")
         return v.lower()
+
+    def log_access(self, actor: str, reason: str = "") -> None:
+        """Log read/access event in chain of custody."""
+        self.chain_of_custody.append(
+            ChainOfCustodyEvent(
+                timestamp=datetime.now(UTC),
+                actor=actor,
+                action="ACCESS",
+                notes=reason,
+            )
+        )
 
 
 class Finding(BaseModel):

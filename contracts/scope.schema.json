@@ -1,0 +1,141 @@
+{
+  "$defs": {
+    "AuthorizationMetadata": {
+      "description": "Authorization context and legal boundaries.",
+      "properties": {
+        "authorization_type": {
+          "$ref": "#/$defs/AuthorizationType",
+          "default": "owned"
+        },
+        "reference_ticket_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reference Ticket Id"
+        },
+        "authorized_by": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Authorized By"
+        },
+        "expiry": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expiry"
+        }
+      },
+      "title": "AuthorizationMetadata",
+      "type": "object"
+    },
+    "AuthorizationType": {
+      "enum": [
+        "owned",
+        "written_consent",
+        "bug_bounty",
+        "authorized_engagement",
+        "unauthorized"
+      ],
+      "title": "AuthorizationType",
+      "type": "string"
+    },
+    "EnvironmentLabel": {
+      "enum": [
+        "development",
+        "testing",
+        "staging",
+        "production",
+        "external"
+      ],
+      "title": "EnvironmentLabel",
+      "type": "string"
+    }
+  },
+  "description": "Scope boundaries, target allowlists, and restrictions.",
+  "properties": {
+    "schema_version": {
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "allowed_targets": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Allowed Targets",
+      "type": "array"
+    },
+    "in_scope_declarations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "In Scope Declarations",
+      "type": "array"
+    },
+    "out_of_scope_declarations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Out Of Scope Declarations",
+      "type": "array"
+    },
+    "environment": {
+      "$ref": "#/$defs/EnvironmentLabel",
+      "default": "production"
+    },
+    "authorization": {
+      "$ref": "#/$defs/AuthorizationMetadata"
+    },
+    "max_intensity": {
+      "default": 5,
+      "maximum": 10,
+      "minimum": 1,
+      "title": "Max Intensity",
+      "type": "integer"
+    },
+    "offensive_actions_enabled": {
+      "default": false,
+      "title": "Offensive Actions Enabled",
+      "type": "boolean"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "name"
+  ],
+  "title": "Scope",
+  "type": "object"
+}

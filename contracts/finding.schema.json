@@ -1,0 +1,146 @@
+{
+  "$defs": {
+    "FindingStatus": {
+      "enum": [
+        "open",
+        "verified",
+        "false_positive",
+        "remediated",
+        "accepted",
+        "review_required"
+      ],
+      "title": "FindingStatus",
+      "type": "string"
+    },
+    "SeverityLevel": {
+      "enum": [
+        "info",
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "title": "SeverityLevel",
+      "type": "string"
+    }
+  },
+  "description": "Security finding strictly anchored to raw evidence artifacts.",
+  "properties": {
+    "schema_version": {
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "task_id": {
+      "title": "Task Id",
+      "type": "string"
+    },
+    "title": {
+      "title": "Title",
+      "type": "string"
+    },
+    "description": {
+      "title": "Description",
+      "type": "string"
+    },
+    "target_ref": {
+      "title": "Target Ref",
+      "type": "string"
+    },
+    "severity": {
+      "$ref": "#/$defs/SeverityLevel"
+    },
+    "confidence": {
+      "default": 1.0,
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Confidence",
+      "type": "number"
+    },
+    "exploitability_context": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Exploitability Context"
+    },
+    "impact": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Impact"
+    },
+    "evidence_refs": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Evidence Refs",
+      "type": "array"
+    },
+    "related_cves": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Related Cves",
+      "type": "array"
+    },
+    "related_cwes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Related Cwes",
+      "type": "array"
+    },
+    "remediation": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Remediation"
+    },
+    "status": {
+      "$ref": "#/$defs/FindingStatus",
+      "default": "open"
+    },
+    "first_seen": {
+      "format": "date-time",
+      "title": "First Seen",
+      "type": "string"
+    },
+    "last_seen": {
+      "format": "date-time",
+      "title": "Last Seen",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "task_id",
+    "title",
+    "description",
+    "target_ref",
+    "severity"
+  ],
+  "title": "Finding",
+  "type": "object"
+}

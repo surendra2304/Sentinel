@@ -263,12 +263,35 @@ def recon_surface(task_id: str = typer.Argument(..., help="Task ID")):
 # ---------------------------------------------------------------------------
 
 @evidence_app.command("export")
-def evidence_export(task_id: str = typer.Argument(..., help="Task ID")):
-    """Export self-contained, hash-verified evidence bundle."""
-    bundle = asyncio.run(evidence_store.export_evidence_bundle(task_id=task_id))
-    console.print(f"[bold green][OK] Exported evidence bundle for task {task_id}[/bold green]")
-    console.print(f"[bold]Total Artifacts:[/bold] {bundle['evidence_count']}")
-    console.print(f"[bold]Bundle SHA-256 Digest:[/bold] {bundle['bundle_sha256_digest']}")
+def evidence_export(
+    task_id: str = typer.Argument(..., help="Task ID"),
+    output_file: str | None = typer.Option(None, "--output", "-o", help="Optional output zip file path"),
+):
+    """Export self-contained, hash-verified evidence zip bundle."""
+    findings = finding_engine.list_findings(task_id=task_id)
+    finding_map = {f.id: f.evidence_refs for f in findings}
+    zip_bytes = asyncio.run(evidence_store.create_evidence_zip_bundle(task_id=task_id, finding_links=finding_map))
+    out_path = output_file or f"evidence-bundle-{task_id}.zip"
+    with open(out_path, "wb") as f:
+        f.write(zip_bytes)
+    console.print(f"[bold green][OK] Exported evidence bundle for task {task_id} to {out_path}[/bold green]")
+    console.print(f"[bold]Total Size:[/bold] {len(zip_bytes)} bytes")
+
+
+@evidence_app.command("verify")
+def evidence_verify(
+    bundle_path: str = typer.Argument(..., help="Path to evidence bundle zip file"),
+):
+    """Verify cryptographic integrity of an evidence bundle zip archive."""
+    try:
+        res = evidence_store.verify_evidence_zip_bundle(bundle_path)
+        console.print(f"[bold green][PASS] Evidence bundle '{bundle_path}' verified successfully.[/bold green]")
+        console.print(f"[bold]Task ID:[/bold] {res['task_id']}")
+        console.print(f"[bold]Verified Artifacts:[/bold] {res['verified_records']}")
+        console.print(f"[bold]Manifest Hash:[/bold] {res['manifest_hash']}")
+    except Exception as exc:
+        console.print(f"[bold red][FAIL] Tamper or corruption detected: {exc}[/bold red]")
+        raise typer.Exit(code=1) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -362,6 +385,12 @@ def generate_report(
     elif fmt_lower == "html":
         content = report_generator.render_html(report)
         console.print(content)
+    elif fmt_lower == "pdf":
+        pdf_bytes = report_generator.render_pdf(report)
+        pdf_out = f"sentinel-report-{task_id}.pdf"
+        with open(pdf_out, "wb") as f:
+            f.write(pdf_bytes)
+        console.print(f"[bold green][OK] Rendered and saved PDF report to {pdf_out} ({len(pdf_bytes)} bytes)[/bold green]")
     else:
         content = report_generator.export_machine_json(report)
         console.print(content)

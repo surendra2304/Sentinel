@@ -1,0 +1,159 @@
+{
+  "$defs": {
+    "AssetCriticality": {
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "title": "AssetCriticality",
+      "type": "string"
+    },
+    "Risk": {
+      "description": "Contextual risk score model combining severity, asset criticality, exposure, exploitability, and confidence.",
+      "properties": {
+        "schema_version": {
+          "default": "1.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "finding_id": {
+          "title": "Finding Id",
+          "type": "string"
+        },
+        "task_id": {
+          "title": "Task Id",
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/$defs/SeverityLevel"
+        },
+        "asset_criticality": {
+          "$ref": "#/$defs/AssetCriticality"
+        },
+        "exposure_score": {
+          "default": 1.0,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Exposure Score",
+          "type": "number"
+        },
+        "exploitability_score": {
+          "default": 1.0,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Exploitability Score",
+          "type": "number"
+        },
+        "confidence_score": {
+          "default": 1.0,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence Score",
+          "type": "number"
+        },
+        "computed_risk_score": {
+          "default": 0.0,
+          "maximum": 100.0,
+          "minimum": 0.0,
+          "title": "Computed Risk Score",
+          "type": "number"
+        },
+        "risk_tier": {
+          "$ref": "#/$defs/RiskTier",
+          "default": "low"
+        },
+        "rationale": {
+          "default": "",
+          "title": "Rationale",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "finding_id",
+        "task_id",
+        "severity",
+        "asset_criticality"
+      ],
+      "title": "Risk",
+      "type": "object"
+    },
+    "RiskTier": {
+      "enum": [
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "title": "RiskTier",
+      "type": "string"
+    },
+    "SeverityLevel": {
+      "enum": [
+        "info",
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "title": "SeverityLevel",
+      "type": "string"
+    }
+  },
+  "description": "Aggregated risk profile for a specific task.",
+  "properties": {
+    "task_id": {
+      "title": "Task Id",
+      "type": "string"
+    },
+    "total_findings": {
+      "title": "Total Findings",
+      "type": "integer"
+    },
+    "overall_risk_score": {
+      "title": "Overall Risk Score",
+      "type": "number"
+    },
+    "highest_risk_tier": {
+      "$ref": "#/$defs/RiskTier"
+    },
+    "tier_counts": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Tier Counts",
+      "type": "object"
+    },
+    "severity_counts": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Severity Counts",
+      "type": "object"
+    },
+    "top_risks": {
+      "items": {
+        "$ref": "#/$defs/Risk"
+      },
+      "title": "Top Risks",
+      "type": "array"
+    }
+  },
+  "required": [
+    "task_id",
+    "total_findings",
+    "overall_risk_score",
+    "highest_risk_tier",
+    "tier_counts",
+    "severity_counts"
+  ],
+  "title": "TaskRiskSummary",
+  "type": "object"
+}

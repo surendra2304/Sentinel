@@ -1,0 +1,194 @@
+{
+  "$defs": {
+    "AssetCriticality": {
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "title": "AssetCriticality",
+      "type": "string"
+    },
+    "EnvironmentLabel": {
+      "enum": [
+        "development",
+        "testing",
+        "staging",
+        "production",
+        "external"
+      ],
+      "title": "EnvironmentLabel",
+      "type": "string"
+    },
+    "Target": {
+      "description": "Target entity model with normalization.",
+      "properties": {
+        "schema_version": {
+          "default": "1.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/$defs/TargetType"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        },
+        "resolved_ips": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Resolved Ips",
+          "type": "array"
+        },
+        "parent_asset_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent Asset Id"
+        },
+        "metadata": {
+          "$ref": "#/$defs/TargetMetadata"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "value"
+      ],
+      "title": "Target",
+      "type": "object"
+    },
+    "TargetMetadata": {
+      "description": "Asset context metadata.",
+      "properties": {
+        "criticality": {
+          "$ref": "#/$defs/AssetCriticality",
+          "default": "medium"
+        },
+        "environment": {
+          "$ref": "#/$defs/EnvironmentLabel",
+          "default": "production"
+        },
+        "owner": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "tags": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "object"
+        }
+      },
+      "title": "TargetMetadata",
+      "type": "object"
+    },
+    "TargetType": {
+      "enum": [
+        "domain",
+        "ip",
+        "cidr",
+        "url",
+        "host",
+        "device",
+        "wireless_network",
+        "cloud_account",
+        "mobile_app",
+        "file",
+        "other"
+      ],
+      "title": "TargetType",
+      "type": "string"
+    }
+  },
+  "description": "Collection of targets with task-level context.",
+  "properties": {
+    "schema_version": {
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "description": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Description"
+    },
+    "targets": {
+      "items": {
+        "$ref": "#/$defs/Target"
+      },
+      "title": "Targets",
+      "type": "array"
+    },
+    "context_notes": {
+      "additionalProperties": true,
+      "title": "Context Notes",
+      "type": "object"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "name"
+  ],
+  "title": "TargetSet",
+  "type": "object"
+}
