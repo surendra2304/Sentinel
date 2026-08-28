@@ -34,6 +34,7 @@ from sentinel.integrations.threat_feeds.adapters import (
     CISAKEVFeedAdapter,
     CustomThreatFeedAdapter,
 )
+from sentinel.integrations.threat_feeds.vulnerability_sync import VulnerabilitySyncAdapter
 from sentinel.logging.logger import get_logger
 from sentinel.modules.api_security.adapters import (
     APIDiscoveryAdapter,
@@ -351,6 +352,7 @@ adapter_registry.register(VulnerabilityCorrelationAdapter())
 adapter_registry.register(CISAKEVFeedAdapter())
 adapter_registry.register(AbuseIPFeedAdapter())
 adapter_registry.register(CustomThreatFeedAdapter())
+adapter_registry.register(VulnerabilitySyncAdapter())
 
 # Register DFIR adapters
 adapter_registry.register(LogArtifactCollectorAdapter())

@@ -235,9 +235,10 @@ async def test_approval_attribution_and_expiration(test_task_with_findings):
 @pytest.mark.asyncio
 async def test_kill_switch_subprocess_abort_preserves_evidence(tmp_path):
     import time
-    from sentinel.core.orchestrator.executor import ExecutionEngine
-    from sentinel.core.orchestrator.adapter import ToolAdapter
+
     from sentinel.core.models import ActionResult
+    from sentinel.core.orchestrator.adapter import ToolAdapter
+    from sentinel.core.orchestrator.executor import ExecutionEngine
 
     class SleepingLongRunningAdapter(ToolAdapter):
         @property
@@ -356,9 +357,9 @@ async def test_highest_impact_level_always_requires_human_approval():
 @pytest.mark.asyncio
 async def test_lab_target_e2e_and_unconditional_secret_redaction(tmp_path):
     import httpx
+
+    from sentinel.intelligence.reporting.generator import ReportType, report_generator
     from sentinel.lab.app import lab_app
-    from sentinel.integrations.friday.client import FridayClient
-    from sentinel.intelligence.reporting.generator import report_generator, ReportType
 
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=lab_app), base_url="http://lab.local") as client:  # type: ignore[arg-type]
         # 1. Recon checks against lab target
@@ -385,7 +386,7 @@ async def test_lab_target_e2e_and_unconditional_secret_redaction(tmp_path):
             source_agent="recon_agent",
             source_module="web",
             source_tool="http_observer",
-            raw_data=f"Exposed backup file accessed using secret token: {secret_value}".encode("utf-8"),
+            raw_data=f"Exposed backup file accessed using secret token: {secret_value}".encode(),
             content_type="text/plain",
         )
 
@@ -463,6 +464,7 @@ async def test_lab_target_e2e_and_unconditional_secret_redaction(tmp_path):
         report = report_generator.generate_report(task=task, findings=[finding], report_type=ReportType.TECHNICAL)
         md_report = report_generator.render_markdown(report)
         pdf_report = report_generator.render_pdf(report)
+        assert len(pdf_report) > 0
 
         # 7. Unconditional Secrets Search: Redaction verification
         redacted_md = credential_vault.redact_text(md_report)

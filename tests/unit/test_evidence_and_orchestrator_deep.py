@@ -7,30 +7,18 @@ Verifies:
 4. Orchestrator: approval pause/resume, step budget exhaustion, agent failure -> task continues, cancellation from each state.
 """
 
-import asyncio
-import os
 import json
 import zipfile
+
 import pytest
-from datetime import UTC, datetime
 
 from sentinel.core.models import (
-    Evidence,
     Finding,
     FindingStatus,
     SeverityLevel,
-    Task,
     TaskStatus,
-    Target,
-    TargetSet,
-    Scope,
-    Policy,
-    ActionRequest,
-    ActionResult,
-    ImpactLevel,
 )
 from sentinel.core.orchestrator.lifecycle import TaskLifecycleManager
-from sentinel.intelligence.reporting.generator import ReportGenerator
 
 
 def test_finding_cross_source_deduplication():

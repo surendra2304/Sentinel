@@ -6,6 +6,7 @@ Verifies:
 """
 
 from datetime import UTC, datetime, timedelta
+
 import pytest
 
 from sentinel.core.models import (

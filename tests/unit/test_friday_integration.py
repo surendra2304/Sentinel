@@ -127,8 +127,6 @@ async def test_friday_delegation_blocked_out_of_scope_target():
         task_id = res_del.json()["task_id"]
 
         # Simulate policy denial for the out-of-scope IP
-        from sentinel.core.policy.engine import policy_engine
-        from sentinel.core.models import ActionRequest, ImpactLevel
 
         task = await client.get(f"/api/v1/tasks/{task_id}")
         assert task.status_code == 200
@@ -142,9 +140,18 @@ async def test_friday_delegation_blocked_out_of_scope_target():
 
 @pytest.mark.asyncio
 async def test_friday_approval_relay_attribution_and_expiration_rejection():
+
+    from sentinel.core.models import (
+        ActionRequest,
+        ImpactLevel,
+        Policy,
+        Scope,
+        Target,
+        TargetSet,
+        TargetType,
+        Task,
+    )
     from sentinel.core.policy.engine import policy_engine
-    from sentinel.core.models import ActionRequest, ImpactLevel, Task, TargetSet, Target, TargetType, Scope, Policy
-    from datetime import timedelta, datetime, UTC
 
     task = Task(
         id="task-fri-appr-01",

@@ -8,15 +8,25 @@ Verifies:
 5. Concurrency limits via semaphore gating.
 """
 
-import asyncio
 import sys
+from unittest.mock import AsyncMock
+
 import pytest
 
-from unittest.mock import AsyncMock
-from sentinel.core.orchestrator.sandbox import SubprocessSandbox, SandboxExecutionError
+from sentinel.core.models import (
+    ActionRequest,
+    ActionResult,
+    Evidence,
+    ImpactLevel,
+    Policy,
+    Scope,
+    Target,
+    TargetSet,
+    Task,
+)
 from sentinel.core.orchestrator.adapter import ToolAdapter
 from sentinel.core.orchestrator.executor import ExecutionEngine
-from sentinel.core.models import ActionRequest, ActionResult, Task, TargetSet, Target, Scope, Policy, ImpactLevel, Evidence
+from sentinel.core.orchestrator.sandbox import SandboxExecutionError, SubprocessSandbox
 
 
 @pytest.mark.asyncio
