@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { 
   ShieldAlert, 
@@ -9,7 +9,8 @@ import {
   TrendingUp, 
   FileText, 
   Clock, 
-  CheckSquare 
+  CheckSquare,
+  Lock
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -25,6 +26,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ pendingApprovalsCount = 0 }) =
     { to: '/risk', label: 'Risk Intelligence', icon: TrendingUp },
     { to: '/reports', label: 'Reports', icon: FileText },
     { to: '/operations', label: 'Operations', icon: Clock },
+    { to: '/audit-policy', label: 'Audit & Policy', icon: Lock },
     { to: '/approvals', label: 'Approvals', icon: CheckSquare, badge: pendingApprovalsCount },
   ];
 

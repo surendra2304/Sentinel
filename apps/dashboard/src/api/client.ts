@@ -1,4 +1,4 @@
-﻿import { Task, Finding, ApprovalRecord } from '../types';
+import { Task, Finding, ApprovalRecord, Alert, AuditEntry, PolicyRule, Schedule, BaselineDiff, AttackPath } from '../types';
 
 const API_BASE = '/api/v1';
 
@@ -12,10 +12,14 @@ export async function fetchTasks(): Promise<Task[]> {
   }
 }
 
-export async function fetchTaskDetail(taskId: string): Promise<any> {
-  const res = await fetch(`${API_BASE}/tasks/${taskId}`);
-  if (!res.ok) throw new Error('Task not found');
-  return await res.json();
+export async function fetchTaskDetail(taskId: string): Promise<Task | null> {
+  try {
+    const res = await fetch(`${API_BASE}/tasks/${taskId}`);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
 }
 
 export async function fetchFindings(taskId?: string): Promise<Finding[]> {
@@ -39,16 +43,115 @@ export async function fetchApprovals(): Promise<ApprovalRecord[]> {
   }
 }
 
-export async function decideApproval(approvalId: string, approve: boolean, justification: string): Promise<boolean> {
-  const res = await fetch(`${API_BASE}/approvals/${approvalId}/decide`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ approve, justification, operator: 'dashboard_operator' }),
-  });
-  return res.ok;
+export async function decideApproval(
+  approvalId: string,
+  approve: boolean,
+  justification: string,
+  authorizationReference?: string
+): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/approvals/${approvalId}/decide`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        approve,
+        justification,
+        operator: 'soc_dashboard_operator@corp.local',
+        authorization_reference: authorizationReference || 'CHG-DASHBOARD-AUTO',
+      }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }
 
 export async function cancelTask(taskId: string): Promise<boolean> {
-  const res = await fetch(`${API_BASE}/tasks/${taskId}/cancel`, { method: 'POST' });
-  return res.ok;
+  try {
+    const res = await fetch(`${API_BASE}/tasks/${taskId}/cancel`, { method: 'POST' });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function fetchAuditLogs(): Promise<AuditEntry[]> {
+  try {
+    const res = await fetch(`${API_BASE}/audit/logs`);
+    if (!res.ok) return [];
+    return await res.json();
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchPolicies(): Promise<PolicyRule[]> {
+  try {
+    const res = await fetch(`${API_BASE}/policies`);
+    if (!res.ok) return [];
+    return await res.json();
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchAlerts(): Promise<Alert[]> {
+  try {
+    const res = await fetch(`${API_BASE}/operations/alerts`);
+    if (!res.ok) return [];
+    return await res.json();
+  } catch {
+    return [];
+  }
+}
+
+export async function updateAlertStatus(alertId: string, status: 'acknowledged' | 'resolved'): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/operations/alerts/${alertId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function fetchSchedules(): Promise<Schedule[]> {
+  try {
+    const res = await fetch(`${API_BASE}/operations/schedules`);
+    if (!res.ok) return [];
+    return await res.json();
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchBaselineDiffs(): Promise<BaselineDiff[]> {
+  try {
+    const res = await fetch(`${API_BASE}/operations/baselines/diffs`);
+    if (!res.ok) return [];
+    return await res.json();
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchAttackPaths(): Promise<AttackPath[]> {
+  try {
+    const res = await fetch(`${API_BASE}/intelligence/attack-paths`);
+    if (!res.ok) return [];
+    return await res.json();
+  } catch {
+    return [];
+  }
+}
+
+export function getReportDownloadUrl(taskId: string, reportType: string, format: 'markdown' | 'html' | 'pdf'): string {
+  return `${API_BASE}/tasks/${taskId}/reports/${reportType}?format=${format}`;
+}
+
+export function getEvidenceBundleDownloadUrl(taskId: string): string {
+  return `${API_BASE}/tasks/${taskId}/evidence/bundle`;
 }
