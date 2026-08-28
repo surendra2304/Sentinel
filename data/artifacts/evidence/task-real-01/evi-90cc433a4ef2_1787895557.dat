@@ -1,0 +1,25 @@
+{
+  "target": "http://127.0.0.1:18889",
+  "action_type": "http.observe",
+  "http": {
+    "status_code": 200,
+    "http_version": "HTTP/1.0",
+    "redirect_count": 0,
+    "redirect_chain": [],
+    "headers": {
+      "server": "SimpleHTTP/0.6 Python/3.11.9",
+      "date": "Fri, 28 Aug 2026 05:39:17 GMT",
+      "content-type": "text/plain",
+      "strict-transport-security": "max-age=31536000"
+    }
+  },
+  "tls": {},
+  "security_headers": {
+    "Strict-Transport-Security": "max-age=31536000",
+    "Content-Security-Policy": "MISSING",
+    "X-Frame-Options": "MISSING",
+    "X-Content-Type-Options": "MISSING",
+    "Referrer-Policy": "MISSING",
+    "Permissions-Policy": "MISSING"
+  }
+}
