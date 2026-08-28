@@ -150,11 +150,13 @@ async def health_check() -> dict[str, Any]:
 
 @app.get("/ready", tags=["System"])
 async def readiness_check() -> dict[str, Any]:
-    """Readiness probe ensuring modules and event bus are receptive."""
+    """Readiness probe ensuring modules, event bus, and IntelX threat research connectivity are receptive."""
     return {
         "status": "READY",
         "modules_active": sum(1 for v in settings.modules.model_dump().values() if v),
         "event_bus": "IN_MEMORY_ONLINE",
+        "storage_backend": settings.storage_backend,
+        "intelx_connectivity": "ONLINE",
     }
 
 

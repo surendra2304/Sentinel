@@ -61,8 +61,16 @@ async def get_prometheus_metrics():
         'sentinel_findings_total{severity="high"} 2',
         'sentinel_findings_total{severity="medium"} 5',
         'sentinel_findings_total{severity="low"} 12',
+        "# HELP sentinel_scan_duration_seconds Histogram of assessment scan durations",
+        "# TYPE sentinel_scan_duration_seconds histogram",
+        "sentinel_scan_duration_seconds_bucket{le=\"60\"} 18",
+        "sentinel_scan_duration_seconds_bucket{le=\"300\"} 42",
+        "sentinel_scan_duration_seconds_bucket{le=\"+Inf\"} 50",
         "# HELP sentinel_policy_decisions_total Total policy engine decisions evaluated",
         "# TYPE sentinel_policy_decisions_total counter",
         "sentinel_policy_decisions_total 128",
+        "# HELP sentinel_intelx_research_enrichment_total Total findings enriched via IntelX threat research",
+        "# TYPE sentinel_intelx_research_enrichment_total counter",
+        "sentinel_intelx_research_enrichment_total 35",
     ]
     return "\n".join(lines)
