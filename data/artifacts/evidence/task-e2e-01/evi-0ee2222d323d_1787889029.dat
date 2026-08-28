@@ -1,0 +1,12 @@
+{
+  "target": "http://127.0.0.1:18890",
+  "engine": "python_async_socket",
+  "open_ports": [],
+  "closed_ports": [
+    80,
+    443,
+    8080,
+    8443
+  ],
+  "banners": {}
+}

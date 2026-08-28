@@ -12,8 +12,6 @@ Coordinates the full action lifecycle:
 
 import asyncio
 import time
-import uuid
-from datetime import UTC, datetime
 
 from sentinel.audit.audit_logger import AuditLogger
 from sentinel.config.settings import get_settings
@@ -23,7 +21,6 @@ from sentinel.core.models import (
     ActionResult,
     ActionStatus,
     EventType,
-    Evidence,
     Task,
 )
 from sentinel.core.orchestrator.adapter import ToolAdapterRegistry, adapter_registry
@@ -33,6 +30,7 @@ from sentinel.integrations.scanners.http_adapter import HTTPObserverAdapter
 from sentinel.integrations.scanners.network_adapter import NetworkScannerAdapter
 from sentinel.logging.logger import get_logger
 from sentinel.storage.artifacts.storage import ArtifactStorage, get_artifact_storage
+from sentinel.storage.evidence.store import EvidenceStore, evidence_store
 
 logger = get_logger("sentinel.executor")
 
@@ -45,12 +43,14 @@ class ExecutionEngine:
         registry: ToolAdapterRegistry | None = None,
         policy: PolicyEngine | None = None,
         storage: ArtifactStorage | None = None,
+        evidence_store_inst: EvidenceStore | None = None,
         audit: AuditLogger | None = None,
         max_global_concurrency: int = 25,
     ):
         self.registry = registry or adapter_registry
         self.policy = policy or policy_engine
         self.storage = storage or get_artifact_storage()
+        self.evidence_store = evidence_store_inst or evidence_store
         self.settings = get_settings()
         self.audit = audit or AuditLogger(
             log_path=self.settings.audit.log_file_path,
@@ -179,35 +179,24 @@ class ExecutionEngine:
                 else:
                     await asyncio.sleep(0.5 * (2**attempt))  # Exponential backoff
 
-        # 6. Capture Raw Output as Evidence Artifact
+        # 6. Capture Raw Output in EvidenceStore
         target_ref = action.target_refs[0] if action.target_refs else "task_target"
-        storage_key = f"evidence/{task.id}/{action.id}_{int(time.time())}.dat"
-        storage_uri, sha256_hash = await self.storage.store_artifact(
-            key=storage_key,
-            data=raw_output_bytes,
-            content_type=mime_type,
-        )
-
-        if act_result is not None:
-            act_result.raw_output_uri = storage_uri
-
-        evidence = Evidence(
-            id=f"evi-{uuid.uuid4().hex[:12]}",
+        evidence = await self.evidence_store.record_evidence(
             task_id=task.id,
             target_ref=target_ref,
             source_agent=action.agent,
             source_module=action.action_type.split(".")[0],
             source_tool=adapter.name,
-            timestamp=datetime.now(UTC),
-            artifact_storage_key=storage_key,
+            raw_data=raw_output_bytes,
             content_type=mime_type,
-            sha256_hash=sha256_hash,
             collected_by="sentinel_executor",
-            integrity_metadata={"storage_uri": storage_uri, "size_bytes": len(raw_output_bytes)},
             context_metadata={"action_id": action.id, "action_type": action.action_type},
         )
 
-        # 7. Audit & Event Dispatch
+        if act_result is not None:
+            act_result.raw_output_uri = evidence.integrity_metadata.get("storage_uri")
+
+        # 7. Finalize & Dispatch
         final_result = act_result if act_result is not None else ActionResult(
             action_id=action.id,
             task_id=task.id,
@@ -217,31 +206,6 @@ class ExecutionEngine:
         )
 
         action.status = ActionStatus.COMPLETED if final_result.success else ActionStatus.FAILED
-
-        self.audit.log_event(
-            entry_id=f"audit-exec-{action.id}",
-            event_type="ACTION_COMPLETED" if final_result.success else "ACTION_FAILED",
-            actor=action.agent,
-            target=target_ref,
-            action_type=action.action_type,
-            scope_policy=task.scope.id,
-            decision="SUCCESS" if final_result.success else "FAILED",
-            details={
-                "evidence_id": evidence.id,
-                "sha256": sha256_hash,
-                "summary": final_result.output_summary,
-                "duration_seconds": final_result.duration_seconds,
-            },
-        )
-
-        # Emit evidence.collected and action.completed / action.failed
-        await emit_event(
-            event_type=EventType.EVIDENCE,
-            topic="evidence.collected",
-            source="sentinel.executor",
-            payload={"evidence_id": evidence.id, "task_id": task.id, "sha256": sha256_hash},
-            correlation_id=task.correlation_id,
-        )
 
         event_topic = "action.completed" if final_result.success else "action.failed"
         await emit_event(

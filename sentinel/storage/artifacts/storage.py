@@ -59,28 +59,26 @@ class LocalFileSystemStorage(ArtifactStorage):
         content_type: str = "application/octet-stream",
         metadata: dict[str, str] | None = None,
     ) -> tuple[str, str]:
+        sha256 = hashlib.sha256(data).hexdigest()
         file_path = self._resolve_path(key)
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
-
-        sha256 = hashlib.sha256(data).hexdigest()
 
         async with aiofiles.open(file_path, "wb") as f:
             await f.write(data)
 
-        storage_uri = f"file://{os.path.abspath(file_path)}"
+        storage_uri = f"file://{os.path.abspath(file_path).replace(os.sep, '/')}"
         return storage_uri, sha256
 
     async def get_artifact(self, key: str) -> bytes:
         file_path = self._resolve_path(key)
         if not os.path.exists(file_path):
-            raise FileNotFoundError(f"Artifact not found: {key}")
+            raise FileNotFoundError(f"Artifact not found at key: {key}")
         async with aiofiles.open(file_path, "rb") as f:
             content = await f.read()
             return bytes(content)
 
     async def exists(self, key: str) -> bool:
-        file_path = self._resolve_path(key)
-        return os.path.exists(file_path)
+        return os.path.exists(self._resolve_path(key))
 
     async def delete_artifact(self, key: str) -> bool:
         file_path = self._resolve_path(key)
@@ -91,12 +89,13 @@ class LocalFileSystemStorage(ArtifactStorage):
 
 
 class MinIOObjectStorage(ArtifactStorage):
-    """MinIO / S3 compatible object storage client."""
+    """S3-compatible MinIO object storage provider."""
 
     def __init__(self):
         import io
 
         from minio import Minio
+
         self._io = io
         settings = get_settings()
         self.bucket = settings.storage.bucket_name
@@ -113,7 +112,7 @@ class MinIOObjectStorage(ArtifactStorage):
             if not self.client.bucket_exists(self.bucket):
                 self.client.make_bucket(self.bucket)
         except Exception:
-            pass
+            raise
 
     async def store_artifact(
         self,
@@ -162,6 +161,7 @@ class MinIOObjectStorage(ArtifactStorage):
 def get_artifact_storage() -> ArtifactStorage:
     """Factory creating appropriate storage provider based on environment."""
     try:
-        return MinIOObjectStorage()
+        storage = MinIOObjectStorage()
+        return storage
     except Exception:
         return LocalFileSystemStorage()
