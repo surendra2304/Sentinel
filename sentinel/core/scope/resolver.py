@@ -1,4 +1,4 @@
-﻿"""Scope Resolver for Sentinel.
+"""Scope Resolver for Sentinel.
 
 Normalizes raw target inputs (domains, IPs, CIDRs, URLs with ports/paths,
 wireless SSIDs/BSSIDs, cloud ARNs) and performs robust scope boundary checks
@@ -87,15 +87,13 @@ class ScopeResolver:
             return Target(id=tid, type=TargetType.CLOUD_ACCOUNT, value=val, metadata=meta)
 
         # 6. Domain / Hostname Detection (handles IDN/punycode normalization)
-        if re.match(r"^(\*\.)?[a-zA-Z0-9\-\._]+$", val):
-            # Check IDN/Punycode
-            try:
-                val_clean = val.lstrip("*.")
-                val_clean.encode("idna").decode("ascii")
-            except Exception as e:
-                raise TargetResolutionError(f"Domain normalization failed for IDN string '{val}': {e}") from e
-
-            return Target(id=tid, type=TargetType.DOMAIN, value=val.lower(), metadata=meta)
+        try:
+            val_clean = val.lstrip("*.")
+            ascii_encoded = val_clean.encode("idna").decode("ascii")
+            if re.match(r"^[a-zA-Z0-9\-\._]+$", ascii_encoded):
+                return Target(id=tid, type=TargetType.DOMAIN, value=val.lower(), metadata=meta)
+        except Exception:
+            pass
 
         # 7. File target
         if val.startswith("file://") or val.startswith("/") or re.match(r"^[a-zA-Z]:\\", val):
