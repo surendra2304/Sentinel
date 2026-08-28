@@ -1,7 +1,8 @@
-﻿"""Evidence Store for Sentinel.
+"""Evidence Store for Sentinel.
 
 Provides forensics-grade persistence, chain-of-custody logging, rich queries,
-and self-contained hash-verified export bundles for reports and external auditors.
+and self-contained hash-verified export bundles for reports and external auditors
+with repository metadata persistence.
 """
 
 import hashlib
@@ -19,6 +20,7 @@ from sentinel.core.models import (
     Evidence,
 )
 from sentinel.storage.artifacts.storage import ArtifactStorage, get_artifact_storage
+from sentinel.storage.repositories.factory import get_evidence_repository
 
 
 class EvidenceStore:
@@ -36,6 +38,10 @@ class EvidenceStore:
             signing_key=self.settings.audit.signing_key,
         )
         self._evidence_records: dict[str, Evidence] = {}
+
+    @property
+    def repo(self):
+        return get_evidence_repository()
 
     async def record_evidence(
         self,
@@ -86,6 +92,7 @@ class EvidenceStore:
         )
 
         self._evidence_records[evidence_id] = evidence
+        await self.repo.save_evidence_record(evidence)
 
         # Audit and Event dispatch
         self.audit.log_event(
@@ -111,7 +118,7 @@ class EvidenceStore:
 
     async def get_evidence(self, evidence_id: str, actor: str = "operator") -> tuple[Evidence, bytes]:
         """Retrieve evidence record and raw artifact bytes with read custody logging."""
-        evidence = self._evidence_records.get(evidence_id)
+        evidence = self._evidence_records.get(evidence_id) or await self.repo.get_evidence_record(evidence_id)
         if not evidence:
             raise KeyError(f"Evidence record '{evidence_id}' not found.")
 
@@ -123,6 +130,7 @@ class EvidenceStore:
             notes="Artifact read for analysis/export",
         )
         evidence.chain_of_custody.append(custody_event)
+        self._evidence_records[evidence_id] = evidence
 
         raw_bytes = await self.storage.get_artifact(evidence.artifact_storage_key)
 

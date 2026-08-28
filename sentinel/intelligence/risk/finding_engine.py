@@ -1,7 +1,7 @@
 """Finding Engine for Sentinel.
 
 Converts raw observations into deduplicated, evidence-anchored Finding models,
-prevents observation noise, and manages finding lifecycle states.
+prevents observation noise, and manages finding lifecycle states with repository persistence.
 """
 
 import uuid
@@ -18,6 +18,7 @@ from sentinel.core.models import (
     FindingStatus,
     SeverityLevel,
 )
+from sentinel.storage.repositories.factory import get_finding_repository
 
 
 class Observation(BaseModel):
@@ -50,6 +51,10 @@ class FindingEngine:
         # Composite deduplication index: (task_id, target_ref, title) -> finding_id
         self._dedup_index: dict[tuple[str, str, str], str] = {}
 
+    @property
+    def repo(self):
+        return get_finding_repository()
+
     async def ingest_observation(self, observation: Observation) -> Finding:
         """Process, validate, and deduplicate an incoming observation into a Finding."""
         # Evidence-First validation: observation must reference at least one evidence artifact
@@ -61,30 +66,33 @@ class FindingEngine:
         # Check for existing duplicate finding on same asset
         if dedup_key in self._dedup_index:
             finding_id = self._dedup_index[dedup_key]
-            existing = self._findings[finding_id]
+            existing = self._findings.get(finding_id) or await self.repo.get_finding(finding_id)
+            if existing:
+                # Merge evidence references without duplicates
+                for ref in observation.evidence_refs:
+                    if ref not in existing.evidence_refs:
+                        existing.evidence_refs.append(ref)
 
-            # Merge evidence references without duplicates
-            for ref in observation.evidence_refs:
-                if ref not in existing.evidence_refs:
-                    existing.evidence_refs.append(ref)
+                for cve in observation.related_cves:
+                    if cve not in existing.related_cves:
+                        existing.related_cves.append(cve)
 
-            for cve in observation.related_cves:
-                if cve not in existing.related_cves:
-                    existing.related_cves.append(cve)
+                # Update confidence (weighted average) and last seen
+                existing.confidence = round((existing.confidence + observation.confidence) / 2.0, 2)
+                existing.last_seen = datetime.now(UTC)
 
-            # Update confidence (weighted average) and last seen
-            existing.confidence = round((existing.confidence + observation.confidence) / 2.0, 2)
-            existing.last_seen = datetime.now(UTC)
+                self._findings[finding_id] = existing
+                await self.repo.save_finding(existing)
 
-            # Audit update & emit event
-            await emit_event(
-                event_type=EventType.FINDING,
-                topic="finding.updated",
-                source="sentinel.finding_engine",
-                payload={"finding_id": existing.id, "task_id": existing.task_id, "evidence_count": len(existing.evidence_refs)},
-                correlation_id=existing.task_id,
-            )
-            return existing
+                # Audit update & emit event
+                await emit_event(
+                    event_type=EventType.FINDING,
+                    topic="finding.updated",
+                    source="sentinel.finding_engine",
+                    payload={"finding_id": existing.id, "task_id": existing.task_id, "evidence_count": len(existing.evidence_refs)},
+                    correlation_id=existing.task_id,
+                )
+                return existing
 
         # Create new finding
         finding_id = f"find-{uuid.uuid4().hex[:12]}"
@@ -111,6 +119,7 @@ class FindingEngine:
 
         self._findings[finding_id] = finding
         self._dedup_index[dedup_key] = finding_id
+        await self.repo.save_finding(finding)
 
         # Audit creation
         self.audit.log_event(
@@ -154,13 +163,16 @@ class FindingEngine:
         notes: str = "",
     ) -> Finding:
         """Transition finding status (open, verified, false_positive, remediated, accepted)."""
-        finding = self._findings.get(finding_id)
+        finding = self._findings.get(finding_id) or await self.repo.get_finding(finding_id)
         if not finding:
             raise KeyError(f"Finding '{finding_id}' not found.")
 
         old_status = finding.status
         finding.status = new_status
         finding.last_seen = datetime.now(UTC)
+
+        self._findings[finding_id] = finding
+        await self.repo.save_finding(finding)
 
         self.audit.log_event(
             entry_id=f"audit-find-status-{finding_id}",
@@ -193,7 +205,7 @@ class FindingEngine:
         status: FindingStatus | None = None,
         target_ref: str | None = None,
     ) -> list[Finding]:
-        """Query and filter security findings."""
+        """Query and filter security findings from memory/cache."""
         results = []
         for f in self._findings.values():
             if task_id and f.task_id != task_id:

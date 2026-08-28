@@ -1,4 +1,4 @@
-﻿"""Sentinel Typed Configuration System using pydantic-settings."""
+"""Sentinel Typed Configuration System using pydantic-settings."""
 
 from enum import StrEnum
 
@@ -106,6 +106,9 @@ class Settings(BaseSettings):
     storage: ObjectStorageSettings = Field(default_factory=ObjectStorageSettings)
     audit: AuditSettings = Field(default_factory=AuditSettings)
     modules: ModuleFlags = Field(default_factory=ModuleFlags)
+
+    # Persistence Backend: "memory" (fast tests/dev) | "postgres" (durable production)
+    storage_backend: str = "memory"
 
     # Autonomy & Policy Gates
     kill_switch_active: bool = False

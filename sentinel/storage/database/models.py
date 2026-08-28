@@ -1,4 +1,4 @@
-﻿"""SQLAlchemy 2.0 Async ORM Models for Sentinel Core Domain Entities."""
+"""SQLAlchemy 2.0 Async ORM Models for Sentinel Core Domain Entities."""
 
 from datetime import UTC, datetime
 
@@ -55,7 +55,7 @@ class TargetSetModel(Base):
     context_notes = Column(JSON, default=dict, nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
 
-    targets = relationship("TargetModel", secondary=targetset_targets, backref="target_sets")
+    targets = relationship("TargetModel", secondary=targetset_targets, backref="target_sets", lazy="selectin")
 
 
 class ScopeModel(Base):
@@ -108,9 +108,9 @@ class TaskModel(Base):
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
     completed_at = Column(DateTime(timezone=True), nullable=True)
 
-    target_set = relationship("TargetSetModel", backref="tasks")
-    scope = relationship("ScopeModel", backref="tasks")
-    policy = relationship("PolicyModel", backref="tasks")
+    target_set = relationship("TargetSetModel", backref="tasks", lazy="selectin")
+    scope = relationship("ScopeModel", backref="tasks", lazy="selectin")
+    policy = relationship("PolicyModel", backref="tasks", lazy="selectin")
 
 
 class ActionRequestModel(Base):

@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -193,7 +193,10 @@ async def test_task_crash_recovery():
     )
     # Simulate mid-flight crash where task is left in EXECUTING state
     task.status = task.status.__class__.EXECUTING
+    await manager.repo.update_task(task)
 
     recovered_count = await manager.recover_tasks_on_startup()
     assert recovered_count == 1
-    assert task.status == task.status.__class__.FAILED
+    updated_task = await manager.repo.get_task(task.id)
+    assert updated_task is not None
+    assert updated_task.status == task.status.__class__.FAILED

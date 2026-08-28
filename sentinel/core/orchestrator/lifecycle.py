@@ -1,7 +1,7 @@
-﻿"""Task Lifecycle Manager and execution coordinator for Sentinel.
+"""Task Lifecycle Manager and execution coordinator for Sentinel.
 
 Enforces state machine transitions, crash-resilience, recoverable resumption,
-and immediate kill-switch execution cancellation.
+and immediate kill-switch execution cancellation across repository backends.
 """
 
 import asyncio
@@ -23,6 +23,8 @@ from sentinel.core.models import (
     TaskStatus,
 )
 from sentinel.logging.logger import get_logger
+from sentinel.storage.repositories.factory import get_task_repository
+from sentinel.storage.repositories.interfaces import TaskRepository
 
 logger = get_logger("sentinel.lifecycle")
 
@@ -36,9 +38,12 @@ class TaskLifecycleManager:
             log_path=self.settings.audit.log_file_path,
             signing_key=self.settings.audit.signing_key,
         )
-        self._active_tasks: dict[str, Task] = {}
         self._running_jobs: dict[str, asyncio.Task[Any]] = {}
         self._lock = asyncio.Lock()
+
+    @property
+    def repo(self) -> TaskRepository:
+        return get_task_repository()
 
     async def create_and_submit_task(
         self,
@@ -109,8 +114,8 @@ class TaskLifecycleManager:
             updated_at=datetime.now(UTC),
         )
 
-        async with self._lock:
-            self._active_tasks[task_id] = task
+        # Persist task through repository
+        await self.repo.create_task(task)
 
         # Audit creation
         self.audit_logger.log_event(
@@ -146,8 +151,8 @@ class TaskLifecycleManager:
         return task
 
     async def _execute_task_pipeline(self, task_id: str) -> None:
-        """Simulate autonomous pipeline state machine transitions while respecting cancellation."""
-        task = self._active_tasks.get(task_id)
+        """Sequential autonomous lifecycle execution pipeline."""
+        task = await self.repo.get_task(task_id)
         if not task:
             return
 
@@ -163,6 +168,7 @@ class TaskLifecycleManager:
             # Simulated progress
             await asyncio.sleep(0.05)
             task.progress_percentage = 80.0
+            await self.repo.update_task(task)
             await emit_event(
                 event_type=EventType.STATUS,
                 topic="task.progress",
@@ -185,6 +191,7 @@ class TaskLifecycleManager:
                 task.status = TaskStatus.CANCELLED
                 task.updated_at = datetime.now(UTC)
                 task.completed_at = datetime.now(UTC)
+                await self.repo.update_task(task)
                 self.audit_logger.log_event(
                     entry_id=f"audit-cancel-{task_id}",
                     event_type="TASK_CANCELLED",
@@ -206,6 +213,7 @@ class TaskLifecycleManager:
             task.status = TaskStatus.FAILED
             task.updated_at = datetime.now(UTC)
             task.completed_at = datetime.now(UTC)
+            await self.repo.update_task(task)
             self.audit_logger.log_event(
                 entry_id=f"audit-fail-{task_id}",
                 event_type="TASK_FAILED",
@@ -226,6 +234,7 @@ class TaskLifecycleManager:
     async def _update_status(self, task: Task, status: TaskStatus, progress: float, note: str) -> None:
         task.transition_to(status)
         task.progress_percentage = progress
+        await self.repo.update_task(task)
         await emit_event(
             event_type=EventType.STATUS,
             topic=f"task.{status.value}",
@@ -236,22 +245,22 @@ class TaskLifecycleManager:
 
     async def cancel_task(self, task_id: str, reason: str = "Operator Kill Switch") -> Task:
         """Immediately halt execution of a specific task."""
-        async with self._lock:
-            task = self._active_tasks.get(task_id)
-            if not task:
-                raise KeyError(f"Task {task_id} not found.")
+        task = await self.repo.get_task(task_id)
+        if not task:
+            raise KeyError(f"Task {task_id} not found.")
 
-            if task.status in (TaskStatus.COMPLETE, TaskStatus.FAILED, TaskStatus.CANCELLED):
-                return task
+        if task.status in (TaskStatus.COMPLETE, TaskStatus.FAILED, TaskStatus.CANCELLED):
+            return task
 
-            # Cancel running asyncio task
-            job = self._running_jobs.get(task_id)
-            if job and not job.done():
-                job.cancel()
+        # Cancel running asyncio task
+        job = self._running_jobs.get(task_id)
+        if job and not job.done():
+            job.cancel()
 
-            task.status = TaskStatus.CANCELLED
-            task.updated_at = datetime.now(UTC)
-            task.completed_at = datetime.now(UTC)
+        task.status = TaskStatus.CANCELLED
+        task.updated_at = datetime.now(UTC)
+        task.completed_at = datetime.now(UTC)
+        await self.repo.update_task(task)
 
         self.audit_logger.log_event(
             entry_id=f"audit-cancel-direct-{task_id}",
@@ -274,32 +283,31 @@ class TaskLifecycleManager:
         return task
 
     async def get_task(self, task_id: str) -> Task | None:
-        async with self._lock:
-            return self._active_tasks.get(task_id)
+        return await self.repo.get_task(task_id)
 
     async def list_tasks(self) -> list[Task]:
-        async with self._lock:
-            return list(self._active_tasks.values())
+        return await self.repo.list_tasks()
 
     async def recover_tasks_on_startup(self) -> int:
         """Ensure no lingering tasks remain in intermediate states after crash/restart."""
         count = 0
-        async with self._lock:
-            for task_id, task in self._active_tasks.items():
-                if task.status in (TaskStatus.PLANNING, TaskStatus.EXECUTING, TaskStatus.AWAITING_APPROVAL, TaskStatus.REPORTING):
-                    task.status = TaskStatus.FAILED
-                    task.updated_at = datetime.now(UTC)
-                    task.completed_at = datetime.now(UTC)
-                    count += 1
-                    self.audit_logger.log_event(
-                        entry_id=f"audit-recover-{task_id}",
-                        event_type="TASK_RECOVERY_FAILED",
-                        actor="system_startup",
-                        action_type="CRASH_RECOVERY",
-                        scope_policy=task.scope.id,
-                        decision="MARKED_FAILED",
-                        details={"task_id": task_id, "reason": "Server restarted during active execution."},
-                    )
+        active_tasks = await self.repo.get_active_non_terminal_tasks()
+        for task in active_tasks:
+            if task.status in (TaskStatus.PLANNING, TaskStatus.EXECUTING, TaskStatus.AWAITING_APPROVAL, TaskStatus.REPORTING):
+                task.status = TaskStatus.FAILED
+                task.updated_at = datetime.now(UTC)
+                task.completed_at = datetime.now(UTC)
+                await self.repo.update_task(task)
+                count += 1
+                self.audit_logger.log_event(
+                    entry_id=f"audit-recover-{task.id}",
+                    event_type="TASK_RECOVERY_FAILED",
+                    actor="system_startup",
+                    action_type="CRASH_RECOVERY",
+                    scope_policy=task.scope.id,
+                    decision="MARKED_FAILED",
+                    details={"task_id": task.id, "reason": "Server restarted during active execution."},
+                )
         return count
 
 
