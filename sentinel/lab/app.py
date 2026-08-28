@@ -18,11 +18,13 @@ lab_app = FastAPI(title="Sentinel Vulnerable Lab Target")
 
 
 @lab_app.get("/")
-async def root(response: Response):
+async def root():
     # Deliberately missing CSP, HSTS, X-Content-Type-Options
-    response.set_cookie(key="session_token", value="insecure_raw_session_12345", httponly=False, secure=False)
-    response.headers["Server"] = "Apache/2.4.49 (Unix) OpenSSL/1.1.1d"
-    return HTMLResponse("<html><body><h1>Sentinel Target Web Server</h1><a href='/static/backups/'>Backups</a></body></html>")
+    html = "<html><body><h1>Sentinel Target Web Server</h1><a href='/static/backups/'>Backups</a></body></html>"
+    resp = HTMLResponse(html)
+    resp.set_cookie(key="session_token", value="insecure_raw_session_12345", httponly=False, secure=False)
+    resp.headers["Server"] = "Apache/2.4.49 (Unix) OpenSSL/1.1.1d"
+    return resp
 
 
 @lab_app.get("/static/backups/")

@@ -17,9 +17,14 @@ FROM python:3.11-slim AS runtime
 RUN groupadd --gid 1001 sentinel && \
     useradd --uid 1001 --gid sentinel --shell /bin/bash --create-home sentinel
 
-# Install runtime OS deps only (no build tools)
+# Install runtime OS deps (including WeasyPrint / cairo / pango libs)
 RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
+        libpango-1.0-0 \
+        libpangoft2-1.0-0 \
+        libgobject-2.0-0 \
+        libharfbuzz0b \
+        libfontconfig1 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

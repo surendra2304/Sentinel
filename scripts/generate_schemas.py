@@ -1,7 +1,9 @@
-﻿"""Script to generate versioned JSON Schemas from core domain Pydantic models."""
-
 import json
 import os
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from pydantic import BaseModel
 
@@ -27,10 +29,10 @@ def export_schema(model: type[BaseModel], output_path: str):
 
 
 def generate_all_schemas():
-    contracts_dir = "sentinel/contracts"
+    contracts_dir = "contracts"
     mapping = {
         "task.schema.json": Task,
-        "action.schema.json": ActionRequest,
+        "action_request.schema.json": ActionRequest,
         "evidence.schema.json": Evidence,
         "finding.schema.json": Finding,
         "risk.schema.json": Risk,

@@ -85,6 +85,11 @@
       "title": "Sha256 Hash",
       "type": "string"
     },
+    "size_bytes": {
+      "default": 0,
+      "title": "Size Bytes",
+      "type": "integer"
+    },
     "integrity_metadata": {
       "additionalProperties": true,
       "title": "Integrity Metadata",
@@ -120,5 +125,6 @@
     "collected_by"
   ],
   "title": "Evidence",
-  "type": "object"
+  "type": "object",
+  "schema_version": "1.0.0"
 }

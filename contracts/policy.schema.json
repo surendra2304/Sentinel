@@ -68,5 +68,6 @@
     "name"
   ],
   "title": "Policy",
-  "type": "object"
+  "type": "object",
+  "schema_version": "1.0.0"
 }

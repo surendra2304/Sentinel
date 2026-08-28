@@ -1,10 +1,12 @@
 """Comprehensive tests for PDF Reporting, Evidence Bundle Export & Tamper Verification, Credential Vault, and Approval Attribution."""
 
+import asyncio
 import json
 
 import pytest
 
 from sentinel.core.models import (
+    ActionRequest,
     Finding,
     FindingStatus,
     ImpactLevel,
@@ -17,7 +19,7 @@ from sentinel.core.models import (
     TaskMode,
 )
 from sentinel.core.policy.engine import policy_engine
-from sentinel.core.vault.vault import CredentialVault
+from sentinel.core.vault.vault import CredentialVault, credential_vault
 from sentinel.intelligence.reporting.generator import (
     ReportType,
     report_generator,
@@ -224,3 +226,248 @@ async def test_approval_attribution_and_expiration(test_task_with_findings):
     assert record.approved_by == "lead_security_engineer@corp.local"
     assert record.authorization_reference == "CHG-2026-9812"
     assert record.decided_at is not None
+
+
+# ---------------------------------------------------------------------------
+# 5. Kill-Switch Subprocess Abort Test
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_kill_switch_subprocess_abort_preserves_evidence(tmp_path):
+    import time
+    from sentinel.core.orchestrator.executor import ExecutionEngine
+    from sentinel.core.orchestrator.adapter import ToolAdapter
+    from sentinel.core.models import ActionResult
+
+    class SleepingLongRunningAdapter(ToolAdapter):
+        @property
+        def name(self) -> str:
+            return "sleeping_adapter"
+
+        @property
+        def version(self) -> str:
+            return "1.0.0"
+
+        @property
+        def capabilities(self) -> list[str]:
+            return ["test.long_running_sleep"]
+
+        async def health_check(self) -> bool:
+            return True
+
+        def validate_params(self, action: ActionRequest) -> tuple[bool, str | None]:
+            return True, None
+
+        async def run(self, action: ActionRequest) -> tuple[ActionResult, bytes, str]:
+            await asyncio.sleep(10.0)  # Long running operation
+            return ActionResult(action_id=action.id, task_id=action.task_id, success=True), b"DONE", "text/plain"
+
+    executor = ExecutionEngine()
+    executor.registry.register(SleepingLongRunningAdapter())
+
+    target = Target(id="t-abort-01", type="host", value="target.abort.local")
+    target_set = TargetSet(id="ts-abort-01", name="Abort Set", targets=[target])
+    scope = Scope(id="scope-abort-01", name="Abort Scope", allowed_targets=["target.abort.local"])
+    policy = Policy(id="policy-abort-01", name="Abort Policy", allowed_action_classes=["test.long_running_sleep"])
+
+    task = Task(
+        id="task-abort-test-01",
+        objective="Kill switch validation",
+        target_set=target_set,
+        scope=scope,
+        policy=policy,
+        correlation_id="corr-abort-01",
+    )
+
+    action = ActionRequest(
+        id="act-abort-01",
+        task_id=task.id,
+        agent="test_agent",
+        action_type="test.long_running_sleep",
+        target_refs=["target.abort.local"],
+    )
+
+    exec_task = asyncio.create_task(executor.execute_action(action, task))
+    await asyncio.sleep(0.05)  # Let execution start
+
+    start_cancel = time.monotonic()
+    exec_task.cancel()  # Immediate kill-switch abort
+
+    with pytest.raises(asyncio.CancelledError):
+        await exec_task
+
+    duration = time.monotonic() - start_cancel
+    assert duration < 2.0  # Must die within 2 seconds
+
+    # Check that partial evidence was preserved
+    evidence_list = executor.evidence_store.query_evidence(task_id=task.id)
+    assert len(evidence_list) >= 1
+    assert any(e.collected_by == "sentinel_kill_switch" for e in evidence_list)
+
+
+# ---------------------------------------------------------------------------
+# 6. Approval Invariant Test (Highest Impact ALWAYS requires human approval)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_highest_impact_level_always_requires_human_approval():
+    target = Target(id="t-inv-01", type="host", value="prod.internal")
+    target_set = TargetSet(id="ts-inv-01", name="Invariant TargetSet", targets=[target])
+    scope = Scope(id="scope-inv-01", name="Invariant Scope", allowed_targets=["prod.internal"], offensive_actions_enabled=True)
+
+    # Even with a policy trying to auto-allow everything with no approval
+    permissive_policy = Policy(
+        id="policy-permissive-01",
+        name="Permissive Policy",
+        allowed_action_classes=["*"],
+        require_approval_for_offensive=False,
+    )
+
+    task = Task(
+        id="task-invariant-01",
+        objective="Verify approval invariant on Level-3 / CRITICAL impact",
+        target_set=target_set,
+        scope=scope,
+        policy=permissive_policy,
+        correlation_id="corr-inv-01",
+    )
+
+    # Action explicitly marked CRITICAL impact
+    critical_action = ActionRequest(
+        id="act-critical-01",
+        task_id=task.id,
+        agent="exploit_agent",
+        action_type="web.remote_code_execution",
+        target_refs=["prod.internal"],
+        expected_impact_level=ImpactLevel.CRITICAL,
+        requires_approval=False,  # Attempting to bypass approval
+    )
+
+    decision = await policy_engine.evaluate_action(critical_action, task)
+    assert decision.decision.value == "REQUIRE_APPROVAL"
+    assert decision.requires_approval is True
+    assert decision.approval_id is not None
+
+
+# ---------------------------------------------------------------------------
+# 7. Lab Target E2E & Unconditional Secrets Redaction Test
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_lab_target_e2e_and_unconditional_secret_redaction(tmp_path):
+    import httpx
+    from sentinel.lab.app import lab_app
+    from sentinel.integrations.friday.client import FridayClient
+    from sentinel.intelligence.reporting.generator import report_generator, ReportType
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=lab_app), base_url="http://lab.local") as client:  # type: ignore[arg-type]
+        # 1. Recon checks against lab target
+        resp_root = await client.get("/")
+        assert resp_root.status_code == 200
+        assert "Apache/2.4.49" in resp_root.headers.get("Server", "")
+
+        resp_bak = await client.get("/backup/database.sql.bak")
+        assert resp_bak.status_code == 200
+        assert "DATABASE DUMP" in resp_bak.text
+
+        # 2. Blocked high-impact action without approval header
+        resp_gated = await client.post("/api/admin/flush-database")
+        assert resp_gated.status_code == 403
+
+        # 3. Register secret into credential vault
+        secret_value = "HIGH_ENTROPY_PROD_SECRET_TOKEN_XYZ_987654"
+        credential_vault.store_credential("task-lab-01", "db_pass", secret_value, "Database secret")
+
+        # 4. Create findings anchored to evidence
+        evi_bak = await evidence_store.record_evidence(
+            task_id="task-lab-01",
+            target_ref="http://lab.local",
+            source_agent="recon_agent",
+            source_module="web",
+            source_tool="http_observer",
+            raw_data=f"Exposed backup file accessed using secret token: {secret_value}".encode("utf-8"),
+            content_type="text/plain",
+        )
+
+        finding = Finding(
+            id="find-lab-01",
+            task_id="task-lab-01",
+            target_ref="http://lab.local",
+            title="Exposed Database Backup File",
+            description=f"Database dump exposed at /backup/database.sql.bak with sensitive info {secret_value}",
+            severity=SeverityLevel.HIGH,
+            confidence=0.95,
+            status=FindingStatus.OPEN,
+            evidence_refs=[evi_bak.id],
+            remediation="Restrict access to backup directories.",
+        )
+
+        # 5. FRIDAY approval relay with operator attribution
+        target = Target(id="t-lab-01", type="url", value="http://lab.local")
+        target_set = TargetSet(id="ts-lab-01", name="Lab Set", targets=[target])
+        scope = Scope(id="scope-lab-01", name="Lab Scope", allowed_targets=["http://lab.local"], offensive_actions_enabled=True)
+        policy = Policy(id="policy-lab-01", name="Lab Policy")
+        task = Task(
+            id="task-lab-01",
+            objective="Lab Pentest",
+            target_set=target_set,
+            scope=scope,
+            policy=policy,
+            correlation_id="corr-lab-01",
+        )
+
+        gated_action = ActionRequest(
+            id="act-lab-gated-01",
+            task_id=task.id,
+            agent="exploit_agent",
+            action_type="web.admin_flush",
+            target_refs=["http://lab.local"],
+            expected_impact_level=ImpactLevel.HIGH,
+            requires_approval=True,
+        )
+
+        dec = await policy_engine.evaluate_action(gated_action, task)
+        assert dec.approval_id is not None
+
+        record = await policy_engine.decide_approval(
+            approval_id=dec.approval_id,
+            approve=True,
+            operator="soc_analyst_sarah@corp.local",
+            justification="Approved authorized penetration testing execution window.",
+            authorization_reference="CHG-LAB-2026",
+        )
+        assert record.approved_by == "soc_analyst_sarah@corp.local"
+        assert record.authorization_reference == "CHG-LAB-2026"
+
+        # Execute high-impact gated action with authorization
+        resp_approved = await client.post(
+            "/api/admin/flush-database",
+            headers={"X-Sentinel-Authorization": "OPERATOR_LEVEL_3_APPROVED"},
+        )
+        assert resp_approved.status_code == 200
+        assert resp_approved.json()["status"] == "success"
+
+        # 6. Generate reports
+        target = Target(id="t-lab-01", type="url", value="http://lab.local")
+        target_set = TargetSet(id="ts-lab-01", name="Lab Set", targets=[target])
+        scope = Scope(id="scope-lab-01", name="Lab Scope", allowed_targets=["http://lab.local"])
+        task = Task(
+            id="task-lab-01",
+            objective="Lab Pentest",
+            target_set=target_set,
+            scope=scope,
+            policy=policy,
+            correlation_id="corr-lab-01",
+        )
+
+        report = report_generator.generate_report(task=task, findings=[finding], report_type=ReportType.TECHNICAL)
+        md_report = report_generator.render_markdown(report)
+        pdf_report = report_generator.render_pdf(report)
+
+        # 7. Unconditional Secrets Search: Redaction verification
+        redacted_md = credential_vault.redact_text(md_report)
+        redacted_desc = credential_vault.redact_text(finding.description)
+
+        assert secret_value not in redacted_md
+        assert secret_value not in redacted_desc
+        assert "[REDACTED_SECRET]" in redacted_desc

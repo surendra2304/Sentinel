@@ -137,5 +137,6 @@
     "name"
   ],
   "title": "Scope",
-  "type": "object"
+  "type": "object",
+  "schema_version": "1.0.0"
 }

@@ -1,4 +1,4 @@
-﻿"""Sentinel Action Execution Engine.
+"""Sentinel Action Execution Engine.
 
 Coordinates the full action lifecycle:
 1. ActionRequest submission
@@ -217,6 +217,32 @@ class ExecutionEngine:
                     act_result, raw_output_bytes, mime_type = await adapter.run(action)
                     if act_result.success:
                         break
+            except asyncio.CancelledError:
+                # Kill switch mid-action: record partial output & log action.aborted
+                target_ref = action.target_refs[0] if action.target_refs else "task_target"
+                partial_bytes = raw_output_bytes if raw_output_bytes else b"[ACTION_ABORTED_MID_EXECUTION]"
+                await self.evidence_store.record_evidence(
+                    task_id=task.id,
+                    target_ref=target_ref,
+                    source_agent=action.agent,
+                    source_module=action.action_type.split(".")[0],
+                    source_tool=adapter.name,
+                    raw_data=partial_bytes,
+                    content_type="text/plain",
+                    collected_by="sentinel_kill_switch",
+                    context_metadata={"action_id": action.id, "status": "ABORTED"},
+                )
+                self.audit.log_event(
+                    entry_id=f"audit-abort-{action.id}",
+                    event_type="ACTION_ABORTED",
+                    actor="kill_switch",
+                    action_type=action.action_type,
+                    scope_policy=task.scope.id,
+                    decision="ABORTED",
+                    details={"action_id": action.id, "reason": "Action aborted mid-run by kill-switch"},
+                )
+                action.status = ActionStatus.FAILED
+                raise
             except Exception as e:
                 logger.warning(
                     f"Action {action.id} attempt {attempt+1} failed with exception: {e}",

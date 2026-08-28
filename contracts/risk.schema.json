@@ -104,5 +104,6 @@
     "asset_criticality"
   ],
   "title": "Risk",
-  "type": "object"
+  "type": "object",
+  "schema_version": "1.0.0"
 }
