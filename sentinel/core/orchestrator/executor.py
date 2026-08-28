@@ -30,6 +30,13 @@ from sentinel.integrations.scanners.http_adapter import HTTPObserverAdapter
 from sentinel.integrations.scanners.network_adapter import NetworkScannerAdapter
 from sentinel.logging.logger import get_logger
 from sentinel.modules.dns.dns_intel import DNSIntelligenceAdapter
+from sentinel.modules.network.adapters import (
+    FirewallConfigReviewAdapter,
+    HostDiscoveryAdapter,
+    NetworkExposureAdapter,
+    SegmentationAnalyzerAdapter,
+    TrafficAnalysisAdapter,
+)
 from sentinel.modules.recon.adapters import (
     CertificateInspectorAdapter,
     IPIntelligenceAdapter,
@@ -237,6 +244,13 @@ adapter_registry.register(IPIntelligenceAdapter())
 adapter_registry.register(CertificateInspectorAdapter())
 adapter_registry.register(TechnologyFingerprintAdapter())
 adapter_registry.register(OSINTAdapter())
+
+# Register network security adapters
+adapter_registry.register(HostDiscoveryAdapter())
+adapter_registry.register(NetworkExposureAdapter())
+adapter_registry.register(SegmentationAnalyzerAdapter())
+adapter_registry.register(FirewallConfigReviewAdapter())
+adapter_registry.register(TrafficAnalysisAdapter())
 
 # Global Execution Engine Singleton
 execution_engine = ExecutionEngine()
