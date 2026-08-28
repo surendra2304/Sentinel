@@ -1,0 +1,8 @@
+{
+  "target": "http://127.0.0.1:18889",
+  "action_type": "http.observe",
+  "http": {},
+  "tls": {},
+  "security_headers": {},
+  "error": "All connection attempts failed"
+}

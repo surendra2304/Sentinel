@@ -1,0 +1,9 @@
+{
+  "target": "127.0.0.1",
+  "ip": "127.0.0.1",
+  "country": "Localhost",
+  "city": "Unknown",
+  "asn": "AS00000",
+  "org": "Internal / Private Network",
+  "is_private": true
+}
