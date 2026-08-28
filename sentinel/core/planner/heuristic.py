@@ -70,80 +70,146 @@ class HeuristicPlanner(BasePlanner):
             plan.reasoning_trace.append("No targets provided in task context. Halting planning.")
             return plan
 
-        # Phase 1: Baseline Reconnaissance (DNS + HTTP Observation)
-        if "phase_recon_done" not in memory.state_flags:
-            plan.reasoning_trace.append("Phase 1: Initializing baseline reconnaissance across target set.")
+        # Phase 1: Baseline DNS & OSINT Intelligence
+        if "phase_recon_baseline_done" not in memory.state_flags:
+            plan.reasoning_trace.append("Phase 1: Gathering baseline DNS, Subdomain, OSINT, and IP intelligence.")
             for t in targets:
-                # Extract clean hostname for network/dns checks
                 val = t.value
-                parsed = urlparse(val)
+                parsed = urlparse(val if "://" in val else f"http://{val}")
                 hostname = parsed.hostname or val
 
-                # 1. DNS Lookup for non-IP domain targets
-                if t.type.value == "domain" and not all(c.isdigit() or c == "." for c in hostname):
-                    req_dns = ActionRequest(
-                        id=f"act-plan-dns-{uuid.uuid4().hex[:8]}",
-                        task_id=task.id,
-                        agent="recon_agent",
-                        action_type="dns.lookup",
-                        target_refs=[hostname],
-                        parameters={"record_types": ["A", "AAAA", "MX", "NS", "TXT"]},
-                        expected_impact_level=ImpactLevel.LOW,
-                    )
+                # 1. DNS Full Enumeration & Zone Info
+                if not all(c.isdigit() or c == "." for c in hostname):
                     plan.steps.append(
                         PlannedStep(
                             agent_name="recon_agent",
-                            action_request=req_dns,
-                            phase="RECONNAISSANCE",
-                            justification=f"Enumerate DNS infrastructure and records for target asset '{hostname}'.",
+                            action_request=ActionRequest(
+                                id=f"act-plan-dns-{uuid.uuid4().hex[:8]}",
+                                task_id=task.id,
+                                agent="recon_agent",
+                                action_type="dns.full_enum",
+                                target_refs=[hostname],
+                                expected_impact_level=ImpactLevel.LOW,
+                            ),
+                            phase="RECON_DNS",
+                            justification=f"Enumerate complete DNS records and zone transfer capabilities for '{hostname}'.",
+                        )
+                    )
+                    # Subdomain Enumeration
+                    plan.steps.append(
+                        PlannedStep(
+                            agent_name="recon_agent",
+                            action_request=ActionRequest(
+                                id=f"act-plan-sub-{uuid.uuid4().hex[:8]}",
+                                task_id=task.id,
+                                agent="recon_agent",
+                                action_type="recon.subdomains",
+                                target_refs=[hostname],
+                                expected_impact_level=ImpactLevel.LOW,
+                            ),
+                            phase="RECON_SUBDOMAINS",
+                            justification=f"Discover subdomains via certificate transparency and wordlists for '{hostname}'.",
                         )
                     )
 
-                # 2. HTTP/TLS Observation
-                req_http = ActionRequest(
-                    id=f"act-plan-http-{uuid.uuid4().hex[:8]}",
-                    task_id=task.id,
-                    agent="recon_agent",
-                    action_type="http.observe",
-                    target_refs=[t.value],
-                    parameters={},
-                    expected_impact_level=ImpactLevel.LOW,
-                )
+                # 2. IP & ASN Intelligence
                 plan.steps.append(
                     PlannedStep(
                         agent_name="recon_agent",
-                        action_request=req_http,
-                        phase="RECONNAISSANCE",
-                        justification=f"Observe HTTP headers, TLS certificate, and redirect chains for '{t.value}'.",
+                        action_request=ActionRequest(
+                            id=f"act-plan-ip-{uuid.uuid4().hex[:8]}",
+                            task_id=task.id,
+                            agent="recon_agent",
+                            action_type="recon.ip_intel",
+                            target_refs=[hostname],
+                            expected_impact_level=ImpactLevel.LOW,
+                        ),
+                        phase="RECON_IP",
+                        justification=f"Identify geolocation, ASN routing, and hosting provider for '{hostname}'.",
                     )
                 )
 
-            memory.state_flags["phase_recon_done"] = True
+                # 3. OSINT & Security.txt
+                plan.steps.append(
+                    PlannedStep(
+                        agent_name="recon_agent",
+                        action_request=ActionRequest(
+                            id=f"act-plan-osint-{uuid.uuid4().hex[:8]}",
+                            task_id=task.id,
+                            agent="recon_agent",
+                            action_type="recon.osint",
+                            target_refs=[val],
+                            expected_impact_level=ImpactLevel.LOW,
+                        ),
+                        phase="RECON_OSINT",
+                        justification=f"Audit security.txt contacts and robots.txt disclosures for '{val}'.",
+                    )
+                )
+
+            memory.state_flags["phase_recon_baseline_done"] = True
             return plan
 
-        # Phase 2: Service & Port Discovery
-        if "phase_discovery_done" not in memory.state_flags:
-            plan.reasoning_trace.append("Phase 2: Executing network service and port discovery.")
+        # Phase 2: Web & Technology Fingerprinting
+        if "phase_web_fingerprint_done" not in memory.state_flags:
+            plan.reasoning_trace.append("Phase 2: Executing HTTP surface observation, TLS inspection, and tech fingerprinting.")
             for t in targets:
-                parsed = urlparse(t.value)
-                host_target = parsed.hostname or t.value
-                port = parsed.port or (443 if parsed.scheme == "https" else 80)
-
-                req_net = ActionRequest(
-                    id=f"act-plan-net-{uuid.uuid4().hex[:8]}",
-                    task_id=task.id,
-                    agent="recon_agent",
-                    action_type="network.service_scan",
-                    target_refs=[host_target],
-                    parameters={"ports": [port, 80, 443, 8080, 8443, 18890], "force_python_fallback": True},
-                    expected_impact_level=ImpactLevel.LOW,
+                val = t.value
+                plan.steps.append(
+                    PlannedStep(
+                        agent_name="recon_agent",
+                        action_request=ActionRequest(
+                            id=f"act-plan-http-{uuid.uuid4().hex[:8]}",
+                            task_id=task.id,
+                            agent="recon_agent",
+                            action_type="http.observe",
+                            target_refs=[val],
+                            expected_impact_level=ImpactLevel.LOW,
+                        ),
+                        phase="WEB_OBSERVE",
+                        justification=f"Observe HTTP status, security headers, and redirect chains on '{val}'.",
+                    )
                 )
                 plan.steps.append(
                     PlannedStep(
                         agent_name="recon_agent",
-                        action_request=req_net,
-                        phase="DISCOVERY",
-                        justification=f"Scan TCP services on '{host_target}'.",
+                        action_request=ActionRequest(
+                            id=f"act-plan-tech-{uuid.uuid4().hex[:8]}",
+                            task_id=task.id,
+                            agent="recon_agent",
+                            action_type="recon.tech_fingerprint",
+                            target_refs=[val],
+                            expected_impact_level=ImpactLevel.LOW,
+                        ),
+                        phase="WEB_FINGERPRINT",
+                        justification=f"Fingerprint web technologies, frameworks, and cookies for '{val}'.",
+                    )
+                )
+
+            memory.state_flags["phase_web_fingerprint_done"] = True
+            return plan
+
+        # Phase 3: Service & Port Discovery
+        if "phase_discovery_done" not in memory.state_flags:
+            plan.reasoning_trace.append("Phase 3: Executing network service and port discovery.")
+            for t in targets:
+                parsed = urlparse(t.value if "://" in t.value else f"http://{t.value}")
+                host_target = parsed.hostname or t.value
+                port = parsed.port or (443 if parsed.scheme == "https" else 80)
+
+                plan.steps.append(
+                    PlannedStep(
+                        agent_name="recon_agent",
+                        action_request=ActionRequest(
+                            id=f"act-plan-net-{uuid.uuid4().hex[:8]}",
+                            task_id=task.id,
+                            agent="recon_agent",
+                            action_type="network.service_scan",
+                            target_refs=[host_target],
+                            parameters={"ports": [port, 80, 443, 8080, 8443, 18890], "force_python_fallback": True},
+                            expected_impact_level=ImpactLevel.LOW,
+                        ),
+                        phase="SERVICE_DISCOVERY",
+                        justification=f"Scan TCP listening services on '{host_target}'.",
                     )
                 )
 
@@ -151,7 +217,7 @@ class HeuristicPlanner(BasePlanner):
             return plan
 
         # Terminal Phase: Assessment Finished
-        plan.reasoning_trace.append("All engagement phases completed. Target assessment confidence is sufficient.")
+        plan.reasoning_trace.append("All reconnaissance and attack surface mapping phases completed.")
         plan.is_terminal = True
         plan.confidence_is_sufficient = True
         return plan

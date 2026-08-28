@@ -15,8 +15,8 @@ Welcome to the **Sentinel Engineering Diary**. This document acts as the master 
 
 ### 2. Engineering Diary Logs
 
-### 📈 [Day 1 — 2026-08-28: Genesis, Gateway, Engine, Intelligence & Autonomous Orchestrator](diary/2026-08-28.md)
-- **🎯 Focus**: Exact modular layout, Task Gateway, Scope/Policy Engine, SubprocessSandbox, ToolAdapters, ExecutionEngine, EvidenceStore, FindingEngine, RiskEngine, BaseAgent, TaskWorkingMemory, HeuristicPlanner, ReconAgent, and AutonomousOrchestrator.
-- **💡 What I Accomplished**: Built the 54-directory foundation, domain models, ScopeResolver, 6-dimension PolicyEngine, SubprocessSandbox, DNS/HTTP/Network adapters, ExecutionEngine, EvidenceStore, FindingEngine, RiskEngine, BaseAgent contract, TaskWorkingMemory, HeuristicPlanner, ReconAgent, and the closed-loop AutonomousOrchestrator verified end-to-end against live test targets.
-- **🛡️ Fixes & Hardening**: Fixed task model status enum compatibility, added automated MinIO storage fallback to local filesystem, sanitized hostname extraction for DNS queries, and asserted 100% PolicyEngine enforcement on all planned steps.
-- **📊 Test Results**: **32 passed** (100% green pass rate across unit, integration, policy, execution, intelligence, orchestrator, and diary verification suites).
+### 📈 [Day 1 — 2026-08-28: Genesis, Gateway, Engine, Intelligence, Orchestrator & Recon Module](diary/2026-08-28.md)
+- **🎯 Focus**: Exact modular layout, Task Gateway, Scope/Policy Engine, SubprocessSandbox, ToolAdapters, ExecutionEngine, EvidenceStore, FindingEngine, RiskEngine, BaseAgent, TaskWorkingMemory, HeuristicPlanner, ReconAgent, AutonomousOrchestrator, Recon & DNS Intelligence modules, and AssetGraph.
+- **💡 What I Accomplished**: Built the 54-directory foundation, domain models, ScopeResolver, 6-dimension PolicyEngine, SubprocessSandbox, DNS/HTTP/Network adapters, ExecutionEngine, EvidenceStore, FindingEngine, RiskEngine, BaseAgent contract, TaskWorkingMemory, HeuristicPlanner, ReconAgent, AutonomousOrchestrator, DNS intelligence, Subdomain enumeration (CT logs + wordlist), IP/ASN metadata, Tech Fingerprinting, OSINT, and the centralized AssetGraph.
+- **🛡️ Fixes & Hardening**: Fixed robots.txt path parsing in OSINT adapter, guarded favicon MD5 calculation, eliminated unused variables, and asserted 100% PolicyEngine enforcement on all planned recon steps.
+- **📊 Test Results**: **34 passed** (100% green pass rate across unit, integration, policy, execution, intelligence, orchestrator, recon, and diary verification suites).

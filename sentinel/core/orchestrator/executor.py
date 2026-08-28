@@ -29,6 +29,14 @@ from sentinel.integrations.scanners.dns_adapter import DNSAdapter
 from sentinel.integrations.scanners.http_adapter import HTTPObserverAdapter
 from sentinel.integrations.scanners.network_adapter import NetworkScannerAdapter
 from sentinel.logging.logger import get_logger
+from sentinel.modules.dns.dns_intel import DNSIntelligenceAdapter
+from sentinel.modules.recon.adapters import (
+    CertificateInspectorAdapter,
+    IPIntelligenceAdapter,
+    OSINTAdapter,
+    SubdomainEnumAdapter,
+    TechnologyFingerprintAdapter,
+)
 from sentinel.storage.artifacts.storage import ArtifactStorage, get_artifact_storage
 from sentinel.storage.evidence.store import EvidenceStore, evidence_store
 
@@ -219,10 +227,16 @@ class ExecutionEngine:
         return final_result
 
 
-# Register reference adapters
+# Register reference and recon adapters
 adapter_registry.register(DNSAdapter())
 adapter_registry.register(HTTPObserverAdapter())
 adapter_registry.register(NetworkScannerAdapter())
+adapter_registry.register(DNSIntelligenceAdapter())
+adapter_registry.register(SubdomainEnumAdapter())
+adapter_registry.register(IPIntelligenceAdapter())
+adapter_registry.register(CertificateInspectorAdapter())
+adapter_registry.register(TechnologyFingerprintAdapter())
+adapter_registry.register(OSINTAdapter())
 
 # Global Execution Engine Singleton
 execution_engine = ExecutionEngine()

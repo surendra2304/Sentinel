@@ -17,6 +17,7 @@ from sentinel.core.orchestrator.lifecycle import lifecycle_manager
 from sentinel.core.policy.engine import policy_engine
 from sentinel.intelligence.risk.finding_engine import finding_engine
 from sentinel.intelligence.risk.risk_engine import risk_engine
+from sentinel.modules.recon.graph import asset_graph_store
 from sentinel.storage.evidence.store import evidence_store
 
 app = typer.Typer(
@@ -35,6 +36,9 @@ app.add_typer(findings_app, name="findings")
 
 evidence_app = typer.Typer(help="Evidence artifacts and chain of custody")
 app.add_typer(evidence_app, name="evidence")
+
+recon_app = typer.Typer(help="Reconnaissance and Attack Surface intelligence")
+app.add_typer(recon_app, name="recon")
 
 console = Console(legacy_windows=False)
 
@@ -87,12 +91,14 @@ def report(task_id: str):
 
     findings = finding_engine.list_findings(task_id=task_id)
     risk_summary = risk_engine.get_task_risk_summary(task_id, findings)
+    attack_surface = asset_graph_store.get_task_attack_surface(task_id)
 
     panel = Panel(
         f"[bold]Task Objective:[/bold] {task.objective}\n"
         f"[bold]Status:[/bold] {task.status.value.upper()}\n"
         f"[bold]Mode:[/bold] {task.mode.value}\n"
         f"[bold]Targets Assessed:[/bold] {len(task.target_set.targets)}\n"
+        f"[bold]Attack Surface Assets:[/bold] {attack_surface.total_nodes} nodes, {attack_surface.total_edges} edges\n"
         f"[bold]Total Findings:[/bold] {len(findings)}\n"
         f"[bold]Overall Risk Score:[/bold] {risk_summary.overall_risk_score} ([bold yellow]{risk_summary.highest_risk_tier.value.upper()}[/bold yellow])\n\n"
         f"[bold cyan]Findings Summary:[/bold cyan]\n"
@@ -222,6 +228,31 @@ def findings_list(task_id: str | None = typer.Option(None, "--task", "-t", help=
         table.add_row(f.id, f.severity.value.upper(), f.title, f.target_ref, str(len(f.evidence_refs)))
 
     console.print(table)
+
+
+# ---------------------------------------------------------------------------
+# Reconnaissance & Attack Surface Commands
+# ---------------------------------------------------------------------------
+
+@recon_app.command("surface")
+def recon_surface(task_id: str = typer.Argument(..., help="Task ID")):
+    """View discovered attack surface graph and asset inventory."""
+    report = asset_graph_store.get_task_attack_surface(task_id)
+    if report.total_nodes == 0:
+        console.print(f"[bold yellow]No attack surface graph nodes recorded for task {task_id}.[/bold yellow]")
+        return
+
+    table = Table(title=f"Attack Surface Map: {task_id}")
+    table.add_column("Node Type", style="cyan")
+    table.add_column("Asset / Label", style="green")
+    table.add_column("Internet-Facing", style="magenta")
+
+    for n in report.nodes:
+        table.add_row(n.node_type.value.upper(), n.label, "YES" if n.is_internet_facing else "NO")
+
+    console.print(table)
+    console.print(f"\n[bold]Total Nodes:[/bold] {report.total_nodes} | [bold]Total Edges:[/bold] {report.total_edges}")
+    console.print(f"[bold]Technologies:[/bold] {', '.join(report.technologies) if report.technologies else 'None'}")
 
 
 # ---------------------------------------------------------------------------

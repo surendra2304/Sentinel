@@ -1,0 +1,12 @@
+{
+  "target": "http://127.0.0.1:18895",
+  "security_txt_found": true,
+  "security_contacts": [
+    "mailto:security@sentinel.local"
+  ],
+  "robots_txt_entries": [
+    "Disallow: /admin",
+    "Disallow: /internal"
+  ],
+  "security_txt_raw": "Contact: mailto:security@sentinel.local\nExpires: 2027-01-01T00:00:00.000Z\n"
+}

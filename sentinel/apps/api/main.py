@@ -28,6 +28,7 @@ from sentinel.core.policy.engine import ApprovalRecord, policy_engine
 from sentinel.intelligence.risk.finding_engine import finding_engine
 from sentinel.intelligence.risk.risk_engine import TaskRiskSummary, risk_engine
 from sentinel.logging.logger import get_correlation_id, get_logger, setup_logging
+from sentinel.modules.recon.graph import AttackSurfaceReport, asset_graph_store
 from sentinel.storage.evidence.store import evidence_store
 
 settings = get_settings()
@@ -270,6 +271,12 @@ async def get_task_risk_summary(task_id: str) -> TaskRiskSummary:
     return risk_engine.get_task_risk_summary(task_id, findings)
 
 
+@app.get(f"{settings.api_prefix}/tasks/{{task_id}}/attack-surface", response_model=AttackSurfaceReport, tags=["Reconnaissance & Attack Surface"])
+async def get_task_attack_surface(task_id: str) -> AttackSurfaceReport:
+    """Retrieve full attack surface graph, asset inventory, and exposure map."""
+    return asset_graph_store.get_task_attack_surface(task_id)
+
+
 @app.get(f"{settings.api_prefix}/tasks/{{task_id}}/evidence-bundle", tags=["Findings & Evidence"])
 async def export_evidence_bundle(task_id: str) -> dict[str, Any]:
     """Export self-contained, hash-verified evidence bundle."""
@@ -340,11 +347,19 @@ async def get_task_report(task_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=f"Task {task_id} not found.")
     findings = finding_engine.list_findings(task_id=task_id)
     risk_summary = risk_engine.get_task_risk_summary(task_id, findings)
+    attack_surface = asset_graph_store.get_task_attack_surface(task_id)
     return {
         "task_id": task_id,
         "title": f"Security Assessment Report: {task.objective}",
         "status": task.status.value,
-        "executive_summary": f"Assessment identified {len(findings)} security findings. Overall risk tier: {risk_summary.highest_risk_tier.value.upper()}.",
+        "executive_summary": f"Assessment identified {len(findings)} security findings across {attack_surface.total_nodes} attack surface nodes. Overall risk tier: {risk_summary.highest_risk_tier.value.upper()}.",
         "findings_summary": risk_summary.severity_counts,
+        "attack_surface_summary": {
+            "total_assets": attack_surface.total_nodes,
+            "domains": attack_surface.domains_count,
+            "ips": attack_surface.ips_count,
+            "services": attack_surface.services_count,
+            "technologies": attack_surface.technologies,
+        },
         "risk_summary": risk_summary.model_dump(),
     }
