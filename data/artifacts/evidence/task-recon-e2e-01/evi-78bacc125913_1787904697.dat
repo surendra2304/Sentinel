@@ -1,0 +1,13 @@
+{
+  "url": "http://127.0.0.1:18895",
+  "technologies": [
+    "Web Server: SimpleHTTP/0.6 Python/3.11.9, Apache/2.4.51 (Unix) OpenSSL/1.1.1",
+    "Framework: PHP/8.1.2",
+    "Language: PHP"
+  ],
+  "server_banner": "SimpleHTTP/0.6 Python/3.11.9, Apache/2.4.51 (Unix) OpenSSL/1.1.1",
+  "favicon_hash": "e05985ef0c1e464e8d6cb61b2a28a9a9",
+  "cookies": [
+    "PHPSESSID"
+  ]
+}
