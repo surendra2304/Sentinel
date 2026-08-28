@@ -1,4 +1,4 @@
-﻿import json
+import json
 import zipfile
 
 import pytest
@@ -123,4 +123,4 @@ async def test_endpoint_assessment_adapter():
     assert res_ep.success is True
     data_ep = json.loads(raw_ep.decode("utf-8"))
     assert data_ep["process_count"] > 0
-    assert len(data_ep["os"]) > 0
+    assert len(data_ep.get("os_platform", data_ep.get("os", ""))) > 0
