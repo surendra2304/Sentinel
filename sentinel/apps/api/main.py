@@ -27,12 +27,21 @@ from sentinel.core.models import (
 )
 from sentinel.core.orchestrator.lifecycle import lifecycle_manager
 from sentinel.core.policy.engine import ApprovalRecord, policy_engine
+from sentinel.core.scope.resolver import ScopeResolver
 from sentinel.integrations.friday.models import (
     BlockedActionRecord,
+    BlockedTargetRecord,
+    FridayAssetInventoryItem,
+    FridayAssetInventoryResponse,
     FridayDelegationRequest,
     FridayDelegationResponse,
     FridayResultPayload,
+    FridayScheduleRequest,
+    FridayScheduleResponse,
+    FridaySecurityPostureResponse,
+    FridaySSEEvent,
     FridaySummarizer,
+    OpenFindingsBySeverity,
 )
 from sentinel.intelligence.attack_paths.analyzer import attack_path_analyzer
 from sentinel.intelligence.recommendations.engine import recommendation_engine
@@ -414,28 +423,322 @@ _delegation_map: dict[str, str] = {}
 
 @app.post(f"{settings.api_prefix}/friday/delegate", response_model=FridayDelegationResponse, tags=["FRIDAY Integration"])
 async def friday_delegate(fr: FridayDelegationRequest) -> FridayDelegationResponse:
-    task_mode = TaskMode.AUTHORIZED_ASSESSMENT if fr.mode == "authorized_assessment" else TaskMode.PASSIVE_RECON
+    # 1. Normalize Target List (support single `target` or multiple `targets`)
+    targets_to_eval: list[dict[str, str]] = []
+    if fr.targets:
+        for t in fr.targets:
+            targets_to_eval.append({"type": t.type, "value": t.value})
+    elif fr.target:
+        if isinstance(fr.target, str):
+            targets_to_eval.append({"type": "domain", "value": fr.target})
+        else:
+            targets_to_eval.append({"type": fr.target.type, "value": fr.target.value})
+    else:
+        targets_to_eval.append({"type": "domain", "value": "default.target.local"})
+
+    # 2. Scope evaluation & blocked targets check
+    allowed_targets: list[dict[str, str]] = []
+    blocked_targets: list[BlockedTargetRecord] = []
+
+    # Check for scope overrides or restrictions
+    if fr.scope_override and "allowed_targets" in fr.scope_override:
+        override_allowed = fr.scope_override.get("allowed_targets", [])
+        for t in targets_to_eval:
+            if t["value"] in override_allowed or any(t["value"].endswith(o.lstrip("*.")) for o in override_allowed):
+                allowed_targets.append(t)
+            else:
+                blocked_targets.append(BlockedTargetRecord(
+                    target=t["value"],
+                    reason="Target not present in provided scope_override allowlist",
+                    policy_dimension="scope_override",
+                ))
+    else:
+        allowed_targets = targets_to_eval
+
+    # Ensure at least one allowed target for task creation
+    active_targets = allowed_targets if allowed_targets else [{"type": "domain", "value": "blocked.scope.target"}]
+
+    task_mode = TaskMode.AUTHORIZED_ASSESSMENT if fr.mode in ("authorized_assessment", "active") else TaskMode.PASSIVE_RECON
     scope_data = {
         "id": f"scope-fri-{int(datetime.now(UTC).timestamp())}",
         "name": f"FRIDAY: {fr.objective[:30]}",
-        "allowed_targets": [t.value for t in fr.targets],
+        "allowed_targets": [t["value"] for t in active_targets],
         "environment": fr.policy_context.environment,
         "authorization": {"reference_ticket_id": fr.policy_context.authorization_reference},
     }
+
+    # Record context tags and metadata
+    task_tags = {
+        "friday_request_id": fr.friday_request_id,
+        "source_system": fr.context.source_system,
+        "asset_type": fr.context.asset_type,
+        "priority": fr.priority.value,
+    }
+    if fr.context.related_incident_id:
+        task_tags["related_incident_id"] = fr.context.related_incident_id
+    if fr.webhook_url:
+        task_tags["webhook_url"] = fr.webhook_url
+
     task = await lifecycle_manager.create_and_submit_task(
         objective=fr.objective,
-        targets=[{"type": t.type, "value": t.value} for t in fr.targets],
+        targets=active_targets,
         scope_data=scope_data,
         mode=task_mode,
         requested_output_type=fr.requested_output.value,
     )
+
     delegation_id = f"del-{task.id}"
     _delegation_map[delegation_id] = task.id
+
     return FridayDelegationResponse(
-        delegation_id=delegation_id,
+        sentinel_task_id=task.id,
         task_id=task.id,
+        delegation_id=delegation_id,
+        friday_request_id=fr.friday_request_id,
         status=task.status.value,
-        stream_url=f"{settings.api_prefix}/tasks/{task.id}/events",
+        initial_phase="RECONNAISSANCE",
+        estimated_duration="5-10 minutes" if fr.priority != "urgent" else "1-3 minutes",
+        blocked_targets=blocked_targets,
+        stream_url=f"{settings.api_prefix}/friday/events/{task.id}",
+    )
+
+
+@app.get(f"{settings.api_prefix}/friday/events/{{task_id}}", tags=["FRIDAY Integration"])
+async def stream_friday_task_events(task_id: str, request: Request) -> EventSourceResponse:
+    """Stream live Server-Sent Events (SSE) structured for FRIDAY delegation consumers."""
+    task = await lifecycle_manager.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail=f"Task {task_id} not found.")
+
+    queue = event_bus.register_queue(task.correlation_id)
+
+    async def friday_event_generator() -> AsyncGenerator[dict[str, str], None]:
+        try:
+            # 1. Initial task_started event
+            start_event = FridaySSEEvent(
+                event_type="task_started",
+                task_id=task.id,
+                phase="RECONNAISSANCE",
+                summary=f"Task '{task.id}' initialized for objective '{task.objective}'.",
+            )
+            yield {
+                "event": "task_started",
+                "data": start_event.model_dump_json(),
+            }
+
+            # 2. Replay existing findings if any
+            existing_findings = finding_engine.list_findings(task_id=task.id)
+            for f in existing_findings:
+                finding_evt = FridaySSEEvent(
+                    event_type="finding_detected",
+                    task_id=task.id,
+                    phase="ASSESSMENT",
+                    finding=f.model_dump(),
+                )
+                yield {
+                    "event": "finding_detected",
+                    "data": finding_evt.model_dump_json(),
+                }
+
+            # 3. Stream ongoing events
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    event: Event = await asyncio.wait_for(queue.get(), timeout=1.0)
+                    evt_type = "phase_changed"
+                    f_data = None
+                    appr_data = None
+                    reason_data = None
+
+                    if "finding" in event.topic:
+                        evt_type = "finding_detected"
+                        f_data = event.payload
+                    elif "approval" in event.topic:
+                        evt_type = "approval_required"
+                        appr_data = event.payload
+                    elif "complete" in event.topic or (event.payload.get("status") == "complete"):
+                        evt_type = "task_completed"
+                    elif "fail" in event.topic or "cancel" in event.topic:
+                        evt_type = "task_failed"
+                        reason_data = event.payload.get("reason", "Task failed or cancelled")
+
+                    sse_item = FridaySSEEvent(
+                        event_type=evt_type,
+                        task_id=task.id,
+                        phase=event.payload.get("phase", "ASSESSMENT"),
+                        finding=f_data,
+                        approval=appr_data,
+                        reason=reason_data,
+                        summary=event.payload.get("summary"),
+                    )
+
+                    yield {
+                        "event": evt_type,
+                        "data": sse_item.model_dump_json(),
+                    }
+                except TimeoutError:
+                    yield {"event": "ping", "data": ""}
+        finally:
+            event_bus.unregister_queue(task.correlation_id, queue)
+
+    return EventSourceResponse(friday_event_generator())
+
+
+@app.get(f"{settings.api_prefix}/friday/posture", response_model=FridaySecurityPostureResponse, tags=["FRIDAY Integration"])
+async def get_friday_security_posture() -> FridaySecurityPostureResponse:
+    """Security posture endpoint returning overall score, domain breakdowns, and severity counts."""
+    all_findings = finding_engine.list_findings()
+
+    crit = sum(1 for f in all_findings if f.severity == SeverityLevel.CRITICAL)
+    high = sum(1 for f in all_findings if f.severity == SeverityLevel.HIGH)
+    med = sum(1 for f in all_findings if f.severity == SeverityLevel.MEDIUM)
+    low = sum(1 for f in all_findings if f.severity == SeverityLevel.LOW)
+
+    # 100 max posture minus finding severity deductions
+    deductions = (crit * 25.0) + (high * 10.0) + (med * 4.0) + (low * 1.0)
+    overall_score = max(0.0, min(100.0, 100.0 - deductions))
+
+    # Domain scores
+    domain_weights: dict[str, list[float]] = {
+        "web": [],
+        "api": [],
+        "network": [],
+        "cloud": [],
+        "endpoint": [],
+    }
+    for f in all_findings:
+        text_ctx = f"{f.title} {f.description} {f.target_ref}".lower()
+        dom = "web"
+        if "api" in text_ctx:
+            dom = "api"
+        elif "cloud" in text_ctx or "aws" in text_ctx or "s3" in text_ctx or "azure" in text_ctx or "gcp" in text_ctx:
+            dom = "cloud"
+        elif "network" in text_ctx or "port" in text_ctx or "dns" in text_ctx or "ip" in text_ctx:
+            dom = "network"
+        elif "endpoint" in text_ctx or "host" in text_ctx or "kernel" in text_ctx:
+            dom = "endpoint"
+
+        penalty = 20.0 if f.severity == SeverityLevel.CRITICAL else (10.0 if f.severity == SeverityLevel.HIGH else 3.0)
+        domain_weights[dom].append(penalty)
+
+    per_domain_scores = {
+        k: max(0.0, round(100.0 - sum(v), 1)) for k, v in domain_weights.items()
+    }
+
+    # Most critical finding
+    most_critical = None
+    if all_findings:
+        sorted_findings = sorted(
+            all_findings,
+            key=lambda x: (
+                0 if x.severity == SeverityLevel.CRITICAL else (
+                    1 if x.severity == SeverityLevel.HIGH else (
+                        2 if x.severity == SeverityLevel.MEDIUM else 3
+                    )
+                ),
+                -x.confidence,
+            )
+        )
+        most_critical = sorted_findings[0].model_dump()
+
+    # Last scan times per asset
+    last_scans: dict[str, str] = {}
+    for f in all_findings:
+        if f.target_ref:
+            last_scans[f.target_ref] = f.last_seen.isoformat()
+
+    return FridaySecurityPostureResponse(
+        overall_posture_score=round(overall_score, 1),
+        per_domain_scores=per_domain_scores,
+        open_findings_by_severity=OpenFindingsBySeverity(critical=crit, high=high, medium=med, low=low),
+        most_critical_finding=most_critical,
+        last_scan_times=last_scans,
+        trend="stable" if crit == 0 else "degrading",
+    )
+
+
+@app.get(f"{settings.api_prefix}/friday/assets", response_model=FridayAssetInventoryResponse, tags=["FRIDAY Integration"])
+async def get_friday_asset_inventory() -> FridayAssetInventoryResponse:
+    """Asset inventory endpoint returning all known targets with security status."""
+    all_findings = finding_engine.list_findings()
+    asset_map: dict[str, dict[str, Any]] = {}
+
+    for f in all_findings:
+        tgt = f.target_ref or "unknown"
+        if tgt not in asset_map:
+            asset_map[tgt] = {
+                "target": tgt,
+                "asset_type": "domain" if "." in tgt and not tgt.startswith("http") else "web_service",
+                "status": "secure",
+                "open_finding_count": 0,
+                "last_assessed_at": f.last_seen.isoformat(),
+                "max_sev": SeverityLevel.INFO,
+            }
+        asset_map[tgt]["open_finding_count"] += 1
+        if f.severity == SeverityLevel.CRITICAL:
+            asset_map[tgt]["status"] = "critical"
+        elif f.severity == SeverityLevel.HIGH and asset_map[tgt]["status"] != "critical":
+            asset_map[tgt]["status"] = "vulnerable"
+        elif asset_map[tgt]["status"] == "secure":
+            asset_map[tgt]["status"] = "vulnerable"
+
+    # Also include nodes from asset_graph_store if available
+    for n in asset_graph_store._nodes.values():
+        if n.label not in asset_map:
+            asset_map[n.label] = {
+                "target": n.label,
+                "asset_type": n.node_type.value,
+                "status": "secure",
+                "open_finding_count": 0,
+                "last_assessed_at": n.discovered_at.isoformat(),
+            }
+
+    items = [
+        FridayAssetInventoryItem(
+            target=v["target"],
+            asset_type=v["asset_type"],
+            status=v["status"],
+            open_finding_count=v["open_finding_count"],
+            last_assessed_at=v.get("last_assessed_at"),
+        )
+        for v in asset_map.values()
+    ]
+
+    return FridayAssetInventoryResponse(
+        total_assets=len(items),
+        assets=items,
+    )
+
+
+@app.post(f"{settings.api_prefix}/friday/schedule", response_model=FridayScheduleResponse, tags=["FRIDAY Integration"])
+async def create_friday_assessment_schedule(req: FridayScheduleRequest) -> FridayScheduleResponse:
+    """Create scheduled continuous security assessments for FRIDAY."""
+    from sentinel.modules.operations.scheduler import assessment_scheduler
+
+    tgt_str = req.target.value if not isinstance(req.target, str) else req.target
+    schedule_id = f"sched-fri-{int(datetime.now(UTC).timestamp())}"
+
+    interval_sec = 86400  # daily
+    if req.frequency == "weekly":
+        interval_sec = 604800
+    elif req.frequency == "monthly":
+        interval_sec = 2592000
+
+    assessment_scheduler.add_monitoring_job(
+        job_id=schedule_id,
+        name=f"FRIDAY {req.frequency.value.title()} Check: {tgt_str}",
+        target_ref=tgt_str,
+        interval_seconds=interval_sec,
+    )
+
+    return FridayScheduleResponse(
+        schedule_id=schedule_id,
+        target=tgt_str,
+        frequency=req.frequency.value,
+        mode=req.mode,
+        notify_on=req.notify_on.value,
+        status="active",
     )
 
 
@@ -476,3 +779,41 @@ async def cancel_friday_delegation(delegation_id: str, reason: str = Query("FRID
     task_id = _delegation_map.get(delegation_id, delegation_id.replace("del-", ""))
     task = await lifecycle_manager.cancel_task(task_id, reason=reason)
     return {"delegation_id": delegation_id, "task_id": task.id, "status": task.status.value}
+
+
+# IntelX Threat Research Integration Endpoints
+
+class FridayResearchRequest(BaseModel):
+    query: str
+    force: bool = False
+
+
+@app.post(f"{settings.api_prefix}/friday/research", tags=["FRIDAY Integration"])
+async def submit_friday_research(req: FridayResearchRequest) -> dict[str, Any]:
+    """Submit deep vulnerability or threat actor research query to IntelX client."""
+    from sentinel.integrations.intelx_client import intelx_research_client
+    result = await intelx_research_client.submit_research(req.query, force=req.force)
+    return result.model_dump()
+
+
+@app.get(f"{settings.api_prefix}/friday/research-context/{{finding_id}}", tags=["FRIDAY Integration"])
+async def get_finding_research_context(finding_id: str) -> dict[str, Any]:
+    """Retrieve IntelX research context for a specific Sentinel finding."""
+    from sentinel.intelligence.threat_context import threat_context_enricher
+    finding = finding_engine.get_finding(finding_id)
+    if not finding:
+        raise HTTPException(status_code=404, detail=f"Finding '{finding_id}' not found.")
+
+    ctx = await threat_context_enricher.enrich_finding_with_research(finding.title)
+    return {
+        "finding_id": finding_id,
+        "title": finding.title,
+        "threat_context": ctx,
+    }
+
+
+# Include Metrics Router
+from sentinel.api.metrics import router as metrics_router
+app.include_router(metrics_router, prefix=settings.api_prefix)
+
+

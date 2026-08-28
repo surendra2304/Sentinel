@@ -1,10 +1,11 @@
-"""FRIDAY Integration Contract Models and Summarizer Service.
+"""FRIDAY Integration Contract Models, Enhanced Delegation, and Summarizer Service.
 
 Provides:
-1. FridayDelegationRequest & FridayDelegationResponse models.
-2. FridayResultPayload conforming to friday_result.schema.json.
-3. Deterministic Human-Readable Summarizer (LLM-independent).
-4. Blocked action tracking so FRIDAY always knows what Sentinel refused to do.
+1. Extended FridayDelegationRequest & FridayDelegationResponse models.
+2. FridaySecurityPostureResponse, FridayAssetInventoryResponse, and FridayScheduleRequest models.
+3. FridaySSEEvent types: task_started, phase_changed, finding_detected, approval_required, task_completed, task_failed.
+4. Deterministic Human-Readable Summarizer (LLM-independent).
+5. Blocked action & blocked target tracking.
 """
 
 from datetime import UTC, datetime
@@ -14,6 +15,19 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from sentinel.core.models import Finding, SeverityLevel, Task
+
+
+class FridayPriority(StrEnum):
+    NORMAL = "normal"
+    HIGH = "high"
+    URGENT = "urgent"
+
+
+class FridaySourceSystem(StrEnum):
+    NEXUS = "nexus"
+    FORGE = "forge"
+    TRADING_BOT = "trading_bot"
+    OTHER = "other"
 
 
 class FridayCapability(StrEnum):
@@ -31,8 +45,14 @@ class FridayRequestedOutput(StrEnum):
 
 
 class FridayTargetPayload(BaseModel):
-    type: str
+    type: str = "domain"
     value: str
+
+
+class FridayContext(BaseModel):
+    asset_type: str = "web_application"
+    source_system: str = "nexus"  # nexus | forge | trading_bot | other
+    related_incident_id: str | None = None
 
 
 class FridayPolicyContext(BaseModel):
@@ -42,20 +62,39 @@ class FridayPolicyContext(BaseModel):
 
 
 class FridayDelegationRequest(BaseModel):
-    capability: FridayCapability
-    objective: str
-    targets: list[FridayTargetPayload]
+    """Extended delegation request contract from FRIDAY."""
+    friday_request_id: str = Field(default_factory=lambda: f"fri-req-{int(datetime.now(UTC).timestamp())}")
+    target: FridayTargetPayload | str | None = None
+    targets: list[FridayTargetPayload] = Field(default_factory=list)
     mode: str = "assessment"
+    scope_override: dict[str, Any] | None = None
+    priority: FridayPriority = FridayPriority.NORMAL
+    context: FridayContext = Field(default_factory=FridayContext)
+    webhook_url: str | None = None
+    capability: FridayCapability = FridayCapability.SECURITY_ASSESSMENT
+    objective: str = "Autonomous Security Assessment"
     requested_output: FridayRequestedOutput = FridayRequestedOutput.TECHNICAL_AND_EXECUTIVE
     policy_context: FridayPolicyContext = Field(default_factory=FridayPolicyContext)
     time_budget_seconds: int | None = None
     resource_constraints: dict[str, Any] = Field(default_factory=dict)
 
 
+class BlockedTargetRecord(BaseModel):
+    target: str
+    reason: str
+    policy_dimension: str = "scope"
+
+
 class FridayDelegationResponse(BaseModel):
+    """Enhanced response contract returned to FRIDAY."""
+    sentinel_task_id: str
+    task_id: str  # Backwards-compatibility alias
     delegation_id: str
-    task_id: str
+    friday_request_id: str
     status: str
+    initial_phase: str = "RECONNAISSANCE"
+    estimated_duration: str = "5-10 minutes"
+    blocked_targets: list[BlockedTargetRecord] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     stream_url: str
 
@@ -78,6 +117,75 @@ class FridayResultPayload(BaseModel):
     remediation_recommendations: list[dict[str, Any]] = Field(default_factory=list)
     report_artifacts: dict[str, str] = Field(default_factory=dict)
     human_summary: str
+
+
+class FridaySSEEvent(BaseModel):
+    event_type: str  # task_started | phase_changed | finding_detected | approval_required | task_completed | task_failed
+    task_id: str
+    phase: str
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    finding: dict[str, Any] | None = None
+    approval: dict[str, Any] | None = None
+    reason: str | None = None
+    summary: str | None = None
+
+
+class OpenFindingsBySeverity(BaseModel):
+    critical: int = 0
+    high: int = 0
+    medium: int = 0
+    low: int = 0
+
+
+class FridaySecurityPostureResponse(BaseModel):
+    overall_posture_score: float  # 0-100 (100 = perfect/no findings)
+    per_domain_scores: dict[str, float] = Field(default_factory=dict)
+    open_findings_by_severity: OpenFindingsBySeverity = Field(default_factory=OpenFindingsBySeverity)
+    most_critical_finding: dict[str, Any] | None = None
+    last_scan_times: dict[str, str] = Field(default_factory=dict)
+    trend: str = "stable"  # improving | stable | degrading
+
+
+class FridayAssetInventoryItem(BaseModel):
+    target: str
+    asset_type: str
+    status: str  # secure | vulnerable | critical | unscanned
+    open_finding_count: int = 0
+    last_assessed_at: str | None = None
+
+
+class FridayAssetInventoryResponse(BaseModel):
+    total_assets: int
+    assets: list[FridayAssetInventoryItem]
+
+
+class FridayScheduleFrequency(StrEnum):
+    DAILY = "daily"
+    WEEKLY = "weekly"
+    MONTHLY = "monthly"
+
+
+class FridayScheduleNotifyOn(StrEnum):
+    CRITICAL_ONLY = "critical_only"
+    ALL_FINDINGS = "all_findings"
+    COMPLETION = "completion"
+
+
+class FridayScheduleRequest(BaseModel):
+    target: FridayTargetPayload | str
+    frequency: FridayScheduleFrequency = FridayScheduleFrequency.DAILY
+    mode: str = "assessment"
+    notify_on: FridayScheduleNotifyOn = FridayScheduleNotifyOn.ALL_FINDINGS
+
+
+class FridayScheduleResponse(BaseModel):
+    schedule_id: str
+    target: str
+    frequency: str
+    mode: str
+    notify_on: str
+    status: str = "active"
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class FridaySummarizer:
@@ -119,7 +227,5 @@ class FridaySummarizer:
             summary += f" Top Risk: {top.title} on {top.target_ref}."
             rem_text = top.remediation or "Apply security hardening best practices and verify with Sentinel re-tests."
             summary += f" Remediation Pointer: {rem_text}"
-        else:
-            summary += " Remediation Pointer: Maintain baseline security hardening and scheduled verification re-tests."
 
         return summary

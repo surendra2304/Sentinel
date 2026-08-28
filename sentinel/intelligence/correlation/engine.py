@@ -1,4 +1,4 @@
-﻿"""Cross-Domain Finding Correlation Engine for Sentinel.
+"""Cross-Domain Finding Correlation Engine for Sentinel.
 
 Groups isolated findings across Recon, Network, Web, Cloud, and DFIR into correlated clusters
 sharing common assets, CVEs, or attack narratives.
@@ -79,3 +79,47 @@ class FindingCorrelationEngine:
 
 # Global Finding Correlation Engine Singleton
 finding_correlation_engine = FindingCorrelationEngine()
+
+
+class AssetVulnerabilityCorrelator:
+    """Correlates newly published CVEs against asset fingerprints and exposure metrics."""
+
+    @staticmethod
+    def evaluate_cve_asset_risk(
+        cve_id: str,
+        asset_target: str,
+        software_version: str,
+        is_publicly_exposed: bool = True,
+        is_auth_required: bool = False,
+        vulnerable_config_present: bool = True,
+    ) -> dict:
+        from sentinel.integrations.threat_feeds.feeds import threat_feed_sync
+        feed_ctx = threat_feed_sync.correlate_cve(cve_id)
+
+        # Exposure multiplier
+        exposure_factor = 1.0 if is_publicly_exposed else 0.5
+        auth_factor = 0.6 if is_auth_required else 1.0
+        config_factor = 1.0 if vulnerable_config_present else 0.2
+
+        exploitability = 1.0 if feed_ctx.exploit_available else (1.5 if feed_ctx.in_cisa_kev else 0.7)
+
+        # Asset-specific risk score (0 - 100)
+        computed_risk = round(feed_ctx.cvss_base * 10 * exposure_factor * auth_factor * config_factor * exploitability, 1)
+        computed_risk = min(100.0, computed_risk)
+
+        is_confirmed = vulnerable_config_present and (is_publicly_exposed or not is_auth_required)
+
+        return {
+            "cve_id": cve_id,
+            "target": asset_target,
+            "software_version": software_version,
+            "adjusted_severity": feed_ctx.adjusted_severity.value,
+            "asset_risk_score": computed_risk,
+            "is_confirmed_vulnerable": is_confirmed,
+            "in_cisa_kev": feed_ctx.in_cisa_kev,
+            "exploit_available": feed_ctx.exploit_available,
+        }
+
+
+asset_vulnerability_correlator = AssetVulnerabilityCorrelator()
+

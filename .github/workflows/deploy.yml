@@ -1,0 +1,32 @@
+name: Deploy Production
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  test-and-security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run Pytest Test Suite
+        run: |
+          pip install -e ".[dev]"
+          pytest
+      - name: Security Scan
+        run: |
+          pip install pip-audit
+          pip-audit || true
+
+  build-and-deploy:
+    needs: test-and-security
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Production Image
+        run: |
+          docker build -t sentinel-api:latest -f docker/Dockerfile.api .

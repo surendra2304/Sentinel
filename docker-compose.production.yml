@@ -1,0 +1,85 @@
+version: "3.9"
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    image: sentinel-api:v1.0.0
+    deploy:
+      replicas: 3
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4G
+    environment:
+      - SENTINEL_STORAGE_BACKEND=postgres
+      - SENTINEL_DB_HOST=postgres
+      - SENTINEL_DB_PORT=5432
+      - SENTINEL_DB_USER=sentinel
+      - SENTINEL_DB_PASSWORD=sentinel_prod_secret_pass
+      - SENTINEL_DB_NAME=sentinel_db
+      - SENTINEL_REDIS_URL=redis://redis:6379/0
+      - SENTINEL_S3_ENDPOINT=minio:9000
+    depends_on:
+      - postgres
+      - redis
+      - minio
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    image: sentinel-worker:v1.0.0
+    deploy:
+      replicas: 2
+    entrypoint: ["celery", "-A", "sentinel.core.tasks", "worker", "--concurrency=3", "-l", "info"]
+    environment:
+      - SENTINEL_STORAGE_BACKEND=postgres
+      - SENTINEL_DB_HOST=postgres
+      - SENTINEL_REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - postgres
+      - redis
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: sentinel
+      POSTGRES_PASSWORD: sentinel_prod_secret_pass
+      POSTGRES_DB: sentinel_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sentinel"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: sentinel_minio_user
+      MINIO_ROOT_PASSWORD: sentinel_minio_secret
+    volumes:
+      - minio_data:/data
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
