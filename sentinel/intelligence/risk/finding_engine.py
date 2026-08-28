@@ -1,4 +1,4 @@
-﻿"""Finding Engine for Sentinel.
+"""Finding Engine for Sentinel.
 
 Converts raw observations into deduplicated, evidence-anchored Finding models,
 prevents observation noise, and manages finding lifecycle states.
@@ -206,6 +206,51 @@ class FindingEngine:
                 continue
             results.append(f)
         return results
+
+    def adjust_confidence(self, finding_id: str, delta: float, reason: str = "") -> Finding | None:
+        """Apply a confidence delta (positive or negative) from quality review.
+
+        Called synchronously by SecurityIntelligenceAgent during quality review.
+        Confidence is clamped to [0.0, 1.0].
+        """
+        finding = self._findings.get(finding_id)
+        if not finding:
+            return None
+        finding.confidence = round(max(0.0, min(1.0, finding.confidence + delta)), 4)
+        finding.last_seen = datetime.now(UTC)
+        self.audit.log_event(
+            entry_id=f"audit-qr-{finding_id}",
+            event_type="QUALITY_REVIEW_ADJUSTMENT",
+            actor="security_intelligence_agent",
+            target=finding.target_ref,
+            action_type="CONFIDENCE_ADJUSTMENT",
+            scope_policy=finding.task_id,
+            decision=f"delta={delta:+.2f}",
+            details={"finding_id": finding_id, "reason": reason,
+                     "new_confidence": finding.confidence},
+        )
+        return finding
+
+    def flag_finding(self, finding_id: str, new_status: FindingStatus, reason: str = "") -> Finding | None:
+        """Synchronous status update for quality-review flagging (no async event emission)."""
+        finding = self._findings.get(finding_id)
+        if not finding:
+            return None
+        old_status = finding.status
+        finding.status = new_status
+        finding.last_seen = datetime.now(UTC)
+        self.audit.log_event(
+            entry_id=f"audit-flag-{finding_id}",
+            event_type="FINDING_FLAGGED",
+            actor="quality_review",
+            target=finding.target_ref,
+            action_type="FINDING_LIFECYCLE",
+            scope_policy=finding.task_id,
+            decision=new_status.value,
+            details={"old_status": old_status.value, "new_status": new_status.value,
+                     "reason": reason},
+        )
+        return finding
 
 
 # Global Finding Engine Singleton

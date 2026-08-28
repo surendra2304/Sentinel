@@ -1,4 +1,4 @@
-﻿"""Core domain models for Sentinel — typed Pydantic v2 schemas.
+"""Core domain models for Sentinel — typed Pydantic v2 schemas.
 
 Provides shared vocabulary for Target, TargetSet, Scope, Policy, Task,
 ActionRequest, ActionResult, Evidence, Finding, Risk, and Event.
@@ -119,6 +119,7 @@ class FindingStatus(StrEnum):
     FALSE_POSITIVE = "false_positive"
     REMEDIATED = "remediated"
     ACCEPTED = "accepted"
+    REVIEW_REQUIRED = "review_required"  # Flagged by quality review
 
 
 class RiskTier(StrEnum):

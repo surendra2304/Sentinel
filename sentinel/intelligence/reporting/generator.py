@@ -147,6 +147,33 @@ class ReportGenerator:
         data["status"] = report.task_status
         return json.dumps(data, indent=2)
 
+    async def generate_executive_prose(self, report: SecurityReport) -> str:
+        """Generate executive summary prose via IntelligenceRouter (report_synthesis role).
+
+        Uses LLMProvider if configured; otherwise falls back to HeuristicProvider template.
+        The API key is NEVER included in the context payload or logs.
+        """
+        from sentinel.core.intelligence.interface import IntelligenceRequest, IntelligenceRole
+        from sentinel.core.intelligence.router import intelligence_router
+
+        critical_count = report.findings_summary.get("critical", 0)
+        context = {
+            "task_objective": f"Task {report.task_id}",
+            "total_findings": sum(report.findings_summary.values()),
+            "critical_count": critical_count,
+            "risk_score": report.overall_risk_score,
+        }
+        result = await intelligence_router.request(
+            IntelligenceRequest(
+                role=IntelligenceRole.REPORT_SYNTHESIS,
+                context=context,
+                request_id=f"synth-{report.report_id}",
+            )
+        )
+        if result.ok:
+            return str(result.structured_output.get("executive_prose", report.summary_narrative))
+        return report.summary_narrative
+
 
 # Global Report Generator Singleton
 report_generator = ReportGenerator()
