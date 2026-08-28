@@ -49,6 +49,29 @@ async def get_scan_coverage():
     }
 
 
+@router.get("/predictive-forecasts")
+async def get_predictive_risk_forecasts():
+    """Predictive Risk view endpoint showing threat escalation and exploitation forecasts."""
+    from sentinel.intelligence.predictive_workflow import predictive_risk_workflow
+    from sentinel.integrations.futuris_client import futuris_threat_client
+
+    escalation = await futuris_threat_client.get_threat_escalation_forecast(
+        asset_target="api.payment.corp",
+        threat_intel_context={"exploitation_active": True},
+    )
+    proactive_scans = await predictive_risk_workflow.evaluate_proactive_scanning_needs(
+        assets=["api.payment.corp", "auth.vpn.corp"],
+        threat_intel_context={"exploitation_active": True},
+    )
+
+    return {
+        "threat_forecasts": [escalation.model_dump()],
+        "risk_trajectory": "growing",
+        "proactive_scan_recommendations": proactive_scans,
+        "confidence": 0.90,
+    }
+
+
 @router.get("/prometheus", response_class=PlainTextResponse)
 async def get_prometheus_metrics():
     lines = [
