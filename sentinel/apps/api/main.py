@@ -70,7 +70,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="SENTINEL — Unified Autonomous Cybersecurity Platform",
     description="Single Task Gateway API for autonomous security operations, telemetry, and event streaming.",
-    version="1.0.0",
+    version="2.0.0",
     docs_url=f"{settings.api_prefix}/docs",
     openapi_url=f"{settings.api_prefix}/openapi.json",
     lifespan=lifespan,

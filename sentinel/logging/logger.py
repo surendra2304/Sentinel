@@ -1,4 +1,4 @@
-﻿"""Structured JSON logging with correlation ID tracing."""
+"""Structured JSON logging with correlation ID tracing."""
 
 import contextvars
 import json

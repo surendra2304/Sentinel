@@ -1,4 +1,4 @@
-﻿"""Initial migration creating all Sentinel core domain tables
+"""Initial migration creating all Sentinel core domain tables
 
 Revision ID: 0001_initial_core_models
 Revises:

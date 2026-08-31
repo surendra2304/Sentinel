@@ -1,4 +1,4 @@
-﻿from alembic.config import Config
+from alembic.config import Config
 from sqlalchemy import create_engine, text
 
 from alembic import command

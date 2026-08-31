@@ -1,4 +1,4 @@
-﻿"""Comprehensive Reconnaissance and OSINT Tool Adapters for Sentinel.
+"""Comprehensive Reconnaissance and OSINT Tool Adapters for Sentinel.
 
 Includes:
 1. SubdomainEnumAdapter: Certificate transparency logs (crt.sh) + wordlist brute force with wildcard detection.

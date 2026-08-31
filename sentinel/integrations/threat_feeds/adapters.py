@@ -1,4 +1,4 @@
-﻿"""Threat Intelligence Feed Adapters for Sentinel.
+"""Threat Intelligence Feed Adapters for Sentinel.
 
 Provides:
 1. CISAKEVFeedAdapter: Pulls and indexes CISA Known Exploited Vulnerabilities catalog.

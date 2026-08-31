@@ -1,4 +1,4 @@
-﻿"""Web Security Assessment Tool Adapters for Sentinel.
+"""Web Security Assessment Tool Adapters for Sentinel.
 
 Includes:
 1. WebCrawlerAdapter: Endpoint discovery, form parsing, robots.txt traversal with depth limits.

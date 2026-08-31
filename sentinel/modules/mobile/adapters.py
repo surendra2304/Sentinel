@@ -1,4 +1,4 @@
-﻿"""Mobile Security Tool Adapters for Sentinel.
+"""Mobile Security Tool Adapters for Sentinel.
 
 Includes:
 1. AndroidAPKStaticAnalysisAdapter: Manifest parsing (permissions, components, debuggable/backup, cleartextTraffic) & secret regexes.

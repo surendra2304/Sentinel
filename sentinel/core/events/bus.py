@@ -1,4 +1,4 @@
-﻿"""Internal Asynchronous Event Bus for Sentinel.
+"""Internal Asynchronous Event Bus for Sentinel.
 
 Provides typed publish/subscribe mechanics with an in-process memory bus,
 designed to be easily swapped with Redis/NATS without altering publisher interfaces.

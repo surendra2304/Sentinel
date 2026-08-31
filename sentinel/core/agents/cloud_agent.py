@@ -1,4 +1,4 @@
-﻿"""Cloud Security Agent for Sentinel.
+"""Cloud Security Agent for Sentinel.
 
 Coordinates read-only cloud infrastructure inventory across AWS, Azure, and GCP,
 evaluates configurations against data-driven posture rulesets, and logs verified Findings.

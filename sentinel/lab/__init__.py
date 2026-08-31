@@ -1,1 +1,1 @@
-﻿'''Sentinel Vulnerable Lab Package.'''
+'''Sentinel Vulnerable Lab Package.'''

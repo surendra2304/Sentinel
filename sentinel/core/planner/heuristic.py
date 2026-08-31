@@ -1,4 +1,4 @@
-﻿"""Sentinel Autonomous Planner Interface and Heuristic Planner.
+"""Sentinel Autonomous Planner Interface and Heuristic Planner.
 
 Defines the LLM-agnostic Planner contract and implements the HeuristicPlanner:
 a disciplined, phase-based planning engine following cybersecurity best practices.

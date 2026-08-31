@@ -1,4 +1,4 @@
-﻿"""Reconnaissance Agent for Sentinel.
+"""Reconnaissance Agent for Sentinel.
 
 Coordinates DNS lookups, Subdomain enumeration, IP intelligence, OSINT,
 HTTP observation, technology fingerprinting, and network service scans.

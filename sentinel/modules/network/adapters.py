@@ -1,4 +1,4 @@
-﻿"""Network Security Tool Adapters for Sentinel.
+"""Network Security Tool Adapters for Sentinel.
 
 Provides:
 1. HostDiscoveryAdapter: Ping / TCP / UDP multi-probe liveness and ARP discovery.

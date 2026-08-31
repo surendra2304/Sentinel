@@ -1,4 +1,4 @@
-﻿"""Per-Task Working Memory for Sentinel.
+"""Per-Task Working Memory for Sentinel.
 
 Provides structured, evolving state for assets, observations, evidence, and findings,
 giving the autonomous planner and agents rich contextual state.

@@ -1,4 +1,4 @@
-﻿"""Docker and Environment Deployment Health Check Script for Sentinel.
+"""Docker and Environment Deployment Health Check Script for Sentinel.
 
 Validates that:
 1. Environment variables and settings load correctly.

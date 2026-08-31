@@ -1,4 +1,4 @@
-﻿"""Sentinel Autonomous Orchestrator.
+"""Sentinel Autonomous Orchestrator.
 
 Implements the autonomous execution loop:
 1. Gather context & working memory

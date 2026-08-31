@@ -1,4 +1,4 @@
-﻿
+
 from sentinel.core.models import (
     Finding,
     Policy,

@@ -1,4 +1,4 @@
-﻿import pytest
+import pytest
 
 from sentinel.audit.audit_logger import AuditLogger
 from sentinel.core.models import (

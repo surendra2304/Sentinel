@@ -1,4 +1,4 @@
-﻿"""Vulnerability Intelligence and Threat Intelligence Domain Agents for Sentinel."""
+"""Vulnerability Intelligence and Threat Intelligence Domain Agents for Sentinel."""
 
 import json
 from typing import Any

@@ -1,4 +1,4 @@
-﻿import json
+import json
 import socketserver
 import threading
 from http import server

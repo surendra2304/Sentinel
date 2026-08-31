@@ -1,4 +1,4 @@
-﻿"""Network Port and Service Discovery Adapter for Sentinel.
+"""Network Port and Service Discovery Adapter for Sentinel.
 
 Wraps Nmap if installed, with a scope-hardened pure-Python fallback using
 asyncio TCP sockets. Strictly enforces ScopeResolver checks before attempting

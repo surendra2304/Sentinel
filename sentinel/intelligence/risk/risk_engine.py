@@ -1,4 +1,4 @@
-﻿"""Risk Engine for Sentinel.
+"""Risk Engine for Sentinel.
 
 Calculates and dynamically updates numeric risk scores and tiers per finding,
 asset, environment, and task. Emits risk.updated events.

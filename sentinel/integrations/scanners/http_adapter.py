@@ -1,4 +1,4 @@
-﻿"""HTTP & TLS Observation Adapter for Sentinel.
+"""HTTP & TLS Observation Adapter for Sentinel.
 
 Uses httpx to perform passive observation:
 - Status codes & response headers (Security headers check)

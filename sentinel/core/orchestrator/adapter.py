@@ -1,4 +1,4 @@
-﻿"""Tool Adapter Contract and Registry for Sentinel.
+"""Tool Adapter Contract and Registry for Sentinel.
 
 Defines the abstract interface for all security scanners, command wrappers,
 and protocol adapters, along with a dynamic capability routing registry.

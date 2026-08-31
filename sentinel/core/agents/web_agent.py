@@ -1,4 +1,4 @@
-﻿"""Web Security Agent for Sentinel.
+"""Web Security Agent for Sentinel.
 
 Coordinates crawling, endpoint mapping, security header analysis,
 authentication flow inspection, and vulnerability validation checks.

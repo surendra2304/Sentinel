@@ -1,4 +1,4 @@
-﻿"""Playwright-based Browser Adapter for Sentinel.
+"""Playwright-based Browser Adapter for Sentinel.
 
 Produces DOM snapshots, screenshots, and HAR captures as first-class Evidence artifacts.
 Provides automatic graceful fallback to HTTP-only crawling when Playwright is unavailable.

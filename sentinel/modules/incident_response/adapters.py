@@ -1,4 +1,4 @@
-﻿"""Incident Response Engine & SOC Report Models for Sentinel.
+"""Incident Response Engine & SOC Report Models for Sentinel.
 
 Provides:
 - Alert Triage & Root Cause Analysis

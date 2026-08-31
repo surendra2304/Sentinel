@@ -1,4 +1,4 @@
-﻿"""Alerting and Notification Dispatch Engine for Sentinel.
+"""Alerting and Notification Dispatch Engine for Sentinel.
 
 Features:
 1. Alert Model (ID, severity, type, target, message, lifecycle status).

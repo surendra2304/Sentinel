@@ -1,4 +1,4 @@
-﻿"""Subprocess execution sandbox for Sentinel CLI security tools.
+"""Subprocess execution sandbox for Sentinel CLI security tools.
 
 Enforces:
 - Hard execution timeouts

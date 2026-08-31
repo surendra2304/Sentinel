@@ -1,4 +1,4 @@
-﻿"""Append-only, tamper-evident cryptographic audit logger for Sentinel."""
+"""Append-only, tamper-evident cryptographic audit logger for Sentinel."""
 
 import hashlib
 import hmac

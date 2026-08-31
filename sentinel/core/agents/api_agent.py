@@ -1,4 +1,4 @@
-﻿"""API Security Agent for Sentinel.
+"""API Security Agent for Sentinel.
 
 Coordinates API surface discovery, OpenAPI schema ingestion, JWT audit,
 input validation boundary testing, and CORS misconfiguration checks.

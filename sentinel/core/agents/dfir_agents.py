@@ -1,4 +1,4 @@
-﻿"""Forensics and Incident Response Domain Agents for Sentinel."""
+"""Forensics and Incident Response Domain Agents for Sentinel."""
 
 import json
 from typing import Any

@@ -1,4 +1,4 @@
-﻿"""Asset Graph Data Model and In-Memory/Database Graph Store for Sentinel.
+"""Asset Graph Data Model and In-Memory/Database Graph Store for Sentinel.
 
 Represents attack surface relationships:
 domain -> subdomain -> ip -> port -> service -> technology -> url

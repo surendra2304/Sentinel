@@ -1,4 +1,4 @@
-﻿"""Storage abstraction for Sentinel evidence and raw artifacts."""
+"""Storage abstraction for Sentinel evidence and raw artifacts."""
 
 import hashlib
 import os

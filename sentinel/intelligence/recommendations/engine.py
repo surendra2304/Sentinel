@@ -1,4 +1,4 @@
-﻿"""Remediation & Compensating Control Recommendation Engine for Sentinel.
+"""Remediation & Compensating Control Recommendation Engine for Sentinel.
 
 Synthesizes prioritized remediation action plans with effort estimates,
 compensating mitigations, and explicit Sentinel verification validation checks.

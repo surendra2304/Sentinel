@@ -1,4 +1,4 @@
-﻿"""Sentinel Knowledge Layer & Threat Intelligence Models.
+"""Sentinel Knowledge Layer & Threat Intelligence Models.
 
 Persistent data models for:
 - CVE Records (ID, description, CVSS score/vector, affected products/versions, KEV flag)

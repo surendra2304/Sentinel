@@ -1,4 +1,4 @@
-﻿"""Network Security Agent for Sentinel.
+"""Network Security Agent for Sentinel.
 
 Coordinates host liveness, exposure analysis, segmentation testing,
 firewall reviews, and traffic inspection. Produces structured Findings.

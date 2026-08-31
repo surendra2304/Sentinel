@@ -1,4 +1,4 @@
-﻿import pytest
+import pytest
 
 from sentinel.core.models import (
     AssetCriticality,

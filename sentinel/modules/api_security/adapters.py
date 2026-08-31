@@ -1,4 +1,4 @@
-﻿"""API Security Tool Adapters for Sentinel.
+"""API Security Tool Adapters for Sentinel.
 
 Includes:
 1. APIDiscoveryAdapter: Identifies REST endpoints, OpenAPI/Swagger JSON specs, and GraphQL endpoints.

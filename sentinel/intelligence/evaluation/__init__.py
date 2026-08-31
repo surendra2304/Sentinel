@@ -1,1 +1,1 @@
-﻿"""Sentinel Intelligence Evaluation."""
+"""Sentinel Intelligence Evaluation."""

@@ -1,4 +1,4 @@
-﻿"""Sentinel DNS Intelligence Module.
+"""Sentinel DNS Intelligence Module.
 
 Performs:
 - Full DNS record enumeration (A, AAAA, MX, TXT, NS, SOA, CNAME, PTR)

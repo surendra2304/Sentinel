@@ -1,4 +1,4 @@
-﻿"""Recurring Security Assessment and Monitoring Scheduler Service.
+"""Recurring Security Assessment and Monitoring Scheduler Service.
 
 Manages:
 1. Scheduled task templates (Cron-style intervals).

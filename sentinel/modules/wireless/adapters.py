@@ -1,4 +1,4 @@
-﻿"""Wireless Security Tool Adapters for Sentinel.
+"""Wireless Security Tool Adapters for Sentinel.
 
 Includes:
 1. WirelessInventoryAdapter: Enumerates Wi-Fi interfaces and SSIDs on owned host (netsh / iwlist / airport).

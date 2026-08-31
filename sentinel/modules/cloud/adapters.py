@@ -1,4 +1,4 @@
-﻿"""Cloud Security Tool Adapters for Sentinel.
+"""Cloud Security Tool Adapters for Sentinel.
 
 Provides strictly READ-ONLY cloud posture assessment adapters:
 1. AWSCloudAdapter: S3 public bucket access, IAM wildcard policies, CloudTrail logging (boto3 / mock).

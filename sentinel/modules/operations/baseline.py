@@ -1,4 +1,4 @@
-﻿"""Baseline & Differential Security Assessment Engine for Sentinel.
+"""Baseline & Differential Security Assessment Engine for Sentinel.
 
 Tracks asset snapshots, open ports, DNS records, certificates, and findings per target.
 Computes delta changes between consecutive runs to trigger proactive change alerts.

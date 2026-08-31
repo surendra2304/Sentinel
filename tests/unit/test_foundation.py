@@ -1,4 +1,4 @@
-﻿import pytest
+import pytest
 
 from sentinel.audit.audit_logger import AuditLogger
 from sentinel.config.settings import EnvironmentType, get_settings

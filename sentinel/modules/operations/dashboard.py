@@ -1,4 +1,4 @@
-﻿"""Operations & Posture Dashboards Aggregator for Sentinel.
+"""Operations & Posture Dashboards Aggregator for Sentinel.
 
 Aggregates operational posture metrics:
 1. Risk Trends over time per environment.

@@ -1,4 +1,4 @@
-﻿"""Agent Contract and Registry for Sentinel.
+"""Agent Contract and Registry for Sentinel.
 
 Defines the abstract BaseAgent and typed AgentReport contracts.
 All autonomous agents in Sentinel output structured reports with typed ActionRequests,

@@ -1,4 +1,4 @@
-﻿"""DNS Analysis and Query Adapter for Sentinel.
+"""DNS Analysis and Query Adapter for Sentinel.
 
 Wraps dnspython to query records (A, AAAA, MX, NS, TXT, CNAME, SOA)
 and performs DNSSEC validation checks.

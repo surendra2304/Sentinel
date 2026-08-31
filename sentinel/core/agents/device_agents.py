@@ -1,4 +1,4 @@
-﻿"""Wireless, Mobile, and Endpoint Domain Agents for Sentinel."""
+"""Wireless, Mobile, and Endpoint Domain Agents for Sentinel."""
 
 import json
 from typing import Any
