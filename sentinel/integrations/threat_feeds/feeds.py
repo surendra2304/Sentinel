@@ -8,8 +8,8 @@ Provides:
 """
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
-from pydantic import BaseModel, Field
+
+from pydantic import BaseModel
 
 from sentinel.core.models import SeverityLevel
 

@@ -1,12 +1,13 @@
 """Wireless Security Deep Unit Tests."""
 
 import json
+
 import pytest
 
 from sentinel.core.models import ActionRequest
 from sentinel.modules.wireless.adapters import (
-    WirelessInventoryAdapter,
     WirelessConfigAssessmentAdapter,
+    WirelessInventoryAdapter,
     WirelessTrafficAnalysisAdapter,
 )
 

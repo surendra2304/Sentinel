@@ -15,12 +15,11 @@ Tests:
    - Access control, key scopes, and consumer throttling.
 """
 
-import json
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from sentinel.apps.api.main import app
-from sentinel.core.models import Finding, FindingStatus, SeverityLevel
+from sentinel.core.models import SeverityLevel
 from sentinel.intelligence.risk.finding_engine import finding_engine
 
 

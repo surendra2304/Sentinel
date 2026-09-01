@@ -6,7 +6,6 @@ Verifies:
 """
 
 import subprocess
-import pytest
 
 
 def test_git_tree_cleanliness_and_ignore_rules():

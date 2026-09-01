@@ -8,8 +8,6 @@ from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
-from sentinel.config.settings import get_settings
-
 
 class RateLimiter:
     """In-memory sliding window rate limiter per API key / IP with window duration."""
@@ -63,7 +61,6 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         # Check API Key
-        settings = get_settings()
         api_key = request.headers.get("X-API-Key") or request.headers.get("Authorization")
         if api_key and api_key.startswith("Bearer "):
             api_key = api_key[7:]

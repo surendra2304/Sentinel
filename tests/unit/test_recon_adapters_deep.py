@@ -1,16 +1,16 @@
 """Recon and Asset Discovery Deep Unit Tests."""
 
 import json
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock
 
 from sentinel.core.models import ActionRequest
 from sentinel.modules.recon.adapters import (
-    SubdomainEnumAdapter,
-    IPIntelligenceAdapter,
     CertificateInspectorAdapter,
-    TechnologyFingerprintAdapter,
+    IPIntelligenceAdapter,
     OSINTAdapter,
+    SubdomainEnumAdapter,
+    TechnologyFingerprintAdapter,
 )
 
 

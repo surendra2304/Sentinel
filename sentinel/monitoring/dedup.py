@@ -6,9 +6,10 @@ Provides:
 3. Alert fatigue rate limiter (max 10 alerts/hour, overflow to digest).
 """
 
+from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from collections import defaultdict
+
 from sentinel.monitoring.continuous import DriftAlert
 
 

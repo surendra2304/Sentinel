@@ -1,5 +1,10 @@
 import http.server
 import socketserver
+
+# ---------------------------------------------------------------------------
+# 1. Subprocess Sandbox Tests
+# ---------------------------------------------------------------------------
+import sys
 import threading
 
 import pytest
@@ -22,22 +27,20 @@ from sentinel.integrations.scanners.http_adapter import HTTPObserverAdapter
 from sentinel.integrations.scanners.network_adapter import NetworkScannerAdapter
 from sentinel.storage.artifacts.storage import LocalFileSystemStorage
 
-# ---------------------------------------------------------------------------
-# 1. Subprocess Sandbox Tests
-# ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
 async def test_subprocess_sandbox_timeout_and_output_cap():
     sandbox = SubprocessSandbox(default_timeout_seconds=1.0, max_output_bytes=100)
 
     # Fast python command
-    ret, stdout, stderr = await sandbox.execute_command(["python", "-c", "print('hello from sandbox')"])
+    ret, stdout, stderr = await sandbox.execute_command([sys.executable, "-c", "print('hello from sandbox')"])
     assert ret == 0
     assert b"hello from sandbox" in stdout
 
     # Timeout enforcement
     with pytest.raises(SandboxExecutionError, match="timed out"):
-        await sandbox.execute_command(["python", "-c", "import time; time.sleep(3)"], timeout=0.2)
+        await sandbox.execute_command([sys.executable, "-c", "import time; time.sleep(3)"], timeout=0.2)
+
 
 
 # ---------------------------------------------------------------------------
@@ -45,7 +48,7 @@ async def test_subprocess_sandbox_timeout_and_output_cap():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_executor_pipeline_with_adapters(tmp_path):
+async def test_executor_pipeline_with_adapters(local_http_server, tmp_path):
     storage = LocalFileSystemStorage(base_dir=str(tmp_path / "artifacts"))
     audit = AuditLogger(log_path=str(tmp_path / "audit.jsonl"), signing_key="test-key")
     policy = PolicyEngine(audit_logger=audit)
@@ -64,7 +67,7 @@ async def test_executor_pipeline_with_adapters(tmp_path):
     scope = Scope(
         id="scope-exec",
         name="Exec Scope",
-        allowed_targets=["127.0.0.1", "localhost", "127.0.0.1:18889", "http://127.0.0.1:18889"],
+        allowed_targets=["127.0.0.1", "localhost", local_http_server],
         max_intensity=5,
     )
     task_policy = Policy(
@@ -87,7 +90,7 @@ async def test_executor_pipeline_with_adapters(tmp_path):
         task_id=task.id,
         agent="http_agent",
         action_type="http.observe",
-        target_refs=["http://127.0.0.1:18889"],
+        target_refs=[local_http_server],
         expected_impact_level=ImpactLevel.LOW,
     )
     res_http = await executor.execute_action(act_http, task)
@@ -133,13 +136,21 @@ class MockHttpHandler(http.server.SimpleHTTPRequestHandler):
         self.wfile.write(b"SENTINEL LOCAL TEST HTTP DAEMON")
 
 
+class QuietTCPServer(socketserver.TCPServer):
+    allow_reuse_address = True
+    daemon_threads = True
+
+
 @pytest.fixture(scope="module")
 def local_http_server():
-    server = socketserver.TCPServer(("127.0.0.1", 18889), MockHttpHandler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    server = QuietTCPServer(("127.0.0.1", 0), MockHttpHandler)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
     thread.start()
-    yield "http://127.0.0.1:18889"
+    yield f"http://127.0.0.1:{port}"
     server.shutdown()
+    server.server_close()
+
 
 
 @pytest.mark.asyncio
@@ -147,10 +158,11 @@ async def test_real_adapters_execution(local_http_server, tmp_path):
     storage = LocalFileSystemStorage(base_dir=str(tmp_path / "artifacts"))
     executor = ExecutionEngine(storage=storage)
 
+    port = int(local_http_server.split(":")[-1])
     scope = Scope(
         id="scope-real",
         name="Real Adapters Scope",
-        allowed_targets=["127.0.0.1", "http://127.0.0.1:18889"],
+        allowed_targets=["127.0.0.1", local_http_server],
     )
     task_policy = Policy(id="pol-real", name="Real Policy", allowed_action_classes=["*"])
     task = Task(
@@ -168,23 +180,23 @@ async def test_real_adapters_execution(local_http_server, tmp_path):
         task_id=task.id,
         agent="http_agent",
         action_type="http.observe",
-        target_refs=["http://127.0.0.1:18889"],
+        target_refs=[local_http_server],
         expected_impact_level=ImpactLevel.LOW,
     )
     res_http = await executor.execute_action(act_http, task)
     assert res_http.success is True
     assert "status 200" in res_http.output_summary
 
-    # 2. Network Scanner (Python socket fallback against local daemon port 18889)
+    # 2. Network Scanner (Python socket fallback against local daemon port)
     act_net = ActionRequest(
         id="act-net-01",
         task_id=task.id,
         agent="network_agent",
         action_type="network.service_scan",
         target_refs=["127.0.0.1"],
-        parameters={"ports": [18889, 19999], "force_python_fallback": True},
+        parameters={"ports": [port, 19999], "force_python_fallback": True},
         expected_impact_level=ImpactLevel.LOW,
     )
     res_net = await executor.execute_action(act_net, task)
     assert res_net.success is True
-    assert "18889" in res_net.output_summary
+    assert str(port) in res_net.output_summary

@@ -11,7 +11,7 @@ from httpx import ASGITransport, AsyncClient
 
 from sentinel.apps.api.main import app
 from sentinel.core.models import Finding, SeverityLevel
-from sentinel.integrations.futuris_client import futuris_threat_client, ForecastType, RiskTrajectory
+from sentinel.integrations.futuris_client import ForecastType, RiskTrajectory, futuris_threat_client
 from sentinel.intelligence.predictive_workflow import predictive_risk_workflow
 
 

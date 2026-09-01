@@ -13,6 +13,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, Response
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
+from sentinel.api.metrics import router as metrics_router
 from sentinel.apps.api.middleware import APIKeyAuthMiddleware
 from sentinel.audit.audit_logger import AuditLogger
 from sentinel.config.settings import get_settings
@@ -27,7 +28,6 @@ from sentinel.core.models import (
 )
 from sentinel.core.orchestrator.lifecycle import lifecycle_manager
 from sentinel.core.policy.engine import ApprovalRecord, policy_engine
-from sentinel.core.scope.resolver import ScopeResolver
 from sentinel.integrations.friday.models import (
     BlockedActionRecord,
     BlockedTargetRecord,
@@ -445,12 +445,12 @@ async def friday_delegate(fr: FridayDelegationRequest) -> FridayDelegationRespon
     # Check for scope overrides or restrictions
     if fr.scope_override and "allowed_targets" in fr.scope_override:
         override_allowed = fr.scope_override.get("allowed_targets", [])
-        for t in targets_to_eval:
-            if t["value"] in override_allowed or any(t["value"].endswith(o.lstrip("*.")) for o in override_allowed):
-                allowed_targets.append(t)
+        for target_item in targets_to_eval:
+            if target_item["value"] in override_allowed or any(target_item["value"].endswith(o.lstrip("*.")) for o in override_allowed):
+                allowed_targets.append(target_item)
             else:
                 blocked_targets.append(BlockedTargetRecord(
-                    target=t["value"],
+                    target=target_item["value"],
                     reason="Target not present in provided scope_override allowlist",
                     policy_dimension="scope_override",
                 ))
@@ -680,9 +680,7 @@ async def get_friday_asset_inventory() -> FridayAssetInventoryResponse:
         asset_map[tgt]["open_finding_count"] += 1
         if f.severity == SeverityLevel.CRITICAL:
             asset_map[tgt]["status"] = "critical"
-        elif f.severity == SeverityLevel.HIGH and asset_map[tgt]["status"] != "critical":
-            asset_map[tgt]["status"] = "vulnerable"
-        elif asset_map[tgt]["status"] == "secure":
+        elif f.severity == SeverityLevel.HIGH and asset_map[tgt]["status"] != "critical" or asset_map[tgt]["status"] == "secure":
             asset_map[tgt]["status"] = "vulnerable"
 
     # Also include nodes from asset_graph_store if available
@@ -815,7 +813,6 @@ async def get_finding_research_context(finding_id: str) -> dict[str, Any]:
 
 
 # Include Metrics Router
-from sentinel.api.metrics import router as metrics_router
 app.include_router(metrics_router, prefix=settings.api_prefix)
 
 

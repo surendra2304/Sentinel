@@ -71,25 +71,30 @@ class NetworkScannerAdapter(ToolAdapter):
         }
 
         async def check_port(port: int):
+            writer = None
             try:
                 conn = asyncio.open_connection(target_host, port)
-                reader, writer = await asyncio.wait_for(conn, timeout=1.5)
+                reader, writer = await asyncio.wait_for(conn, timeout=0.5)
                 results["open_ports"].append(port)
 
                 # Attempt non-blocking banner grab
                 try:
                     writer.write(b"HEAD / HTTP/1.0\r\n\r\n")
-                    await writer.drain()
-                    banner_data = await asyncio.wait_for(reader.read(256), timeout=0.5)
+                    await asyncio.wait_for(writer.drain(), timeout=0.2)
+                    banner_data = await asyncio.wait_for(reader.read(256), timeout=0.2)
                     if banner_data:
                         results["banners"][str(port)] = banner_data.decode("latin-1", errors="ignore").strip()
                 except Exception:
                     pass
-
-                writer.close()
-                await writer.wait_closed()
             except Exception:
                 results["closed_ports"].append(port)
+            finally:
+                if writer:
+                    try:
+                        writer.close()
+                        await asyncio.wait_for(writer.wait_closed(), timeout=0.2)
+                    except Exception:
+                        pass
 
         tasks = [check_port(p) for p in ports]
         await asyncio.gather(*tasks)

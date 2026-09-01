@@ -11,10 +11,8 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from sentinel.apps.api.main import app
-from sentinel.config.settings import get_settings
-from sentinel.core.models import TaskStatus
-from sentinel.storage.database.models import Base
 from sentinel.storage.database import session as db_session_module
+from sentinel.storage.database.models import Base
 from sentinel.storage.repositories import factory as repo_factory
 
 

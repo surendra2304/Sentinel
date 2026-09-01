@@ -1,7 +1,7 @@
 """IntelX Threat Research Client and Cache Service."""
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -47,7 +47,7 @@ class IntelXResearchClient:
             query=norm_query,
             exploitation_active=is_active,
             threat_actors=actors,
-            patch_available=not ("NO PATCH" in norm_query),
+            patch_available="NO PATCH" not in norm_query,
             urgency_multiplier=urgency,
             citations=citations,
             researched_at=now,

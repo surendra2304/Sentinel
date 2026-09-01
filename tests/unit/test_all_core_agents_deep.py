@@ -15,19 +15,26 @@ across every BaseAgent implementation in sentinel/core/agents/:
 """
 
 import json
+
 import pytest
 
 from sentinel.core.agents.api_agent import APISecurityAgent
 from sentinel.core.agents.cloud_agent import CloudAgent
 from sentinel.core.agents.device_agents import MobileAgent, WirelessAgent
 from sentinel.core.agents.dfir_agents import ForensicsAgent, IncidentResponseAgent
-from sentinel.core.agents.endpoint_agent import EndpointAgent
 from sentinel.core.agents.intel_agents import ThreatIntelligenceAgent, VulnerabilityAgent
 from sentinel.core.agents.network_agent import NetworkAgent
 from sentinel.core.agents.recon_agent import ReconAgent
 from sentinel.core.agents.security_intelligence_agent import SecurityIntelligenceAgent
 from sentinel.core.agents.web_agent import WebSecurityAgent
-from sentinel.core.models import ImpactLevel, Policy, Scope, SeverityLevel, Target, TargetSet, TargetType, Task
+from sentinel.core.models import (
+    Policy,
+    Scope,
+    Target,
+    TargetSet,
+    TargetType,
+    Task,
+)
 
 
 @pytest.fixture

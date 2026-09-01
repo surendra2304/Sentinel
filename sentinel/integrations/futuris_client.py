@@ -6,9 +6,10 @@ Provides:
 3. Attack surface growth prediction (planned deployment expansions).
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
+
 from pydantic import BaseModel, Field
 
 

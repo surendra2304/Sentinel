@@ -1,8 +1,8 @@
 """DNS Intelligence Deep Unit Tests."""
 
 import json
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock
 
 from sentinel.core.models import ActionRequest
 from sentinel.modules.dns.dns_intel import DNSIntelligenceAdapter
@@ -11,7 +11,7 @@ from sentinel.modules.dns.dns_intel import DNSIntelligenceAdapter
 @pytest.mark.asyncio
 async def test_dns_intelligence_adapter_flow():
     adp = DNSIntelligenceAdapter()
-    
+
     # 1. Forward DNS enum
     req_fwd = ActionRequest(
         id="act-dns-01",

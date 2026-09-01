@@ -8,15 +8,16 @@ Verifies:
 """
 
 import json
+from unittest.mock import AsyncMock
+
 import pytest
-from unittest.mock import AsyncMock, patch
 
 from sentinel.core.agents.base import AgentRegistry
 from sentinel.core.intelligence.interface import IntelligenceRole, TokenUsage
 from sentinel.core.intelligence.llm_provider import LLMProvider
 from sentinel.core.intelligence.router import IntelligenceRouter
 from sentinel.core.memory.working_memory import TaskWorkingMemory
-from sentinel.core.models import ImpactLevel, Policy, Scope, Target, TargetSet, TargetType, Task
+from sentinel.core.models import Policy, Scope, Target, TargetSet, TargetType, Task
 from sentinel.core.planner.llm_planner import LLMPlanner
 
 

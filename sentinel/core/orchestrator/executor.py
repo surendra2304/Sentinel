@@ -107,12 +107,12 @@ class ExecutionEngine:
         self.registry = registry or adapter_registry
         self.policy = policy or policy_engine
         self.storage = storage or get_artifact_storage()
-        self.evidence_store = evidence_store_inst or evidence_store
         self.settings = get_settings()
         self.audit = audit or AuditLogger(
             log_path=self.settings.audit.log_file_path,
             signing_key=self.settings.audit.signing_key,
         )
+        self.evidence_store = evidence_store_inst or (EvidenceStore(storage=self.storage, audit_logger=self.audit) if storage else evidence_store)
         self.concurrency_semaphore = asyncio.Semaphore(max_global_concurrency)
 
     async def execute_action(

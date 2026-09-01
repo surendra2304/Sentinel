@@ -160,8 +160,10 @@ class MinIOObjectStorage(ArtifactStorage):
 
 def get_artifact_storage() -> ArtifactStorage:
     """Factory creating appropriate storage provider based on environment."""
-    try:
-        storage = MinIOObjectStorage()
-        return storage
-    except Exception:
-        return LocalFileSystemStorage()
+    settings = get_settings()
+    if getattr(settings.storage, "backend", "local").lower() in ("s3", "minio"):
+        try:
+            return MinIOObjectStorage()
+        except Exception:
+            return LocalFileSystemStorage()
+    return LocalFileSystemStorage()

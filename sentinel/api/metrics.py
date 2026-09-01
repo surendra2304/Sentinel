@@ -1,6 +1,6 @@
 """Security Metrics and Prometheus Telemetry REST Endpoints."""
 
-from fastapi import APIRouter, Response
+from fastapi import APIRouter
 from fastapi.responses import PlainTextResponse
 
 router = APIRouter(prefix="/metrics", tags=["Metrics & Analytics"])
@@ -52,8 +52,8 @@ async def get_scan_coverage():
 @router.get("/predictive-forecasts")
 async def get_predictive_risk_forecasts():
     """Predictive Risk view endpoint showing threat escalation and exploitation forecasts."""
-    from sentinel.intelligence.predictive_workflow import predictive_risk_workflow
     from sentinel.integrations.futuris_client import futuris_threat_client
+    from sentinel.intelligence.predictive_workflow import predictive_risk_workflow
 
     escalation = await futuris_threat_client.get_threat_escalation_forecast(
         asset_target="api.payment.corp",

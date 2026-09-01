@@ -310,16 +310,17 @@ def test_endpoint_offline_macos_export_evaluation():
 
 def test_endpoint_adapter_helpers_and_parsers(tmp_path):
     adp = EndpointAssessmentAdapter()
+    assert adp.name == "endpoint_assessment_adapter"
     lnx = LinuxAdapter()
-    
+
     # Test user privilege parsing with mocked passwd
     passwd_file = tmp_path / "passwd"
     passwd_file.write_text("root:x:0:0:root:/root:/bin/bash\nuser1:x:1001:1001::/home/user1:/bin/bash\n", encoding="utf-8")
-    
+
     # Test cron parsing with mocked cron file
     cron_dir = tmp_path / "cron.d"
     cron_dir.mkdir()
     (cron_dir / "job1").write_text("* * * * * root /usr/bin/backup\n", encoding="utf-8")
-    
+
     items = lnx.collect_persistence(root_dir=str(tmp_path))
     assert isinstance(items, list)

@@ -1,7 +1,8 @@
 """Threat Context Enrichment using IntelX Research Client."""
 
 from typing import Any
-from sentinel.integrations.intelx_client import intelx_research_client, IntelXResearchResult
+
+from sentinel.integrations.intelx_client import IntelXResearchResult, intelx_research_client
 
 
 class ThreatContextEnricher:

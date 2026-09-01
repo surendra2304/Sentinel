@@ -1,13 +1,14 @@
 """Network Security Deep Unit Tests."""
 
 import json
+
 import pytest
 
 from sentinel.core.models import ActionRequest
 from sentinel.modules.network.adapters import (
+    FirewallConfigReviewAdapter,
     NetworkExposureAdapter,
     SegmentationAnalyzerAdapter,
-    FirewallConfigReviewAdapter,
     TrafficAnalysisAdapter,
 )
 

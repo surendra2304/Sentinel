@@ -1,8 +1,12 @@
 """Proactive Scanning Workflow and Predictive Risk Scoring using Futuris Telemetry."""
 
 from typing import Any
-from sentinel.integrations.futuris_client import futuris_threat_client, FuturisForecastResult, RiskTrajectory
-from sentinel.core.models import Finding, SeverityLevel
+
+from sentinel.core.models import Finding
+from sentinel.integrations.futuris_client import (
+    FuturisForecastResult,
+    futuris_threat_client,
+)
 
 
 class PredictiveRiskWorkflow:

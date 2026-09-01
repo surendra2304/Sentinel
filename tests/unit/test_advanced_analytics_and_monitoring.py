@@ -13,15 +13,14 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from sentinel.apps.api.main import app
-from sentinel.monitoring.continuous import continuous_monitor, DriftAlert
-from sentinel.monitoring.dedup import alert_deduplicator
+from sentinel.core.models import SeverityLevel
 from sentinel.integrations.threat_feeds.feeds import threat_feed_sync
-from sentinel.intelligence.correlation import asset_vulnerability_correlator
 from sentinel.intelligence.attack_paths import enhanced_attack_path_analyzer
+from sentinel.intelligence.correlation import asset_vulnerability_correlator
 from sentinel.intelligence.predictive import predictive_risk_model
 from sentinel.intelligence.remediation import remediation_advisor
-from sentinel.integrations.intelx_client import intelx_research_client
-from sentinel.core.models import SeverityLevel
+from sentinel.monitoring.continuous import DriftAlert, continuous_monitor
+from sentinel.monitoring.dedup import alert_deduplicator
 
 
 def test_continuous_monitoring_drift_and_alert_thresholds():

@@ -10,13 +10,14 @@ Verifies:
 """
 
 import asyncio
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from sentinel.apps.api.main import app
 from sentinel.core.tenancy import tenant_manager
-from sentinel.intelligence.reporting.compliance import compliance_reporting_service
 from sentinel.integrations.intelx_client import intelx_research_client
+from sentinel.intelligence.reporting.compliance import compliance_reporting_service
 
 
 def test_multitenancy_isolation_and_metering():

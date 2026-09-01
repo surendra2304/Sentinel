@@ -47,6 +47,7 @@ class ObjectStorageSettings(BaseSettings):
     """MinIO / S3-compatible Object Storage configuration for artifacts."""
     model_config = SettingsConfigDict(env_prefix="SENTINEL_S3_")
 
+    backend: str = "local"  # "local" or "s3"
     endpoint: str = "localhost:9000"
     access_key: str = "sentinel_minio_user"
     secret_key: str = "sentinel_minio_secret"
