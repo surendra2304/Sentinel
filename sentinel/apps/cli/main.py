@@ -5,6 +5,7 @@ Provides uniform operator control matching the Task Gateway REST API.
 
 import asyncio
 
+import httpx
 import typer
 from rich.console import Console
 from rich.panel import Panel
@@ -135,6 +136,25 @@ def task_submit(
         console.print(f"[bold red]Invalid mode: {mode}. Must be one of {[m.value for m in TaskMode]}[/bold red]")
         raise typer.Exit(code=1) from err
 
+    # Check if live Sentinel API server is running on port 8003
+    try:
+        with httpx.Client(base_url="http://127.0.0.1:8003", timeout=1.5) as client:
+            resp = client.post("/api/v1/tasks", json={
+                "objective": objective,
+                "targets": targets_payload,
+                "mode": task_mode.value,
+                "requested_output": output_type,
+            })
+            if resp.status_code in (200, 201):
+                data = resp.json()
+                console.print("[bold green][OK] Task submitted to live Sentinel server![/bold green]")
+                console.print(f"[bold]Task ID:[/bold] {data.get('task_id')}")
+                console.print(f"[bold]Status:[/bold] {data.get('status', 'submitted')}")
+                console.print(f"[bold]Correlation ID:[/bold] {data.get('correlation_id', 'N/A')}")
+                return
+    except Exception:
+        pass
+
     task = asyncio.run(
         lifecycle_manager.create_and_submit_task(
             objective=objective,
@@ -153,6 +173,26 @@ def task_submit(
 @task_app.command("status")
 def task_status(task_id: str):
     """Check live status and progress of a task."""
+    try:
+        with httpx.Client(base_url="http://127.0.0.1:8003", timeout=1.5) as client:
+            resp = client.get(f"/api/v1/tasks/{task_id}")
+            if resp.status_code == 200:
+                t = resp.json()
+                table = Table(title=f"Live Task Status: {t.get('id')}")
+                table.add_column("Property", style="cyan")
+                table.add_column("Value", style="green")
+                table.add_row("Objective", t.get("objective", ""))
+                table.add_row("Status", str(t.get("status", "")).upper())
+                table.add_row("Progress", f"{t.get('progress_percentage', 0)}%")
+                table.add_row("Mode", str(t.get("mode", "")))
+                table.add_row("Targets", str(len(t.get("target_set", {}).get("targets", []))))
+                table.add_row("Correlation ID", t.get("correlation_id", ""))
+                table.add_row("Created At", str(t.get("created_at", "")))
+                console.print(table)
+                return
+    except Exception:
+        pass
+
     task = asyncio.run(lifecycle_manager.get_task(task_id))
     if not task:
         console.print(f"[bold red]Task {task_id} not found.[/bold red]")
@@ -180,6 +220,17 @@ def task_cancel(
 ):
     """Immediately halt/kill a running security task."""
     try:
+        with httpx.Client(base_url="http://127.0.0.1:8003", timeout=1.5) as client:
+            resp = client.post(f"/api/v1/tasks/{task_id}/cancel?reason={reason}")
+            if resp.status_code == 200:
+                t = resp.json()
+                console.print(f"[bold yellow][HALTED] Task {t.get('id')} execution halted on live server.[/bold yellow]")
+                console.print(f"[bold]Final Status:[/bold] {t.get('status')}")
+                return
+    except Exception:
+        pass
+
+    try:
         task = asyncio.run(lifecycle_manager.cancel_task(task_id, reason=reason))
         console.print(f"[bold yellow][HALTED] Task {task.id} execution halted.[/bold yellow]")
         console.print(f"[bold]Final Status:[/bold] {task.status.value}")
@@ -191,6 +242,26 @@ def task_cancel(
 @task_app.command("findings")
 def task_findings(task_id: str):
     """View findings registered for a task."""
+    try:
+        with httpx.Client(base_url="http://127.0.0.1:8003", timeout=1.5) as client:
+            resp = client.get(f"/api/v1/tasks/{task_id}/findings")
+            if resp.status_code == 200:
+                findings = resp.json().get("findings", [])
+                if not findings:
+                    console.print(f"[bold green]No open vulnerabilities identified for task {task_id}.[/bold green]")
+                    return
+                table = Table(title=f"Findings for Task {task_id}")
+                table.add_column("Finding ID", style="cyan")
+                table.add_column("Severity", style="red")
+                table.add_column("Title", style="yellow")
+                table.add_column("Target", style="magenta")
+                for f in findings:
+                    table.add_row(f.get("id"), str(f.get("severity", "")).upper(), f.get("title", ""), f.get("target_ref", ""))
+                console.print(table)
+                return
+    except Exception:
+        pass
+
     findings = finding_engine.list_findings(task_id=task_id)
     if not findings:
         console.print(f"[bold green]No open vulnerabilities identified for task {task_id}.[/bold green]")

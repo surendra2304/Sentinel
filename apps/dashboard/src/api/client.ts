@@ -6,9 +6,32 @@ export async function fetchTasks(): Promise<Task[]> {
   try {
     const res = await fetch(`${API_BASE}/tasks`);
     if (!res.ok) return [];
-    return await res.json();
+    const data = await res.json();
+    return data.map((t: any) => ({
+      ...t,
+      id: t.task_id || t.id,
+    }));
   } catch {
     return [];
+  }
+}
+
+export async function submitTask(payload: {
+  objective: string;
+  targets: Array<{ type: string; value: string }>;
+  mode: string;
+  requested_output?: string;
+}): Promise<any> {
+  try {
+    const res = await fetch(`${API_BASE}/tasks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
   }
 }
 
