@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { fetchTasks, cancelTask, submitTask } from '../api/client';
 import { Task } from '../types';
-import { StopCircle, RefreshCw, Plus, Play, CheckCircle2, ShieldAlert, FileText } from 'lucide-react';
+import { StopCircle, RefreshCw, Plus, Play, ShieldAlert, FileText } from 'lucide-react';
 
 export const TasksPage: React.FC = () => {
   const [tasks, setTasks] = useState<Task[]>([]);

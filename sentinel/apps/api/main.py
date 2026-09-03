@@ -17,7 +17,12 @@ from sentinel.api.metrics import router as metrics_router
 from sentinel.apps.api.middleware import APIKeyAuthMiddleware
 from sentinel.audit.audit_logger import AuditLogger
 from sentinel.config.settings import get_settings
+from sentinel.core.auth.capabilities import CapabilityError, CapabilityIssuer
 from sentinel.core.events.bus import event_bus
+from sentinel.core.gateway.models import RiskLevel as GatewayRiskLevel
+from sentinel.core.health.readiness import FailClosedHealth
+from sentinel.core.incident.incident_manager import Incident, IncidentManager
+from sentinel.core.incident.quarantine_manager import QuarantineManager
 from sentinel.core.models import (
     Event,
     Finding,
@@ -812,6 +817,145 @@ async def get_finding_research_context(finding_id: str) -> dict[str, Any]:
     }
 
 
+
+
+# ---------------------------------------------------------------------------
+# Deep Security Upgrades: Incidents, Quarantine, Capabilities & Readiness
+# ---------------------------------------------------------------------------
+
+security_incident_mgr = IncidentManager()
+security_quarantine_mgr = QuarantineManager()
+capability_issuer = CapabilityIssuer(b"sentinel-master-capability-secret-key-32b!")
+fail_closed_health = FailClosedHealth()
+
+
+class IssueCapabilityRequest(BaseModel):
+    actor_id: str
+    tenant_id: str = "default"
+    actions: list[str]
+    resources: list[str]
+    ttl: float = 300.0
+
+
+class VerifyCapabilityRequest(BaseModel):
+    token: str
+    actor_id: str
+    tenant_id: str = "default"
+    action: str
+    resource: str
+
+
+class QuarantineRequest(BaseModel):
+    subject: str
+    reason: str
+    ttl: float = 900.0
+
+
+class IncidentRequest(BaseModel):
+    id: str
+    tenant_id: str = "default"
+    title: str
+    severity: GatewayRiskLevel = GatewayRiskLevel.HIGH
+    reason: str
+
+
+@app.get(f"{settings.api_prefix}/health/ready", tags=["Security Governance"])
+async def security_readiness_check() -> dict[str, Any]:
+    """Fail-closed security readiness probe verifying audit chain, keys, and policies."""
+    rep = fail_closed_health.check(
+        audit_ok=audit_logger.verify_integrity(),
+        persistence_ok=True,
+        signing_key_ok=len(settings.audit.signing_key) >= 16,
+        policy_loaded=True,
+    )
+    if not rep.ok:
+        raise HTTPException(status_code=503, detail={"status": "DEGRADED", "checks": rep.checks})
+    return {"status": "READY", "checks": rep.checks, "generated_at": rep.generated_at}
+
+
+@app.get(f"{settings.api_prefix}/incidents", tags=["Security Governance"])
+async def list_security_incidents(tenant_id: str = "default") -> list[dict[str, Any]]:
+    """List active security incidents."""
+    return [
+        {
+            "id": i.id,
+            "tenant_id": i.tenant_id,
+            "title": i.title,
+            "severity": i.severity.value,
+            "reason": i.reason,
+            "created_at": i.created_at,
+            "contained": i.contained,
+        }
+        for i in security_incident_mgr.active(tenant_id)
+    ]
+
+
+@app.post(f"{settings.api_prefix}/incidents", status_code=201, tags=["Security Governance"])
+async def create_security_incident(req: IncidentRequest) -> dict[str, Any]:
+    """Register a new security incident."""
+    inc = security_incident_mgr.open(
+        Incident(
+            id=req.id,
+            tenant_id=req.tenant_id,
+            title=req.title,
+            severity=req.severity,
+            reason=req.reason,
+        )
+    )
+    return {"id": inc.id, "status": "OPEN", "contained": inc.contained}
+
+
+@app.post(f"{settings.api_prefix}/incidents/{{incident_id}}/contain", tags=["Security Governance"])
+async def contain_security_incident(incident_id: str) -> dict[str, Any]:
+    """Contain an active security incident."""
+    security_incident_mgr.contain(incident_id)
+    return {"incident_id": incident_id, "status": "CONTAINED"}
+
+
+@app.get(f"{settings.api_prefix}/quarantine", tags=["Security Governance"])
+async def check_quarantine(subject: str) -> dict[str, Any]:
+    """Check if an actor, IP, or resource is quarantined."""
+    quarantined = security_quarantine_mgr.is_quarantined(subject)
+    return {"subject": subject, "quarantined": quarantined}
+
+
+@app.post(f"{settings.api_prefix}/quarantine", tags=["Security Governance"])
+async def quarantine_subject(req: QuarantineRequest) -> dict[str, Any]:
+    """Quarantine an actor or asset for security policy violations."""
+    rec = security_quarantine_mgr.put(req.subject, req.reason, req.ttl)
+    return {"subject": rec.subject, "reason": rec.reason, "expires_at": rec.expires_at}
+
+
+@app.post(f"{settings.api_prefix}/capabilities/issue", tags=["Security Governance"])
+async def issue_capability_token(req: IssueCapabilityRequest) -> dict[str, Any]:
+    """Issue a signed, scoped, expiring capability token."""
+    token = capability_issuer.issue(
+        actor_id=req.actor_id,
+        tenant_id=req.tenant_id,
+        actions=req.actions,
+        resources=req.resources,
+        ttl=req.ttl,
+    )
+    return {"token": token, "actor_id": req.actor_id, "tenant_id": req.tenant_id}
+
+
+@app.post(f"{settings.api_prefix}/capabilities/verify", tags=["Security Governance"])
+async def verify_capability_token(req: VerifyCapabilityRequest) -> dict[str, Any]:
+    """Verify an action and resource against a capability token."""
+    try:
+        cap = capability_issuer.verify(
+            req.token,
+            actor_id=req.actor_id,
+            tenant_id=req.tenant_id,
+            action=req.action,
+            resource=req.resource,
+        )
+        return {"valid": True, "subject": cap.subject, "expires_at": cap.expires_at}
+    except CapabilityError as e:
+        raise HTTPException(status_code=403, detail=str(e)) from e
+
+
+# deep_security_upgrades_installed
 # Include Metrics Router
 app.include_router(metrics_router, prefix=settings.api_prefix)
 

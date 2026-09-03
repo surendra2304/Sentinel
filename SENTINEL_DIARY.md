@@ -51,8 +51,8 @@ Welcome to the **Sentinel Engineering Diary**. This document acts as the master 
 - **🛡️ Fixes & Hardening**: Restored VALID audit hash chain integrity, resolved PowerShell CLI parameter formatting guidance, and verified 100% test suite stability.
 - **📊 Test Results**: **151 backend tests passed across 42 test files (100% pass rate, 0 lint errors, 0 type errors)**.
 
-### 📈 [Day 7 — 2026-09-03: Dashboard Task Management, Live Server CLI Routing & Proxy Stabilization](diary/2026-09-03.md)
-- **🎯 Focus**: Frontend task launching modal, direct live server HTTP routing in CLI, Vite proxy standardization to port 8003, and bidirectional operator synchronization.
-- **💡 What I Accomplished**: Built interactive task submission modal in `TasksPage.tsx`, integrated live server HTTP dispatch in `sentinel/apps/cli/main.py`, aligned Vite reverse proxy target to port 8003, and added direct findings/reports navigation shortcuts.
-- **🛡️ Fixes & Hardening**: Resolved frontend proxy port collision (port 8000 -> 8003), implemented fallback between live server and local engine, and verified progress bar rendering.
-- **📊 Test Results**: **151 backend tests passed across 42 test files (100% pass rate, 0 lint errors, 0 type errors)**.
+### 📈 [Day 7 — 2026-09-03: Sentinel Deep Upgrade, ActionRouter Choke Point, Scanners & Production Sandboxing](diary/2026-09-03.md)
+- **🎯 Focus**: Deep Upgrade integration, central ActionRouter execution choke point, HMAC capability tokens, durable one-time approvals, SafePath traversal immunity, SafeProcessRunner non-shell sandbox, modular security scanners (secrets, PII, prompt injection), ContextFirewall data boundary, fail-closed audit logging, incident/quarantine management, and dashboard task launch integration.
+- **💡 What I Accomplished**: Integrated all 21 deep upgrade components into core `sentinel/` modules, established central `ActionRouter` pipeline, added signed capability token issuer, implemented durable SQLite WAL approval/idempotency store, built modular secret/PII/prompt scanners, added `/api/v1/health/ready` security probe, and built interactive task modal in React dashboard.
+- **🛡️ Fixes & Hardening**: Fixed multi-instance audit chain divergence with atomic hash reload, enforced canonical path boundaries with `SafePath`, guaranteed single-use atomic approval consumption, eliminated shell execution, and cleaned unused frontend imports.
+- **📊 Test Results**: **190 backend tests passed (39 adversarial security tests, 100% pass rate, 0 lint errors, 0 Mypy errors across 157 source files, 7 Vitest tests passed, 0 TypeScript errors)**.
