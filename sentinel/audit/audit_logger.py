@@ -147,7 +147,7 @@ class AuditLogger:
         with self._lock:
             if os.path.exists(self.log_path):
                 try:
-                    with open(self.log_path, "r", encoding="utf-8") as f:
+                    with open(self.log_path, encoding="utf-8") as f:
                         lines = [line.strip() for line in f if line.strip()]
                         if lines:
                             last_data = json.loads(lines[-1])
