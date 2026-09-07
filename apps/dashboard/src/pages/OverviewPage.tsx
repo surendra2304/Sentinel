@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { fetchTasks, fetchFindings, fetchApprovals } from '../api/client';
 import { Task, Finding, ApprovalRecord } from '../types';
 import { ShieldCheck, AlertTriangle, Activity, CheckSquare } from 'lucide-react';
@@ -9,13 +9,19 @@ export const OverviewPage: React.FC = () => {
   const [approvals, setApprovals] = useState<ApprovalRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const loadData = () => {
     Promise.all([fetchTasks(), fetchFindings(), fetchApprovals()]).then(([t, f, a]) => {
       setTasks(t);
       setFindings(f);
       setApprovals(a);
       setLoading(false);
     });
+  };
+
+  useEffect(() => {
+    loadData();
+    const interval = setInterval(loadData, 2500);
+    return () => clearInterval(interval);
   }, []);
 
   const critCount = findings.filter((f) => f.severity === 'critical').length;

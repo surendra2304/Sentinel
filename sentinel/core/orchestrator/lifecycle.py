@@ -5,6 +5,7 @@ and immediate kill-switch execution cancellation across repository backends.
 """
 
 import asyncio
+import contextlib
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -158,32 +159,29 @@ class TaskLifecycleManager:
 
         try:
             # Transition: SUBMITTED -> PLANNING
-            await asyncio.sleep(0.05)
             await self._update_status(task, TaskStatus.PLANNING, 10.0, "AI Planner structuring inspection graph.")
 
-            # Transition: PLANNING -> EXECUTING
-            await asyncio.sleep(0.05)
-            await self._update_status(task, TaskStatus.EXECUTING, 40.0, "Executing module adapters against authorized targets.")
+            from sentinel.core.orchestrator.orchestrator import AutonomousOrchestrator
+            from sentinel.intelligence.reporting.generator import ReportType, report_generator
+            from sentinel.intelligence.risk.finding_engine import finding_engine
 
-            # Simulated progress
-            await asyncio.sleep(0.05)
-            task.progress_percentage = 80.0
-            await self.repo.update_task(task)
-            await emit_event(
-                event_type=EventType.STATUS,
-                topic="task.progress",
-                source="sentinel.orchestrator",
-                payload={"task_id": task.id, "progress": 80.0},
-                correlation_id=task.correlation_id,
-            )
+            orchestrator = AutonomousOrchestrator()
+            task = await orchestrator.run_task(task, max_iterations=5)
 
-            # Transition: EXECUTING -> REPORTING
-            await asyncio.sleep(0.05)
-            await self._update_status(task, TaskStatus.REPORTING, 95.0, "Synthesizing evidence and generating report.")
+            if task.status == TaskStatus.AWAITING_APPROVAL:
+                await self.repo.update_task(task)
+                return
 
-            # Transition: REPORTING -> COMPLETE
-            await asyncio.sleep(0.05)
-            await self._update_status(task, TaskStatus.COMPLETE, 100.0, "Task execution finished successfully.")
+            if task.status != TaskStatus.CANCELLED:
+                # Transition: EXECUTING -> REPORTING
+                await self._update_status(task, TaskStatus.REPORTING, 90.0, "Synthesizing evidence and generating report.")
+
+                task_findings = finding_engine.list_findings(task_id=task.id)
+                with contextlib.suppress(Exception):
+                    report_generator.generate_report(task, findings=task_findings, report_type=ReportType.TECHNICAL)
+
+                # Transition: REPORTING -> COMPLETE
+                await self._update_status(task, TaskStatus.COMPLETE, 100.0, "Task execution finished successfully.")
 
         except asyncio.CancelledError:
             # Handle cancellation gracefully

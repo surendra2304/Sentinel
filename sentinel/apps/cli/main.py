@@ -120,15 +120,29 @@ def report(task_id: str):
 # Task Sub-commands
 # ---------------------------------------------------------------------------
 
+def _detect_target_type(val: str) -> str:
+    s = val.strip()
+    if s.lower().startswith(("http://", "https://")):
+        return "url"
+    if "/" in s:
+        return "cidr"
+    import ipaddress
+    try:
+        ipaddress.ip_address(s)
+        return "ip"
+    except ValueError:
+        return "domain"
+
+
 @task_app.command("submit")
 def task_submit(
     objective: str = typer.Option(..., "--objective", "-o", help="Security objective/goal"),  # noqa: B008
-    target: list[str] = typer.Option(..., "--target", "-t", help="Target value (e.g. domain, IP, CIDR)"),  # noqa: B008
+    target: list[str] = typer.Option(..., "--target", "-t", help="Target value (e.g. domain, IP, CIDR, URL)"),  # noqa: B008
     mode: str = typer.Option("assessment", "--mode", "-m", help="Task mode"),  # noqa: B008
     output_type: str = typer.Option("comprehensive_report", "--output", help="Requested output type"),  # noqa: B008
 ):
     """Submit a security task into the Sentinel execution engine."""
-    targets_payload = [{"type": "ip" if any(c.isdigit() for c in t) and "." in t and not t.endswith(".com") else "domain", "value": t} for t in target]
+    targets_payload = [{"type": _detect_target_type(t), "value": t.strip()} for t in target]
 
     try:
         task_mode = TaskMode(mode)
