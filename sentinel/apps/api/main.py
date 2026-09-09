@@ -1,6 +1,7 @@
 """Sentinel Task Gateway & REST API Service."""
 
 import asyncio
+import httpx
 import json
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -958,5 +959,47 @@ async def verify_capability_token(req: VerifyCapabilityRequest) -> dict[str, Any
 # deep_security_upgrades_installed
 # Include Metrics Router
 app.include_router(metrics_router, prefix=settings.api_prefix)
+
+
+class SentinelInferenceRequest(BaseModel):
+    question: str
+    task_type: str = "security"
+
+_sentinel_inf_client: httpx.AsyncClient | None = None
+
+def _get_sentinel_inf_client() -> httpx.AsyncClient:
+    global _sentinel_inf_client
+    if _sentinel_inf_client is None or _sentinel_inf_client.is_closed:
+        _sentinel_inf_client = httpx.AsyncClient(
+            timeout=15.0,
+            limits=httpx.Limits(max_connections=50, max_keepalive_connections=20, keepalive_expiry=120.0)
+        )
+    return _sentinel_inf_client
+
+
+@app.post(f"{settings.api_prefix}/ask-inference", summary="Ask Inference from Local Sentinel", tags=["Inference Gateway"])
+async def sentinel_ask_inference(req: SentinelInferenceRequest):
+    """Route security reasoning question from local Sentinel to live Inference Gateway."""
+    import time
+    t0 = time.perf_counter()
+    url = "https://inference-3i2b.onrender.com/v1/agent/assist"
+    payload = {
+        "caller_agent": "sentinel",
+        "task_type": req.task_type,
+        "prompt": req.question,
+        "fast_lane": True,
+        "no_cache": False,
+        "max_tokens": 60,
+    }
+    headers = {"X-FRIDAY-API-Key": "inference_api"}
+    client = _get_sentinel_inf_client()
+    r = await client.post(url, json=payload, headers=headers)
+    lat = round((time.perf_counter() - t0) * 1000, 2)
+    return {
+        "origin": "LOCAL (Sentinel :8003)",
+        "status": r.status_code,
+        "latency_ms": lat,
+        "data": r.json() if r.status_code == 200 else {"error": r.text},
+    }
 
 
