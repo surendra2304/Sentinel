@@ -361,6 +361,21 @@ class PolicyEngine:
                 "parameters": redacted_params or {},
             },
         )
+        # Learn defensive security constraints into Memora Experience memory
+        if decision_type == PolicyDecisionType.DENY:
+            try:
+                from sentinel.memora_client import memora_client
+                memora_client.learn_from_outcome(
+                    agent_name="sentinel",
+                    task_name=action.action_type,
+                    status="failure",
+                    error_log=f"Policy Block: {reason}. Targets: {','.join(action.target_refs)}",
+                    actions_taken=f"action:{action.action_type}",
+                    context=f"actor:{actor} task:{task.id}",
+                    domain="security_defense"
+                )
+            except Exception:
+                pass
 
         return decision
 
