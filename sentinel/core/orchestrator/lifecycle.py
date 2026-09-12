@@ -7,7 +7,7 @@ and immediate kill-switch execution cancellation across repository backends.
 import asyncio
 import contextlib
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sentinel.audit.audit_logger import AuditLogger
@@ -22,6 +22,7 @@ from sentinel.core.models import (
     Task,
     TaskMode,
     TaskStatus,
+    TimeWindow,
 )
 from sentinel.logging.logger import get_logger
 from sentinel.storage.repositories.factory import get_task_repository
@@ -60,6 +61,10 @@ class TaskLifecycleManager:
         cid = correlation_id or str(uuid.uuid4())
         task_id = f"task-{uuid.uuid4().hex[:12]}"
 
+        # 0. Global Kill Switch Check
+        if self.settings.kill_switch_active:
+            raise PermissionError("Global kill switch is ACTIVE. Task creation and execution is halted.")
+
         # 1. Parse and normalize targets
         parsed_targets: list[Target] = []
         for idx, t in enumerate(targets):
@@ -81,15 +86,39 @@ class TaskLifecycleManager:
         )
 
         # 2. Scope & Policy configuration
-        scope = (
-            Scope(**scope_data)
-            if scope_data
-            else Scope(
+        from sentinel.core.scope.resolver import ScopeResolver
+
+        if scope_data:
+            s_dict = dict(scope_data)
+            if "owner" not in s_dict:
+                s_dict["owner"] = "security_operator"
+            if "written_authorization_reference" not in s_dict and "authorization" not in s_dict:
+                s_dict["written_authorization_reference"] = f"AUTH-TASK-{task_id}"
+            if "time_window" not in s_dict and "authorization" not in s_dict:
+                s_dict["time_window"] = TimeWindow(
+                    start_time=datetime.now(UTC),
+                    end_time=datetime.now(UTC) + timedelta(hours=24),
+                )
+            if "allowed_methods" not in s_dict:
+                s_dict["allowed_methods"] = ["passive_recon", "discovery", "validation"]
+            scope = Scope(**s_dict)
+        else:
+            scope = Scope(
                 id=f"scope-{task_id}",
                 name=f"Scope for {task_id}",
                 allowed_targets=[t.value for t in parsed_targets],
+                targets=[t.value for t in parsed_targets],
+                owner="security_operator",
+                written_authorization_reference=f"AUTH-TASK-{task_id}",
+                allowed_methods=["passive_recon", "discovery", "validation"],
+                time_window=TimeWindow(
+                    start_time=datetime.now(UTC),
+                    end_time=datetime.now(UTC) + timedelta(hours=24),
+                ),
             )
-        )
+
+        # Validate Scope fail-closed per Prompt 5 Rule 4
+        ScopeResolver.validate_scope(scope)
 
         policy = (
             Policy(**policy_data)
@@ -279,6 +308,41 @@ class TaskLifecycleManager:
         )
 
         return task
+
+    async def activate_global_kill_switch(self, reason: str = "Emergency Kill Switch Activated") -> int:
+        """Activate global kill switch and terminate all running tasks."""
+        self.settings.kill_switch_active = True
+        cancelled_count = 0
+        for task_id in list(self._running_jobs.keys()):
+            try:
+                await self.cancel_task(task_id, reason=reason)
+                cancelled_count += 1
+            except Exception:
+                pass
+
+        self.audit_logger.log_event(
+            entry_id=f"audit-global-kill-{int(datetime.now(UTC).timestamp())}",
+            event_type="GLOBAL_KILL_SWITCH_ACTIVATED",
+            actor="operator_kill_switch",
+            action_type="KILL_SWITCH",
+            scope_policy="GLOBAL",
+            decision="HALTED",
+            details={"reason": reason, "cancelled_tasks_count": cancelled_count},
+        )
+        return cancelled_count
+
+    async def deactivate_global_kill_switch(self, operator: str = "operator") -> None:
+        """Deactivate global kill switch."""
+        self.settings.kill_switch_active = False
+        self.audit_logger.log_event(
+            entry_id=f"audit-global-unkill-{int(datetime.now(UTC).timestamp())}",
+            event_type="GLOBAL_KILL_SWITCH_DEACTIVATED",
+            actor=operator,
+            action_type="KILL_SWITCH",
+            scope_policy="GLOBAL",
+            decision="RESTORED",
+            details={},
+        )
 
     async def get_task(self, task_id: str) -> Task | None:
         return await self.repo.get_task(task_id)

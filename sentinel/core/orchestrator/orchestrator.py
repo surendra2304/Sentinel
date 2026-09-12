@@ -11,6 +11,7 @@ Implements the autonomous execution loop:
 """
 
 from datetime import UTC, datetime
+from typing import Any
 
 from sentinel.audit.audit_logger import AuditLogger
 from sentinel.config.settings import get_settings
@@ -99,11 +100,21 @@ class AutonomousOrchestrator:
             task_mem.add_asset(target)
 
         iteration = 0
+        successful_actions: list[str] = []
+        blocked_actions: list[dict[str, Any]] = []
+        failed_actions: list[dict[str, Any]] = []
 
         while iteration < max_iterations:
             iteration += 1
 
             # 1. Check Kill-Switch / Task Status
+            if self.settings.kill_switch_active or task.policy.kill_switch_active:
+                task.status = TaskStatus.CANCELLED
+                task.updated_at = datetime.now(UTC)
+                task.completed_at = datetime.now(UTC)
+                logger.warning(f"Task {task.id} halted immediately by kill switch.")
+                break
+
             if task.status in (TaskStatus.CANCELLED, TaskStatus.FAILED):
                 logger.warning(f"Task {task.id} halted with status {task.status.value}")
                 break
@@ -114,24 +125,30 @@ class AutonomousOrchestrator:
 
             # Check if planner reached terminal state
             if plan.is_terminal:
-                task.status = TaskStatus.COMPLETE
-                task.progress_percentage = 100.0
-                task.completed_at = datetime.now(UTC)
-                task.updated_at = datetime.now(UTC)
                 break
 
             # 3. Process Planned Steps
             total_steps = len(plan.steps)
             for idx, step in enumerate(plan.steps):
-                if task.status == TaskStatus.CANCELLED:
+                if task.status == TaskStatus.CANCELLED or self.settings.kill_switch_active:
+                    task.status = TaskStatus.CANCELLED
                     break
+
+                target_ref = step.action_request.target_refs[0] if step.action_request.target_refs else None
 
                 # Emit Step Telemetry
                 await emit_event(
                     event_type=EventType.TASK,
                     topic="task.step_started",
                     source="sentinel.orchestrator",
-                    payload={"task_id": task.id, "step_id": step.step_id, "action": step.action_request.action_type, "phase": step.phase},
+                    payload={
+                        "task_id": task.id,
+                        "step_id": step.step_id,
+                        "action": step.action_request.action_type,
+                        "phase": step.phase,
+                        "target": target_ref,
+                        "progress": task.progress_percentage,
+                    },
                     correlation_id=task.correlation_id,
                 )
 
@@ -144,6 +161,23 @@ class AutonomousOrchestrator:
                     task.updated_at = datetime.now(UTC)
                     logger.info(f"Task {task.id} paused awaiting approval {act_result.error_info['approval_id']}")
                     return task
+
+                # Track action outcome
+                if act_result.error_info and act_result.error_info.get("policy_decision") == "DENY":
+                    blocked_actions.append({
+                        "action_id": step.action_request.id,
+                        "action_type": step.action_request.action_type,
+                        "target": target_ref or "unknown",
+                        "reason": act_result.error_info.get("reason", "Denied by policy"),
+                    })
+                elif act_result.success:
+                    successful_actions.append(step.action_request.id)
+                else:
+                    failed_actions.append({
+                        "action_id": step.action_request.id,
+                        "action_type": step.action_request.action_type,
+                        "error": act_result.output_summary,
+                    })
 
                 task_mem.completed_actions.append(step.action_request.id)
 
@@ -191,17 +225,35 @@ class AutonomousOrchestrator:
                 task.progress_percentage = progress
                 task.updated_at = datetime.now(UTC)
 
-        if task.status == TaskStatus.EXECUTING:
-            task.status = TaskStatus.COMPLETE
+        # 5. Compute Final Result Classification (Prompt 5 Rule 11)
+        if task.status not in (TaskStatus.CANCELLED, TaskStatus.AWAITING_APPROVAL):
+            if blocked_actions and not successful_actions:
+                task.status = TaskStatus.BLOCKED
+            elif blocked_actions and successful_actions:
+                task.status = TaskStatus.PARTIALLY_COMPLETED
+            elif failed_actions and not successful_actions:
+                task.status = TaskStatus.FAILED
+            elif failed_actions and successful_actions:
+                task.status = TaskStatus.PARTIALLY_COMPLETED
+            else:
+                task.status = TaskStatus.COMPLETED
+
             task.progress_percentage = 100.0
             task.completed_at = datetime.now(UTC)
             task.updated_at = datetime.now(UTC)
 
         await emit_event(
             event_type=EventType.TASK,
-            topic="task.completed" if task.status == TaskStatus.COMPLETE else "task.halted",
+            topic="task.completed" if task.status in (TaskStatus.COMPLETE, TaskStatus.COMPLETED) else "task.halted",
             source="sentinel.orchestrator",
-            payload={"task_id": task.id, "status": task.status.value, "progress": task.progress_percentage},
+            payload={
+                "task_id": task.id,
+                "status": task.status.value,
+                "progress": task.progress_percentage,
+                "blocked_actions_count": len(blocked_actions),
+                "successful_actions_count": len(successful_actions),
+                "failed_actions_count": len(failed_actions),
+            },
             correlation_id=task.correlation_id,
         )
 

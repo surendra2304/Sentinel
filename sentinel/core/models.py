@@ -71,17 +71,23 @@ class TaskStatus(StrEnum):
     AWAITING_APPROVAL = "awaiting_approval"
     REPORTING = "reporting"
     COMPLETE = "complete"
+    COMPLETED = "completed"
+    BLOCKED = "blocked"
+    PARTIALLY_COMPLETED = "partially_completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
 
 
 VALID_TASK_TRANSITIONS: dict[TaskStatus, list[TaskStatus]] = {
-    TaskStatus.SUBMITTED: [TaskStatus.PLANNING, TaskStatus.CANCELLED, TaskStatus.FAILED],
-    TaskStatus.PLANNING: [TaskStatus.EXECUTING, TaskStatus.AWAITING_APPROVAL, TaskStatus.CANCELLED, TaskStatus.FAILED],
-    TaskStatus.EXECUTING: [TaskStatus.AWAITING_APPROVAL, TaskStatus.REPORTING, TaskStatus.FAILED, TaskStatus.CANCELLED],
-    TaskStatus.AWAITING_APPROVAL: [TaskStatus.EXECUTING, TaskStatus.CANCELLED, TaskStatus.FAILED],
-    TaskStatus.REPORTING: [TaskStatus.COMPLETE, TaskStatus.FAILED],
+    TaskStatus.SUBMITTED: [TaskStatus.PLANNING, TaskStatus.CANCELLED, TaskStatus.FAILED, TaskStatus.BLOCKED],
+    TaskStatus.PLANNING: [TaskStatus.EXECUTING, TaskStatus.AWAITING_APPROVAL, TaskStatus.CANCELLED, TaskStatus.FAILED, TaskStatus.BLOCKED],
+    TaskStatus.EXECUTING: [TaskStatus.AWAITING_APPROVAL, TaskStatus.REPORTING, TaskStatus.FAILED, TaskStatus.CANCELLED, TaskStatus.BLOCKED, TaskStatus.PARTIALLY_COMPLETED, TaskStatus.COMPLETE, TaskStatus.COMPLETED],
+    TaskStatus.AWAITING_APPROVAL: [TaskStatus.EXECUTING, TaskStatus.CANCELLED, TaskStatus.FAILED, TaskStatus.BLOCKED],
+    TaskStatus.REPORTING: [TaskStatus.COMPLETE, TaskStatus.COMPLETED, TaskStatus.BLOCKED, TaskStatus.PARTIALLY_COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED],
     TaskStatus.COMPLETE: [],
+    TaskStatus.COMPLETED: [],
+    TaskStatus.BLOCKED: [],
+    TaskStatus.PARTIALLY_COMPLETED: [],
     TaskStatus.FAILED: [],
     TaskStatus.CANCELLED: [],
 }
@@ -213,6 +219,33 @@ class AuthorizationMetadata(BaseModel):
     expiry: datetime | None = None
 
 
+class TimeWindow(BaseModel):
+    """Explicit, bounded authorization time window."""
+    start_time: datetime
+    end_time: datetime
+
+    def is_active(self, now: datetime | None = None) -> bool:
+        current = now or datetime.now(UTC)
+        if current.tzinfo is None:
+            current = current.replace(tzinfo=UTC)
+        start = self.start_time if self.start_time.tzinfo else self.start_time.replace(tzinfo=UTC)
+        end = self.end_time if self.end_time.tzinfo else self.end_time.replace(tzinfo=UTC)
+        return start <= current <= end
+
+
+class AssessmentScope(BaseModel):
+    """Explicit authorized-use scope contract required for all Sentinel tasks (Prompt 5)."""
+    owner: str
+    written_authorization_reference: str
+    targets: list[str] = Field(min_length=1)
+    excluded_targets: list[str] = Field(default_factory=list)
+    allowed_methods: list[str] = Field(default_factory=lambda: ["passive_recon", "discovery", "validation"])
+    time_window: TimeWindow
+    rate_limit: int = Field(default=50, ge=1, le=1000)
+    maximum_impact: ImpactLevel = ImpactLevel.LOW
+    offensive_actions_enabled: bool = False
+
+
 class Scope(BaseModel):
     """Scope boundaries, target allowlists, and restrictions."""
     schema_version: str = SCHEMA_VERSION
@@ -225,7 +258,58 @@ class Scope(BaseModel):
     authorization: AuthorizationMetadata = Field(default_factory=AuthorizationMetadata)
     max_intensity: int = Field(default=5, ge=1, le=10)
     offensive_actions_enabled: bool = False
+    # Prompt 5 explicit fields (synchronized with AssessmentScope)
+    owner: str = "security_operator"
+    written_authorization_reference: str | None = None
+    targets: list[str] = Field(default_factory=list)
+    excluded_targets: list[str] = Field(default_factory=list)
+    allowed_methods: list[str] = Field(default_factory=list)
+    time_window: TimeWindow | None = None
+    rate_limit: int = Field(default=50, ge=1, le=1000)
+    maximum_impact: ImpactLevel = ImpactLevel.LOW
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    def model_post_init(self, __context: Any) -> None:
+        # Synchronize targets <-> allowed_targets
+        if not self.targets and self.allowed_targets:
+            self.targets = list(self.allowed_targets)
+        elif not self.allowed_targets and self.targets:
+            self.allowed_targets = list(self.targets)
+
+        # Synchronize excluded_targets <-> out_of_scope_declarations
+        if not self.excluded_targets and self.out_of_scope_declarations:
+            self.excluded_targets = list(self.out_of_scope_declarations)
+        elif not self.out_of_scope_declarations and self.excluded_targets:
+            self.out_of_scope_declarations = list(self.excluded_targets)
+
+        # Synchronize written_authorization_reference
+        if not self.written_authorization_reference and self.authorization.reference_ticket_id:
+            self.written_authorization_reference = self.authorization.reference_ticket_id
+        elif self.written_authorization_reference and not self.authorization.reference_ticket_id:
+            self.authorization.reference_ticket_id = self.written_authorization_reference
+
+        # Synchronize time_window <-> authorization.expiry
+        if self.time_window and not self.authorization.expiry:
+            self.authorization.expiry = self.time_window.end_time
+
+    def to_assessment_scope(self) -> AssessmentScope:
+        """Export to strict AssessmentScope model."""
+        from datetime import timedelta
+        tw = self.time_window or TimeWindow(
+            start_time=self.created_at,
+            end_time=self.authorization.expiry or (datetime.now(UTC) + timedelta(hours=24)),
+        )
+        return AssessmentScope(
+            owner=self.owner,
+            written_authorization_reference=self.written_authorization_reference or self.authorization.reference_ticket_id or "",
+            targets=self.targets or self.allowed_targets,
+            excluded_targets=self.excluded_targets or self.out_of_scope_declarations,
+            allowed_methods=self.allowed_methods,
+            time_window=tw,
+            rate_limit=self.rate_limit,
+            maximum_impact=self.maximum_impact,
+            offensive_actions_enabled=self.offensive_actions_enabled,
+        )
 
 
 class Policy(BaseModel):
@@ -273,7 +357,14 @@ class Task(BaseModel):
             )
         self.status = new_status
         self.updated_at = datetime.now(UTC)
-        if new_status in (TaskStatus.COMPLETE, TaskStatus.FAILED, TaskStatus.CANCELLED):
+        if new_status in (
+            TaskStatus.COMPLETE,
+            TaskStatus.COMPLETED,
+            TaskStatus.BLOCKED,
+            TaskStatus.PARTIALLY_COMPLETED,
+            TaskStatus.FAILED,
+            TaskStatus.CANCELLED,
+        ):
             self.completed_at = datetime.now(UTC)
 
 

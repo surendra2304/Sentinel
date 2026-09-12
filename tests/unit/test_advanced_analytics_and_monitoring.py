@@ -98,7 +98,13 @@ def test_threat_feed_sync_and_cve_correlation():
     # 2. Exploit-DB rule -> +1 boost
     exp_ctx = threat_feed_sync.correlate_cve("CVE-2020-0601", base_cvss=5.0)
     assert exp_ctx.exploit_available is True
-    assert exp_ctx.adjusted_severity == SeverityLevel.HIGH  # Medium boosted to High
+    # CVE-2020-0601 has since been added to the live CISA KEV catalog, so the
+    # KEV rule (CRITICAL) may legitimately supersede the Exploit-DB boost.
+    # With live feeds the outcome must be at least HIGH (Medium +1 boost) and
+    # CRITICAL if KEV now covers it.
+    assert exp_ctx.adjusted_severity in (SeverityLevel.HIGH, SeverityLevel.CRITICAL)
+    if exp_ctx.adjusted_severity == SeverityLevel.HIGH:
+        assert exp_ctx.in_cisa_kev is False  # boost came from exploit availability
 
     # 3. Asset-specific risk calculation
     risk = asset_vulnerability_correlator.evaluate_cve_asset_risk(

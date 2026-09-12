@@ -84,6 +84,7 @@ class PolicyEngine:
             signing_key=self.settings.audit.signing_key,
         )
         self._action_rate_windows: dict[str, list[float]] = defaultdict(list)
+        self._target_rate_windows: dict[str, list[float]] = defaultdict(list)
         self._approvals: dict[str, ApprovalRecord] = {}
 
     async def evaluate_action(
@@ -94,7 +95,10 @@ class PolicyEngine:
         policy: Policy | None = None,
         actor: str = "agent",
     ) -> PolicyDecision:
-        """Exhaustively validate an ActionRequest against all policy dimensions."""
+        """Exhaustively validate an ActionRequest against all policy dimensions.
+        Note: Any caller-provided advisory context (e.g. from FRIDAY) cannot
+        override these hard policy boundaries.
+        """
         eff_scope = scope or task.scope
         eff_policy = policy or task.policy
         resolver = ScopeResolver(eff_scope)
@@ -126,7 +130,7 @@ class PolicyEngine:
                 )
 
         # -------------------------------------------------------------------
-        # Dimension 3: Module & Action Class Allowlists (Deny-by-default)
+        # Dimension 3: Module & Action Class Allowlists & Methods (Deny-by-default)
         # -------------------------------------------------------------------
         if eff_policy.allowed_action_classes:
             matched_action = any(
@@ -153,26 +157,35 @@ class PolicyEngine:
                 actor=actor,
             )
 
+        # Method allowance in Scope
+        allowed_methods = getattr(eff_scope, "allowed_methods", [])
+        if allowed_methods:
+            method_allowed = any(
+                m in ("*", action.action_type, module_prefix)
+                or (m.endswith(".*") and action.action_type.startswith(m[:-2]))
+                or (m == "passive_recon" and module_prefix in ("recon", "dns", "osint", "cert"))
+                or (m == "discovery" and module_prefix in ("recon", "network", "web", "api", "cloud", "intel"))
+                or (m == "validation" and module_prefix in ("web", "api", "vulnerability", "cloud", "mobile", "network", "endpoint"))
+                for m in allowed_methods
+            )
+            if not method_allowed:
+                return self._record_and_return_decision(
+                    action=action,
+                    task=task,
+                    decision_type=PolicyDecisionType.DENY,
+                    reason=f"Action method '{action.action_type}' is not permitted by scope allowed_methods ({allowed_methods}).",
+                    actor=actor,
+                )
+
         # -------------------------------------------------------------------
-        # Dimension 4: Rate & Intensity Limits
+        # Dimension 4: Intensity Limits
         # -------------------------------------------------------------------
-        # Check task action intensity limit
         if action.parameters.get("intensity", 1) > eff_policy.max_intensity:
             return self._record_and_return_decision(
                 action=action,
                 task=task,
                 decision_type=PolicyDecisionType.DENY,
                 reason=f"Action intensity {action.parameters.get('intensity')} exceeds maximum allowed intensity ({eff_policy.max_intensity}).",
-                actor=actor,
-            )
-
-        # Check rate limit (sliding window actions per minute)
-        if not self._check_rate_limit(task.id, eff_policy.rate_limit_rps):
-            return self._record_and_return_decision(
-                action=action,
-                task=task,
-                decision_type=PolicyDecisionType.DENY,
-                reason=f"Rate limit exceeded: Task {task.id} exceeded {eff_policy.rate_limit_rps} actions per minute limit.",
                 actor=actor,
             )
 
@@ -198,10 +211,15 @@ class PolicyEngine:
         # -------------------------------------------------------------------
         # Dimension 6: Human Approval Requirements
         # -------------------------------------------------------------------
+        is_offensive_action = any(
+            k in action.action_type.lower()
+            for k in ("exploit", "attack", "payload", "bruteforce", "takeover", "destructive")
+        )
+
         needs_approval = (
             action.requires_approval
             or action.expected_impact_level in (ImpactLevel.HIGH, ImpactLevel.CRITICAL)
-            or (eff_policy.require_approval_for_offensive and eff_scope.offensive_actions_enabled)
+            or (eff_policy.require_approval_for_offensive and eff_scope.offensive_actions_enabled and is_offensive_action)
         )
 
         if needs_approval:
@@ -215,6 +233,52 @@ class PolicyEngine:
                 approval_id=approval.approval_id,
                 redacted_params=redacted_params,
             )
+
+        # -------------------------------------------------------------------
+        # Dimension 7: Exploitation Separation (Prohibited by Default)
+        # -------------------------------------------------------------------
+        if is_offensive_action:
+            if not getattr(eff_scope, "offensive_actions_enabled", False):
+                return self._record_and_return_decision(
+                    action=action,
+                    task=task,
+                    decision_type=PolicyDecisionType.DENY,
+                    reason=f"Exploitation prohibited by default: '{action.action_type}' requires explicit offensive_actions_enabled in scope.",
+                    actor=actor,
+                )
+            if not any("exploit" in m.lower() or m == action.action_type for m in allowed_methods):
+                return self._record_and_return_decision(
+                    action=action,
+                    task=task,
+                    decision_type=PolicyDecisionType.DENY,
+                    reason=f"Exploitation prohibited: method '{action.action_type}' is not listed in scope allowed_methods.",
+                    actor=actor,
+                )
+
+        # -------------------------------------------------------------------
+        # Dimension 8: Rate Limits (Task and Per-Target Sliding Windows)
+        # -------------------------------------------------------------------
+        # Check task rate limit (sliding window actions per minute)
+        if not self._check_rate_limit(task.id, eff_policy.rate_limit_rps):
+            return self._record_and_return_decision(
+                action=action,
+                task=task,
+                decision_type=PolicyDecisionType.DENY,
+                reason=f"Rate limit exceeded: Task {task.id} exceeded {eff_policy.rate_limit_rps} actions per minute limit.",
+                actor=actor,
+            )
+
+        # Check per-target rate limit
+        target_rpm = getattr(eff_scope, "rate_limit", eff_policy.rate_limit_rps)
+        for target_ref in action.target_refs:
+            if not self._check_target_rate_limit(target_ref, target_rpm):
+                return self._record_and_return_decision(
+                    action=action,
+                    task=task,
+                    decision_type=PolicyDecisionType.DENY,
+                    reason=f"Rate limit exceeded: Target '{target_ref}' exceeded {target_rpm} actions per minute limit.",
+                    actor=actor,
+                )
 
         # -------------------------------------------------------------------
         # Decision: ALLOW
@@ -245,6 +309,18 @@ class PolicyEngine:
         if len(self._action_rate_windows[task_id]) >= limit_rpm:
             return False
         self._action_rate_windows[task_id].append(now)
+        return True
+
+    def _check_target_rate_limit(self, target: str, limit_rpm: int) -> bool:
+        now = time.time()
+        window_start = now - 60.0
+        norm = target.lower().strip()
+        self._target_rate_windows[norm] = [
+            t for t in self._target_rate_windows[norm] if t > window_start
+        ]
+        if len(self._target_rate_windows[norm]) >= limit_rpm:
+            return False
+        self._target_rate_windows[norm].append(now)
         return True
 
     def _create_approval_request(self, action: ActionRequest, task: Task, justification: str) -> ApprovalRecord:

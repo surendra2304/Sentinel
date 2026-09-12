@@ -56,17 +56,31 @@ class FridayContext(BaseModel):
 
 
 class FridayPolicyContext(BaseModel):
+    """Advisory context provided by FRIDAY.
+
+    IMPORTANT: This context is strictly advisory. It cannot override Sentinel's
+    hard policy boundaries, scope limits, or authorization requirements.
+    """
     environment: str = "production"
     authorization_reference: str = "FRIDAY_DIRECTIVE"
     constraints: dict[str, Any] = Field(default_factory=dict)
+    is_advisory: bool = True
 
 
 class FridayDelegationRequest(BaseModel):
-    """Extended delegation request contract from FRIDAY."""
+    """Extended, versioned delegation request contract from FRIDAY."""
+    version: str = "2.0.0"
+    schema_version: str = "2.0.0"
     friday_request_id: str = Field(default_factory=lambda: f"fri-req-{int(datetime.now(UTC).timestamp())}")
+    task_id: str | None = None
+    source_agent: str | None = None
+    target_agent: str | None = None
+    action: str | None = None
+    payload: dict[str, Any] = Field(default_factory=dict)
     target: FridayTargetPayload | str | None = None
     targets: list[FridayTargetPayload] = Field(default_factory=list)
     mode: str = "assessment"
+    scope: dict[str, Any] | None = None  # Explicit AssessmentScope object
     scope_override: dict[str, Any] | None = None
     priority: FridayPriority = FridayPriority.NORMAL
     context: FridayContext = Field(default_factory=FridayContext)
@@ -109,10 +123,11 @@ class BlockedActionRecord(BaseModel):
 class FridayResultPayload(BaseModel):
     delegation_id: str
     task_id: str
-    task_status: str
+    task_status: str  # completed | blocked | partially_completed | failed | cancelled
     progress_percentage: float
     findings: list[dict[str, Any]] = Field(default_factory=list)
     evidence_references: list[str] = Field(default_factory=list)
+    evidence_hashes: dict[str, str] = Field(default_factory=dict)  # evidence_id -> sha256_hash
     blocked_actions: list[BlockedActionRecord] = Field(default_factory=list)
     remediation_recommendations: list[dict[str, Any]] = Field(default_factory=list)
     report_artifacts: dict[str, str] = Field(default_factory=dict)
@@ -120,12 +135,16 @@ class FridayResultPayload(BaseModel):
 
 
 class FridaySSEEvent(BaseModel):
-    event_type: str  # task_started | phase_changed | finding_detected | approval_required | task_completed | task_failed
+    event_type: str  # task_started | phase_changed | step_started | finding_detected | approval_required | task_completed | task_failed | task_blocked | task_cancelled
     task_id: str
     phase: str
+    progress_percentage: float = 0.0
+    current_step: str | None = None
+    active_target: str | None = None
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
     finding: dict[str, Any] | None = None
     approval: dict[str, Any] | None = None
+    blocked_action: dict[str, Any] | None = None
     reason: str | None = None
     summary: str | None = None
 

@@ -12,9 +12,8 @@ try:
     from sdk.memora_client import MemoraClient, memora_client
 except Exception:
     import sqlite3
-    import uuid
     import time
-    from typing import Optional, Dict, Any, List
+    import uuid
 
     class MemoraClient:
         def __init__(self):
@@ -45,7 +44,7 @@ except Exception:
         def recall_memories(self, agent_name: str, query: str, limit: int = 5):
             return []
 
-        def learn_from_outcome(self, agent_name: str, task_name: str, status: str, error_log: Optional[str] = None, actions_taken: Optional[str] = None, context: Optional[str] = None, domain: Optional[str] = None):
+        def learn_from_outcome(self, agent_name: str, task_name: str, status: str, error_log: str | None = None, actions_taken: str | None = None, context: str | None = None, domain: str | None = None):
             if not os.path.exists(self.local_db_path):
                 return {"status": "error", "message": "no db"}
             try:
@@ -69,10 +68,10 @@ except Exception:
             except Exception as e:
                 return {"status": "error", "message": str(e)}
 
-        def recall_experience(self, agent_name: str, task_query: str, domain: Optional[str] = None, limit: int = 5):
+        def recall_experience(self, agent_name: str, task_query: str, domain: str | None = None, limit: int = 5):
             return []
 
-        def build_self_upgrade_context(self, agent_name: str, task_query: str, domain: Optional[str] = None) -> str:
+        def build_self_upgrade_context(self, agent_name: str, task_query: str, domain: str | None = None) -> str:
             return ""
 
     memora_client = MemoraClient()
