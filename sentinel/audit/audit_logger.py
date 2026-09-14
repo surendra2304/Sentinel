@@ -50,11 +50,18 @@ class AuditLogger:
     def __init__(
         self,
         log_path: str = "logs/audit.jsonl",
-        signing_key: str = "sentinel-audit-hmac-secret-key-change-in-prod",
+        signing_key: str | None = None,
         fail_closed: bool = True,
     ):
         self.log_path = log_path
-        self.signing_key = signing_key.encode("utf-8")
+        # Require a production key from env, never silently ship the default secret.
+        key = signing_key or os.environ.get("SENTINEL_AUDIT_HMAC_KEY")
+        if not key or len(key) < 24:
+            raise AuditIntegrityError(
+                "AuditLogger requires SENTINEL_AUDIT_HMAC_KEY >= 24 chars. "
+                "Refusing to sign audit log with the well-known default secret."
+            )
+        self.signing_key = key.encode("utf-8")
         self.fail_closed = fail_closed
         self._lock = RLock()
         os.makedirs(os.path.dirname(self.log_path) or ".", exist_ok=True)

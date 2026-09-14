@@ -14,6 +14,12 @@ import shutil
 import subprocess
 import tempfile
 
+try:
+    from sentinel.core.security.command_policy import CommandDecision, CommandPolicy
+except Exception:  # pragma: no cover - avoid hard import failure if module missing
+    CommandDecision = None
+    CommandPolicy = None
+
 
 class SandboxExecutionError(Exception):
     """Raised when sandboxed execution fails or violates limits."""
@@ -27,9 +33,14 @@ class SubprocessSandbox:
         self,
         default_timeout_seconds: float = 30.0,
         max_output_bytes: int = 10 * 1024 * 1024,  # 10MB cap
+        command_policy: "CommandPolicy | None" = None,
+        safe_path: object | None = None,
     ):
         self.default_timeout = default_timeout_seconds
         self.max_output_bytes = max_output_bytes
+        # Wire the argv allowlist gate (was defined but never enforced at runtime).
+        self.command_policy = command_policy or (CommandPolicy() if CommandPolicy else None)
+        self.safe_path = safe_path
 
     async def execute_command(
         self,
@@ -44,6 +55,18 @@ class SubprocessSandbox:
         """
         if not cmd_args or not isinstance(cmd_args, list):
             raise SandboxExecutionError("Command arguments must be a non-empty list of strings.")
+
+        # NEW: enforce argv allowlist + shell-metachar rejection before ANY execution.
+        if self.command_policy is not None:
+            decision = self.command_policy.validate(cmd_args)
+            if not decision.allowed:
+                raise SandboxExecutionError(f"CommandPolicy DENIED: {decision.reason}")
+        elif any(
+            meta in token or "\n" in token or "\r" in token
+            for token in cmd_args
+            for meta in CommandPolicy.SHELL_META if CommandPolicy
+        ):
+            raise SandboxExecutionError("Shell metacharacters are forbidden")
 
         eff_timeout = timeout or self.default_timeout
         temp_dir = None

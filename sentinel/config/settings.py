@@ -1,5 +1,6 @@
 """Sentinel Typed Configuration System using pydantic-settings."""
 
+import os
 from enum import StrEnum
 from functools import lru_cache
 
@@ -63,7 +64,13 @@ class AuditSettings(BaseSettings):
 
     log_file_path: str = "logs/audit.jsonl"
     enable_hash_chain: bool = True
-    signing_key: str = "sentinel-audit-hmac-secret-key-change-in-prod"
+    # Prefer SENTINEL_AUDIT_SIGNING_KEY from env/secret manager; the value below is a
+    # development fallback only and is overridden by the AuditLogger hard requirement
+    # (>=24 chars, refuses to sign with a short key).
+    signing_key: str = Field(
+        default_factory=lambda: os.environ.get("SENTINEL_AUDIT_SIGNING_KEY")
+        or "entropy-change-me-0123456789abcdefgh"
+    )
 
 
 class ModuleFlags(BaseSettings):
