@@ -3,7 +3,7 @@
 FROM python:3.11-slim AS builder
 
 WORKDIR /build
-COPY pyproject.toml ./
+COPY pyproject.toml README.md* ./
 COPY sentinel/ ./sentinel/
 
 RUN pip install --no-cache-dir --upgrade pip && \
@@ -43,6 +43,7 @@ COPY --chown=sentinel:sentinel docker/entrypoint.sh ./entrypoint.sh
 
 # Directories sentinel needs to write at runtime
 RUN mkdir -p /app/logs /app/data/artifacts && \
+    sed -i 's/\r$//' /app/entrypoint.sh && \
     chmod +x /app/entrypoint.sh && \
     chown -R sentinel:sentinel /app/logs /app/data /app/entrypoint.sh
 
