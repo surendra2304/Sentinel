@@ -84,6 +84,7 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
     """Verifies X-API-Key header, validates FRIDAY scopes, and applies rate limits."""
 
     EXEMPT_PATHS: ClassVar[set[str]] = {
+        "/",
         "/health",
         "/ready",
         "/docs",

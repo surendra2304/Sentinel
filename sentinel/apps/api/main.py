@@ -155,7 +155,19 @@ class DecideApprovalRequest(BaseModel):
 # Health & Readiness Endpoints
 # ---------------------------------------------------------------------------
 
-@app.get("/health", tags=["System"])
+@app.api_route("/", methods=["GET", "HEAD"], tags=["System"])
+async def root_status() -> dict[str, Any]:
+    """Root status endpoint for monitoring probes and mesh ping."""
+    return {
+        "status": "HEALTHY",
+        "service": "SENTINEL",
+        "version": "1.0.0",
+        "environment": settings.environment.value,
+        "timestamp": datetime.now(UTC).isoformat(),
+    }
+
+
+@app.api_route("/health", methods=["GET", "HEAD"], tags=["System"])
 async def health_check() -> dict[str, Any]:
     """Liveness probe reporting system status and tamper-evident audit integrity."""
     return {
@@ -168,7 +180,7 @@ async def health_check() -> dict[str, Any]:
     }
 
 
-@app.get("/ready", tags=["System"])
+@app.api_route("/ready", methods=["GET", "HEAD"], tags=["System"])
 async def readiness_check() -> dict[str, Any]:
     """Readiness probe ensuring modules, event bus, and IntelX threat research connectivity are receptive."""
     return {
