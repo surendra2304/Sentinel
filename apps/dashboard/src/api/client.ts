@@ -1,6 +1,7 @@
 import { Task, Finding, ApprovalRecord, Alert, AuditEntry, PolicyRule, Schedule, BaselineDiff, AttackPath } from '../types';
 
-const API_BASE = '/api/v1';
+const API_BASE_PREFIX = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL.replace(/\/+$/, '')}/api/v1` : '/api/v1';
+const API_BASE = API_BASE_PREFIX;
 
 export async function fetchTasks(): Promise<Task[]> {
   try {

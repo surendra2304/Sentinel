@@ -1,0 +1,45 @@
+services:
+  # ── 1. Sentinel Backend API Web Service ────────────────────────────────────
+  - type: web
+    name: sentinel-api
+    runtime: python
+    region: oregon
+    plan: free
+    buildCommand: pip install -e .
+    startCommand: uvicorn sentinel.apps.api.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/v1/health/ready
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: SENTINEL_ENV
+        value: production
+      - key: SENTINEL_DEBUG
+        value: false
+      - key: SENTINEL_STORAGE_BACKEND
+        value: memory
+      - key: SENTINEL_AUDIT_HMAC_KEY
+        generateValue: true
+      - key: SENTINEL_API_HOST
+        value: 0.0.0.0
+
+  # ── 2. Sentinel Web Dashboard (Static Site) ────────────────────────────────
+  - type: web
+    name: sentinel-dashboard
+    runtime: static
+    region: oregon
+    plan: free
+    rootDir: apps/dashboard
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: NODE_VERSION
+        value: 20.11.0
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: sentinel-api
+          property: host
