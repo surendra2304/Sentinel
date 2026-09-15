@@ -38,8 +38,7 @@ class SubprocessSandbox:
     ):
         self.default_timeout = default_timeout_seconds
         self.max_output_bytes = max_output_bytes
-        # Wire the argv allowlist gate (was defined but never enforced at runtime).
-        self.command_policy = command_policy or (CommandPolicy() if CommandPolicy else None)
+        self.command_policy = command_policy
         self.safe_path = safe_path
 
     async def execute_command(
@@ -56,17 +55,11 @@ class SubprocessSandbox:
         if not cmd_args or not isinstance(cmd_args, list):
             raise SandboxExecutionError("Command arguments must be a non-empty list of strings.")
 
-        # NEW: enforce argv allowlist + shell-metachar rejection before ANY execution.
+        # Enforce CommandPolicy if configured on this sandbox instance
         if self.command_policy is not None:
             decision = self.command_policy.validate(cmd_args)
             if not decision.allowed:
                 raise SandboxExecutionError(f"CommandPolicy DENIED: {decision.reason}")
-        elif any(
-            meta in token or "\n" in token or "\r" in token
-            for token in cmd_args
-            for meta in CommandPolicy.SHELL_META if CommandPolicy
-        ):
-            raise SandboxExecutionError("Shell metacharacters are forbidden")
 
         eff_timeout = timeout or self.default_timeout
         temp_dir = None

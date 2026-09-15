@@ -11,6 +11,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from sentinel.apps.api.main import app
+from sentinel.config.settings import get_settings
 from sentinel.storage.database import session as db_session_module
 from sentinel.storage.database.models import Base
 from sentinel.storage.repositories import factory as repo_factory
@@ -25,6 +26,7 @@ async def test_api_runtime_database_persistence_across_app_restarts(tmp_path, mo
     monkeypatch.setenv("SENTINEL_STORAGE_BACKEND", "postgres")
     monkeypatch.setenv("SENTINEL_DB_HOST", "localhost")
     monkeypatch.setenv("SENTINEL_DB_NAME", str(db_file))
+    get_settings.cache_clear()
 
     # Reset repository singletons & engine
     repo_factory._task_repo = None
