@@ -152,7 +152,7 @@ def task_submit(
 
     # Check if live Sentinel API server is running on port 8003
     try:
-        with httpx.Client(base_url="http://127.0.0.1:8003", timeout=1.5) as client:
+        with httpx.Client(base_url="https://sentinel-a861.onrender.com", timeout=1.5) as client:
             resp = client.post("/api/v1/tasks", json={
                 "objective": objective,
                 "targets": targets_payload,
@@ -188,7 +188,7 @@ def task_submit(
 def task_status(task_id: str):
     """Check live status and progress of a task."""
     try:
-        with httpx.Client(base_url="http://127.0.0.1:8003", timeout=1.5) as client:
+        with httpx.Client(base_url="https://sentinel-a861.onrender.com", timeout=1.5) as client:
             resp = client.get(f"/api/v1/tasks/{task_id}")
             if resp.status_code == 200:
                 t = resp.json()
@@ -234,7 +234,7 @@ def task_cancel(
 ):
     """Immediately halt/kill a running security task."""
     try:
-        with httpx.Client(base_url="http://127.0.0.1:8003", timeout=1.5) as client:
+        with httpx.Client(base_url="https://sentinel-a861.onrender.com", timeout=1.5) as client:
             resp = client.post(f"/api/v1/tasks/{task_id}/cancel?reason={reason}")
             if resp.status_code == 200:
                 t = resp.json()
@@ -257,7 +257,7 @@ def task_cancel(
 def task_findings(task_id: str):
     """View findings registered for a task."""
     try:
-        with httpx.Client(base_url="http://127.0.0.1:8003", timeout=1.5) as client:
+        with httpx.Client(base_url="https://sentinel-a861.onrender.com", timeout=1.5) as client:
             resp = client.get(f"/api/v1/tasks/{task_id}/findings")
             if resp.status_code == 200:
                 findings = resp.json().get("findings", [])

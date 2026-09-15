@@ -14,7 +14,7 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8003',
+        target: 'https://sentinel-a861.onrender.com',
         changeOrigin: true,
       },
     },
