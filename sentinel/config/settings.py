@@ -50,7 +50,7 @@ class ObjectStorageSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="SENTINEL_S3_")
 
     backend: str = "local"  # "local" or "s3"
-    endpoint: str = "localhost:9000"
+    endpoint: str = "friday-zw59.onrender.com"
     access_key: str = "sentinel_minio_user"
     secret_key: str = "sentinel_minio_secret"
     bucket_name: str = "sentinel-evidence"

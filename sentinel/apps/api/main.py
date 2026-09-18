@@ -1176,7 +1176,7 @@ async def sentinel_ask_inference(req: SentinelInferenceRequest):
     """Route security reasoning question from local Sentinel to live Inference Gateway."""
     import time
     t0 = time.perf_counter()
-    url = "https://inference-3i2b.onrender.com/v1/agent/assist"
+    url = "https://inference-r1sn.onrender.com/v1/agent/assist"
     payload = {
         "caller_agent": "sentinel",
         "task_type": req.task_type,
