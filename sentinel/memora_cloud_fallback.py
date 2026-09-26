@@ -101,6 +101,51 @@ class MemoraClient:
     def acknowledge_event(self, agent_name: str, event_id: int, consumer_id: str = "default"):
         return self._request(agent_name, "/v1/events/ack", method="POST", payload={"event_id": int(event_id), "consumer_id": consumer_id})
 
+    @staticmethod
+    def intelx_notice_idempotency_key(event_id: str) -> str:
+        import hashlib
+
+        event_key = hashlib.sha256(event_id.encode("utf-8")).hexdigest()
+        return f"sentinel-intelx-{event_key}"
+
+    def record_intelx_security_notice(
+        self,
+        event_id: str,
+        *,
+        headline: str,
+        summary: str,
+        published_at: str,
+        relevance: dict[str, Any],
+        topics: list[str],
+        sources: list[dict[str, Any]],
+    ):
+        """Persist an explicitly untrusted advisory using Memora's idempotency key."""
+        return self._request("sentinel", "/v1/memories", method="POST", payload={
+            "agent_id": "sentinel",
+            "target_namespace_path": "memora://sentinel/private",
+            "idempotency_key": self.intelx_notice_idempotency_key(event_id),
+            "content_text": f"Untrusted IntelX security advisory received. Event ID: {event_id}",
+            "memory_type": "episodic",
+            "source": "untrusted",
+            "source_type": "untrusted",
+            "trust_level": "untrusted",
+            "confidence": _clamp_confidence(relevance.get("confidence")),
+            "importance": 0.7,
+            "provenance": {
+                "source_agent": "intelx",
+                "event_id": event_id,
+                "event_type": "intelx.news",
+                "classification": "untrusted_security_advisory",
+                "instruction_status": "data_only_never_execute",
+                "headline": headline[:500],
+                "summary": summary[:2000],
+                "published_at": published_at[:64],
+                "relevance": relevance,
+                "topics": topics[:20],
+                "sources": sources[:20],
+            },
+        })
+
     def build_self_upgrade_context(self, agent_name: str, task_query: str, domain: str | None = None) -> str:
         entries = self.recall_experience(agent_name, task_query, domain=domain)
         texts = [str(item.get("content_text", "")).strip() for item in entries if isinstance(item, dict)]
@@ -115,3 +160,11 @@ class MemoraClient:
 
 
 memora_client = MemoraClient()
+
+
+def _clamp_confidence(value: Any) -> float:
+    try:
+        confidence = float(value)
+    except (TypeError, ValueError):
+        return 0.5
+    return min(1.0, max(0.0, confidence))

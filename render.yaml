@@ -39,6 +39,10 @@ services:
         sync: false
       - key: MEMORA_URL
         value: "https://memora-cavc.onrender.com"
+      - key: SENTINEL_MEMORA_EVENTS_ENABLED
+        value: "true"
+      - key: SENTINEL_MEMORA_EVENTS_POLL_SECONDS
+        value: "30"
       - key: MEMORA_API_KEY
         sync: false
       - key: INTELX_URL

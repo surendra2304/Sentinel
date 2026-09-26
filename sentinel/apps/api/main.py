@@ -2,8 +2,9 @@
 
 import asyncio
 import json
+import os
 from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -69,6 +70,8 @@ from sentinel.intelligence.reporting.generator import ReportType, report_generat
 from sentinel.intelligence.risk.finding_engine import finding_engine
 from sentinel.intelligence.risk.risk_engine import TaskRiskSummary, risk_engine
 from sentinel.logging.logger import get_correlation_id, get_logger, setup_logging
+from sentinel.memora_cloud_fallback import MemoraClient as CloudMemoraClient
+from sentinel.memora_event_consumer import MemoraEventConsumer, run_memora_event_consumer
 from sentinel.modules.recon.graph import AttackSurfaceReport, asset_graph_store
 from sentinel.storage.evidence.store import evidence_store
 
@@ -84,7 +87,33 @@ async def lifespan(app: FastAPI):
     recovered = await lifecycle_manager.recover_tasks_on_startup()
     if recovered > 0:
         logger.warning("Recovered pending tasks during startup", extra={"recovered_count": recovered})
-    yield
+
+    memora_task = None
+    enabled = os.getenv("SENTINEL_MEMORA_EVENTS_ENABLED", "false").strip().lower() in {
+        "1", "true", "yes", "on"
+    }
+    if enabled and os.getenv("SENTINEL_API_KEY", "").strip():
+        try:
+            interval = max(10.0, float(os.getenv("SENTINEL_MEMORA_EVENTS_POLL_SECONDS", "30")))
+        except ValueError:
+            interval = 30.0
+        consumer = MemoraEventConsumer(CloudMemoraClient())
+        memora_task = asyncio.create_task(
+            run_memora_event_consumer(consumer, interval),
+            name="sentinel_memora_event_consumer",
+        )
+        logger.info("Memora security advisory consumer started", extra={"poll_seconds": interval})
+    elif enabled:
+        logger.error("Memora advisory consumer is enabled but SENTINEL_API_KEY is missing")
+
+    try:
+        yield
+    finally:
+        if memora_task:
+            memora_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await memora_task
+            logger.info("Memora security advisory consumer stopped")
 
 
 app = FastAPI(
@@ -1176,7 +1205,6 @@ async def sentinel_ask_inference(req: SentinelInferenceRequest):
     """Route security reasoning question from local Sentinel to live Inference Gateway."""
     import time
     t0 = time.perf_counter()
-    import os
     from fastapi import HTTPException, status
 
     api_key = os.getenv("INFERENCE_API_KEY")
