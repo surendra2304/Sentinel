@@ -2,6 +2,7 @@ import asyncio
 import os
 import sys
 import time
+
 import httpx
 from dotenv import load_dotenv
 
@@ -21,20 +22,20 @@ async def main():
     print("AGENT [6/9]: SENTINEL -> INFERENCE GATEWAY (5 QUESTIONS)")
     print("Client: Sentinel Ecosystem Integration Client")
     print("=" * 80)
-    
+
     inf_url = os.getenv("INFERENCE_URL", "https://inference-r1sn.onrender.com").rstrip("/")
     api_key = os.getenv("INFERENCE_API_KEY")
     if not api_key:
         print("Request not sent: configure INFERENCE_API_KEY first.")
         return
     print(f"Target URL: {inf_url}")
-    
+
     headers = {
         "X-FRIDAY-API-Key": api_key,
         "X-Originating-Service": "sentinel",
         "Content-Type": "application/json"
     }
-    
+
     results = []
     async with httpx.AsyncClient(timeout=90.0) as client:
         for i, q in enumerate(questions, 1):
@@ -60,7 +61,7 @@ async def main():
                 lat = (time.perf_counter() - t0) * 1000
                 print(f"[SENTINEL Q{i}/5] ERROR | {lat:>7.1f}ms | {e}")
                 results.append({"q_num": i, "status": "ERROR", "latency_ms": round(lat, 1), "error": str(e)})
-                
+
     print("-" * 80)
     lats = [r["latency_ms"] for r in results if r["status"] == 200]
     if lats:

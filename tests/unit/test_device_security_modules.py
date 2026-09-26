@@ -6,7 +6,7 @@ import pytest
 from sentinel.core.models import (
     ActionRequest,
 )
-from sentinel.modules.endpoint.adapters import EndpointAssessmentAdapter
+from sentinel.modules.endpoint.adapters import EndpointAssessmentAdapter, LinuxAdapter
 from sentinel.modules.mobile.adapters import (
     AndroidAPKStaticAnalysisAdapter,
     iOSIPAStaticAnalysisAdapter,
@@ -124,3 +124,23 @@ async def test_endpoint_assessment_adapter():
     data_ep = json.loads(raw_ep.decode("utf-8"))
     assert data_ep["process_count"] > 0
     assert len(data_ep.get("os_platform", data_ep.get("os", ""))) > 0
+
+
+def test_linux_persistence_scan_reports_inaccessible_directory(tmp_path, monkeypatch, caplog):
+    from sentinel.modules.endpoint import adapters
+
+    cron_dir = tmp_path / "var" / "spool" / "cron" / "crontabs"
+    cron_dir.mkdir(parents=True)
+    real_listdir = adapters.os.listdir
+
+    def listdir(path):
+        if adapters.Path(path) == cron_dir:
+            raise PermissionError("access denied")
+        return real_listdir(path)
+
+    monkeypatch.setattr(adapters.os, "listdir", listdir)
+    findings = LinuxAdapter().collect_persistence(str(tmp_path))
+
+    assert findings == []
+    assert "Unable to inspect persistence directory" in caplog.text
+    assert str(cron_dir).replace("\\", "/") in caplog.text.replace("\\", "/")

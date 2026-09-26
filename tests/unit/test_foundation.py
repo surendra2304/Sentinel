@@ -13,12 +13,17 @@ from sentinel.core.models import (
 from sentinel.core.policy.engine import PolicyEngine
 
 
-def test_settings_load():
-    settings = get_settings()
-    assert settings.app_name == "Sentinel Cybersecurity Platform"
-    assert settings.environment == EnvironmentType.DEVELOPMENT
-    assert settings.modules.recon is True
-    assert settings.modules.vulnerability is True
+def test_settings_load(monkeypatch):
+    monkeypatch.setenv("SENTINEL_ENVIRONMENT", "development")
+    get_settings.cache_clear()
+    try:
+        settings = get_settings()
+        assert settings.app_name == "Sentinel Cybersecurity Platform"
+        assert settings.environment == EnvironmentType.DEVELOPMENT
+        assert settings.modules.recon is True
+        assert settings.modules.vulnerability is True
+    finally:
+        get_settings.cache_clear()
 
 
 def test_audit_logger_hash_chain(tmp_path):

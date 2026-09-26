@@ -10,6 +10,7 @@ Provides:
 
 import contextlib
 import json
+import logging
 import os
 import platform
 import re
@@ -32,6 +33,8 @@ from sentinel.modules.endpoint.models import (
     ServiceInfo,
     UserPrivilegeInfo,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class BasePlatformAdapter(ABC):
@@ -185,8 +188,16 @@ class LinuxAdapter(BasePlatformAdapter):
             files_to_check.append(crontab_file)
         for cdir in cron_dirs:
             if os.path.exists(cdir) and os.path.isdir(cdir):
-                for fn in os.listdir(cdir):
-                    files_to_check.append(os.path.join(cdir, fn))
+                try:
+                    files_to_check.extend(
+                        os.path.join(cdir, fn) for fn in os.listdir(cdir)
+                    )
+                except OSError as exc:
+                    logger.warning(
+                        "Unable to inspect persistence directory %s (%s)",
+                        cdir,
+                        type(exc).__name__,
+                    )
 
         suspicious_paths = ["/tmp/", "/dev/shm/", "/var/tmp/", "/home/", "/tmp"]
         for cfile in files_to_check:

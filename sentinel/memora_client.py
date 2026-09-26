@@ -1,7 +1,6 @@
 """
 Universal Memora Client for Sentinel Cybersecurity & Gatekeeper
 """
-import os
 import sys
 from pathlib import Path
 

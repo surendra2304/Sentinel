@@ -14,11 +14,7 @@ import shutil
 import subprocess
 import tempfile
 
-try:
-    from sentinel.core.security.command_policy import CommandDecision, CommandPolicy
-except Exception:  # pragma: no cover - avoid hard import failure if module missing
-    CommandDecision = None
-    CommandPolicy = None
+from sentinel.core.security.command_policy import CommandPolicy
 
 
 class SandboxExecutionError(Exception):
