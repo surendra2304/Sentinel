@@ -13,6 +13,7 @@ All evaluations append immutable, tamper-evident cryptographic audit logs.
 
 import time
 import uuid
+import logging
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
@@ -32,6 +33,8 @@ from sentinel.core.models import (
     Task,
 )
 from sentinel.core.scope.resolver import ScopeResolver
+
+logger = logging.getLogger(__name__)
 
 
 class PolicyDecisionType(StrEnum):
@@ -450,8 +453,8 @@ class PolicyEngine:
                     context=f"actor:{actor} task:{task.id}",
                     domain="security_defense"
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Memora learning write failed for Sentinel policy denial (%s)", type(exc).__name__)
 
         return decision
 

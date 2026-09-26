@@ -1176,7 +1176,16 @@ async def sentinel_ask_inference(req: SentinelInferenceRequest):
     """Route security reasoning question from local Sentinel to live Inference Gateway."""
     import time
     t0 = time.perf_counter()
-    url = "https://inference-r1sn.onrender.com/v1/agent/assist"
+    import os
+    from fastapi import HTTPException, status
+
+    api_key = os.getenv("INFERENCE_API_KEY")
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Inference is unavailable: INFERENCE_API_KEY is not configured.",
+        )
+    url = f"{os.getenv('INFERENCE_URL', 'https://inference-r1sn.onrender.com').rstrip('/')}/v1/agent/assist"
     payload = {
         "caller_agent": "sentinel",
         "task_type": req.task_type,
@@ -1185,7 +1194,7 @@ async def sentinel_ask_inference(req: SentinelInferenceRequest):
         "no_cache": False,
         "max_tokens": 60,
     }
-    headers = {"X-FRIDAY-API-Key": "inference_api"}
+    headers = {"X-FRIDAY-API-Key": api_key}
     client = _get_sentinel_inf_client()
     r = await client.post(url, json=payload, headers=headers)
     lat = round((time.perf_counter() - t0) * 1000, 2)

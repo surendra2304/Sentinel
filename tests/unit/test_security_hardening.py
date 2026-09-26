@@ -117,6 +117,27 @@ def test_health_endpoint_no_auth_required():
     assert response.status_code == 200
 
 
+def test_render_api_requires_configured_sentinel_key(monkeypatch):
+    """Public Render routes reject missing key configuration and invalid callers."""
+    monkeypatch.setenv("RENDER", "true")
+    monkeypatch.delenv("SENTINEL_API_KEY", raising=False)
+    client = TestClient(app)
+    response = client.get("/api/v1/tasks")
+    assert response.status_code == 503
+    assert response.json()["error"] == "service_auth_unconfigured"
+
+
+def test_render_api_checks_sentinel_key_constant_time_contract(monkeypatch):
+    monkeypatch.setenv("RENDER", "true")
+    monkeypatch.setenv("SENTINEL_API_KEY", "owner-configured-test-key-with-32chars")
+    client = TestClient(app)
+
+    missing = client.get("/api/v1/tasks")
+    invalid = client.get("/api/v1/tasks", headers={"X-API-Key": "wrong-key"})
+    assert missing.status_code == 401
+    assert invalid.status_code == 403
+
+
 # ---------------------------------------------------------------------------
 # Test 4: ScopeResolver rejects out-of-scope targets
 # ---------------------------------------------------------------------------

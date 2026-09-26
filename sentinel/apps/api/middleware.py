@@ -1,4 +1,6 @@
 import time
+import hmac
+import os
 from collections import defaultdict
 from typing import ClassVar
 
@@ -98,10 +100,32 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
         if path in self.EXEMPT_PATHS:
             return await call_next(request)
 
-        # Check API Key
+        # Render-facing APIs must reject requests unless a strong owner-provided key
+        # is configured. Loopback/local tests remain usable without cloud credentials.
         api_key = request.headers.get("X-API-Key") or request.headers.get("Authorization")
         if api_key and api_key.startswith("Bearer "):
             api_key = api_key[7:]
+
+        is_render = os.getenv("RENDER", "").strip().lower() in {"1", "true", "yes"}
+        configured_key = os.getenv("SENTINEL_API_KEY", "").strip()
+        if is_render:
+            if len(configured_key) < 32 or configured_key.lower() in {
+                "sentinel_api", "change-me", "changeme", "password", "secret",
+            }:
+                return JSONResponse(
+                    status_code=503,
+                    content={"error": "service_auth_unconfigured", "detail": "A unique SENTINEL_API_KEY is required."},
+                )
+            if not api_key:
+                return JSONResponse(
+                    status_code=401,
+                    content={"error": "unauthorized", "detail": "An API key is required."},
+                )
+            if not hmac.compare_digest(api_key.encode("utf-8"), configured_key.encode("utf-8")):
+                return JSONResponse(
+                    status_code=403,
+                    content={"error": "forbidden", "detail": "The API key is invalid."},
+                )
 
         # Replay Attack Protection for FRIDAY / Sentinel Ingress
         if path.startswith("/api/v1/friday") or path.startswith("/api/v1/sentinel"):
