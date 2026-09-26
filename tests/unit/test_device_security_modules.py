@@ -126,6 +126,26 @@ async def test_endpoint_assessment_adapter():
     assert len(data_ep.get("os_platform", data_ep.get("os", ""))) > 0
 
 
+def test_linux_hardening_scan_reports_inaccessible_sudoers_directory(tmp_path, monkeypatch, caplog):
+    from sentinel.modules.endpoint import adapters
+
+    sudoers_dir = tmp_path / "etc" / "sudoers.d"
+    sudoers_dir.mkdir(parents=True)
+    real_listdir = adapters.os.listdir
+
+    def listdir(path):
+        if adapters.Path(path) == sudoers_dir:
+            raise PermissionError("access denied")
+        return real_listdir(path)
+
+    monkeypatch.setattr(adapters.os, "listdir", listdir)
+    findings = LinuxAdapter().run_hardening_rules([], root_dir=str(tmp_path))
+
+    assert findings == []
+    assert "Unable to inspect sudoers directory" in caplog.text
+    assert str(sudoers_dir).replace("\\", "/") in caplog.text.replace("\\", "/")
+
+
 def test_linux_persistence_scan_reports_inaccessible_directory(tmp_path, monkeypatch, caplog):
     from sentinel.modules.endpoint import adapters
 

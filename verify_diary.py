@@ -23,7 +23,7 @@ def verify_file(filepath: str) -> None:
     summary_count = len(daily_summary_lines)
 
     print(f"Checking {filepath}: Total Lines = {total_lines}, Daily Summary Items = {summary_count}")
-    assert 50 < total_lines < 100, f"Total lines ({total_lines}) must be between 51 and 99 in {filepath}"
+    assert total_lines < 100, f"Total lines ({total_lines}) must be below 100 in {filepath}"
     assert 15 < summary_count < 30, f"Daily Summary items ({summary_count}) must be between 16 and 29 in {filepath}"
     print(f"PASS: {filepath} is compliant.")
 

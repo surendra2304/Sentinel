@@ -9,6 +9,7 @@ Provides:
 """
 
 import contextlib
+import importlib
 import json
 import logging
 import os
@@ -35,6 +36,11 @@ from sentinel.modules.endpoint.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _load_winreg() -> Any:
+    """Load the Windows-only registry module without Linux stub assumptions."""
+    return importlib.import_module("winreg")
 
 
 class BasePlatformAdapter(ABC):
@@ -294,8 +300,17 @@ class LinuxAdapter(BasePlatformAdapter):
         ]
         sudoers_d = f"{prefix}/etc/sudoers.d" if prefix else "/etc/sudoers.d"
         if os.path.exists(sudoers_d) and os.path.isdir(sudoers_d):
-            for fn in os.listdir(sudoers_d):
-                sudoers_paths.append(os.path.join(sudoers_d, fn))
+            try:
+                for fn in os.listdir(sudoers_d):
+                    sudoers_paths.append(os.path.join(sudoers_d, fn))
+            except OSError as exc:
+                # Endpoint scans commonly run without root; inaccessible host
+                # configuration should not abort the entire assessment.
+                logger.warning(
+                    "Unable to inspect sudoers directory %s (%s)",
+                    sudoers_d,
+                    type(exc).__name__,
+                )
 
         for sp in sudoers_paths:
             if os.path.exists(sp):
@@ -415,7 +430,7 @@ class WindowsAdapter(BasePlatformAdapter):
         items: list[PersistenceItem] = []
         if platform.system().lower() == "windows":
             try:
-                import winreg
+                winreg = _load_winreg()
 
                 keys_to_check = [
                     (winreg.HKEY_LOCAL_MACHINE, r"Software\Microsoft\Windows\CurrentVersion\Run"),
@@ -459,7 +474,7 @@ class WindowsAdapter(BasePlatformAdapter):
 
         if platform.system().lower() == "windows":
             try:
-                import winreg
+                winreg = _load_winreg()
 
                 for root in [winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER]:
                     try:
