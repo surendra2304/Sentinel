@@ -1,5 +1,5 @@
 ﻿import React, { useEffect, useState } from 'react';
-import { fetchFindings } from '../api/client';
+import { fetchConsoleFindings } from '../api/client';
 import { Finding } from '../types';
 import { Filter } from 'lucide-react';
 
@@ -8,12 +8,13 @@ export const FindingsPage: React.FC = () => {
   const [filterSeverity, setFilterSeverity] = useState<string>('all');
   const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchFindings().then((f) => {
-      setFindings(f);
-      setLoading(false);
-    });
+    fetchConsoleFindings().then((f) => setFindings(f)).catch((reason: unknown) => {
+      setFindings([]);
+      setError(reason instanceof Error ? reason.message : 'Unable to load findings.');
+    }).finally(() => setLoading(false));
   }, []);
 
   const filtered = findings.filter((f) => {
@@ -45,6 +46,8 @@ export const FindingsPage: React.FC = () => {
         </div>
       </div>
 
+      {error && <div role="alert" className="rounded-xl border border-red-500/20 bg-red-500/[0.05] p-4 text-sm text-red-200">Finding data is unavailable. {error}</div>}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
           <table className="w-full text-left border-collapse">
@@ -57,6 +60,7 @@ export const FindingsPage: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60 text-sm">
+              {loading && <tr><td colSpan={4} className="py-8 text-center text-slate-500">Loading findings from Sentinel…</td></tr>}
               {filtered.map((f) => (
                 <tr
                   key={f.id}
@@ -85,7 +89,7 @@ export const FindingsPage: React.FC = () => {
                   <td className="py-4 px-6 font-mono text-xs text-cyan-400">{f.evidence_refs.length} artifact(s)</td>
                 </tr>
               ))}
-              {filtered.length === 0 && !loading && (
+            {filtered.length === 0 && !loading && !error && (
                 <tr>
                   <td colSpan={4} className="py-8 text-center text-slate-500">
                     No findings match the selected criteria.

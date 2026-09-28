@@ -15,7 +15,7 @@ describe('Dashboard Component Test Suite', () => {
   });
 
   it('renders Tasks page with task list and kill-switch control', async () => {
-    vi.spyOn(api, 'fetchTasks').mockResolvedValue([
+    vi.spyOn(api, 'fetchConsoleTasks').mockResolvedValue([
       {
         id: 'task-e2e-01',
         objective: 'Assess vulnerable web service',
@@ -43,7 +43,7 @@ describe('Dashboard Component Test Suite', () => {
   });
 
   it('renders Findings page with filter and evidence drawer detail', async () => {
-    vi.spyOn(api, 'fetchFindings').mockResolvedValue([
+    vi.spyOn(api, 'fetchConsoleFindings').mockResolvedValue([
       {
         id: 'find-01',
         task_id: 'task-e2e-01',
@@ -78,7 +78,7 @@ describe('Dashboard Component Test Suite', () => {
   });
 
   it('renders Approvals page with Approve and Deny actions', async () => {
-    vi.spyOn(api, 'fetchApprovals').mockResolvedValue([
+    vi.spyOn(api, 'fetchConsoleApprovals').mockResolvedValue([
       {
         approval_id: 'appr-999',
         task_id: 'task-e2e-01',
@@ -92,15 +92,13 @@ describe('Dashboard Component Test Suite', () => {
     ]);
 
     const decideSpy = vi.spyOn(api, 'decideApproval').mockResolvedValue(true);
-    window.prompt = vi.fn().mockReturnValue('Approved by security test');
-
     render(
       <BrowserRouter>
         <ApprovalsPage />
       </BrowserRouter>
     );
 
-    expect(screen.getByText(/Policy Governance & Approvals/i)).toBeInTheDocument();
+    expect(screen.getByText(/Pending approvals/i)).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByText('appr-999')).toBeInTheDocument();
       expect(screen.getByText('web.admin_database_flush')).toBeInTheDocument();
@@ -109,36 +107,26 @@ describe('Dashboard Component Test Suite', () => {
     // Click Approve button
     const approveBtn = screen.getByRole('button', { name: /Approve/i });
     fireEvent.click(approveBtn);
-    expect(decideSpy).toHaveBeenCalledWith('appr-999', true, 'Approved by security test');
+    fireEvent.change(screen.getByLabelText(/Operator identity/i), { target: { value: 'Analyst One' } });
+    fireEvent.change(screen.getByLabelText(/Decision rationale/i), { target: { value: 'Reviewed the requested scope.' } });
+    fireEvent.click(screen.getByRole('button', { name: /Confirm approval/i }));
+    await waitFor(() => expect(decideSpy).toHaveBeenCalledWith('appr-999', true, 'Analyst One', 'Reviewed the requested scope.', undefined));
   });
 
-  it('renders Risk view with matrix breakdown and exploitability scores', async () => {
-    vi.spyOn(api, 'fetchFindings').mockResolvedValue([
-      {
-        id: 'find-01',
-        task_id: 'task-e2e-01',
-        title: 'Critical RCE Vector',
-        description: 'Remote code execution possible.',
-        target_ref: 'api.corp.local',
-        severity: 'critical',
-        confidence: 0.95,
-        evidence_refs: ['evi-1'],
-        status: 'open',
-        first_seen: '2026-08-28T12:00:00Z',
-      },
-      {
-        id: 'find-02',
-        task_id: 'task-e2e-01',
-        title: 'Missing CSP Header',
-        description: 'Content security policy header is absent.',
-        target_ref: 'api.corp.local',
-        severity: 'medium',
-        confidence: 0.8,
-        evidence_refs: ['evi-2'],
-        status: 'open',
-        first_seen: '2026-08-28T12:00:00Z',
-      },
-    ]);
+  it('renders risk values from the selected task risk-summary API', async () => {
+    vi.spyOn(api, 'fetchConsoleTasks').mockResolvedValue([{
+      id: 'task-e2e-01', objective: 'Review target', mode: 'passive_recon', status: 'complete',
+      progress_percentage: 100, correlation_id: 'corr-1', created_at: '2026-08-28T12:00:00Z', target_count: 1,
+    }]);
+    vi.spyOn(api, 'fetchConsoleRiskSummary').mockResolvedValue({
+      task_id: 'task-e2e-01', total_findings: 2, overall_risk_score: 88.4,
+      highest_risk_tier: 'high', tier_counts: { high: 1 }, severity_counts: { critical: 1 },
+      top_risks: [{
+        id: 'risk-1', finding_id: 'find-01', task_id: 'task-e2e-01', severity: 'critical',
+        asset_criticality: 'high', computed_risk_score: 88.4, risk_tier: 'high',
+        rationale: 'Evaluated severity (critical) on high-critical asset.',
+      }],
+    });
 
     render(
       <BrowserRouter>
@@ -148,14 +136,14 @@ describe('Dashboard Component Test Suite', () => {
 
     expect(screen.getByTestId('risk-view')).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.getByText('Critical RCE Vector')).toBeInTheDocument();
-      expect(screen.getByText('Missing CSP Header')).toBeInTheDocument();
-      expect(screen.getByText(/Vulnerability Criticality Matrix/i)).toBeInTheDocument();
+      expect(screen.getByText('Computed task risk')).toBeInTheDocument();
+      expect(screen.getByText('Finding find-01')).toBeInTheDocument();
+      expect(screen.getAllByText('88.4')).toHaveLength(2);
     });
   });
 
   it('supports findings table severity filtering and empty results state', async () => {
-    vi.spyOn(api, 'fetchFindings').mockResolvedValue([
+    vi.spyOn(api, 'fetchConsoleFindings').mockResolvedValue([
       {
         id: 'find-01',
         task_id: 'task-e2e-01',
@@ -208,7 +196,7 @@ describe('Dashboard Component Test Suite', () => {
   });
 
   it('updates task progress in real time upon task list polling / refresh', async () => {
-    const fetchSpy = vi.spyOn(api, 'fetchTasks');
+    const fetchSpy = vi.spyOn(api, 'fetchConsoleTasks');
     fetchSpy.mockResolvedValueOnce([
       {
         id: 'task-live-01',

@@ -1,35 +1,43 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { fetchTasks, cancelTask, submitTask } from '../api/client';
+import { fetchConsoleTasks, cancelTask, submitTask } from '../api/client';
 import { Task } from '../types';
 import { StopCircle, RefreshCw, Plus, Play, ShieldAlert, FileText } from 'lucide-react';
 
 export const TasksPage: React.FC = () => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [objective, setObjective] = useState('Perimeter attack surface discovery and port audit');
-  const [target, setTarget] = useState('example.com');
+  const [objective, setObjective] = useState('');
+  const [target, setTarget] = useState('');
   const [mode, setMode] = useState('passive_recon');
 
-  const load = () => {
-    fetchTasks().then((t) => {
-      setTasks(t);
+  const load = async () => {
+    setLoading(true);
+    try {
+      setTasks(await fetchConsoleTasks());
+      setError(null);
+    } catch (reason) {
+      setTasks([]);
+      setError(reason instanceof Error ? reason.message : 'Unable to load Sentinel tasks.');
+    } finally {
       setLoading(false);
-    });
+    }
   };
 
   useEffect(() => {
     load();
-    const interval = setInterval(load, 2500);
+    const interval = setInterval(() => void load(), 15000);
     return () => clearInterval(interval);
   }, []);
 
   const handleCancel = async (id: string) => {
     if (confirm(`Halt execution of Task ${id}?`)) {
-      await cancelTask(id);
-      load();
+      const cancelled = await cancelTask(id);
+      if (!cancelled) setError('Sentinel did not confirm task cancellation.');
+      await load();
     }
   };
 
@@ -37,15 +45,19 @@ export const TasksPage: React.FC = () => {
     e.preventDefault();
     setSubmitting(true);
     const targetType = target.match(/^\d+\.\d+\.\d+\.\d+$/) ? 'ip' : 'domain';
-    await submitTask({
+    const result = await submitTask({
       objective,
       targets: [{ type: targetType, value: target }],
       mode,
       requested_output: 'comprehensive_report',
     });
     setSubmitting(false);
+    if (!result) {
+      setError('Sentinel did not accept the task. Check API access, authorization scope, and target format.');
+      return;
+    }
     setShowModal(false);
-    load();
+    await load();
   };
 
   return (
@@ -72,6 +84,8 @@ export const TasksPage: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {error && <div role="alert" className="rounded-xl border border-red-500/20 bg-red-500/[0.05] p-4 text-sm text-red-200">Task operation failed. {error}</div>}
 
       {showModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -152,7 +166,8 @@ export const TasksPage: React.FC = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/60 text-sm">
-            {tasks.map((t) => (
+                  {loading && tasks.length === 0 && <tr><td colSpan={6} className="py-8 text-center text-slate-500">Loading tasks from Sentinel…</td></tr>}
+                  {tasks.map((t) => (
               <tr key={t.id} className="hover:bg-slate-800/30 transition">
                 <td className="py-4 px-6 font-mono text-cyan-400 font-semibold">{t.id}</td>
                 <td className="py-4 px-6 font-medium text-slate-200">{t.objective}</td>
@@ -216,7 +231,7 @@ export const TasksPage: React.FC = () => {
                 </td>
               </tr>
             ))}
-            {tasks.length === 0 && !loading && (
+            {tasks.length === 0 && !loading && !error && (
               <tr>
                 <td colSpan={6} className="py-8 text-center text-slate-500">
                   No tasks registered. Click "Launch New Task" above to dispatch an autonomous security assessment!

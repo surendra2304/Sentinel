@@ -13,8 +13,8 @@ describe('Sidebar Component', () => {
     );
 
     expect(screen.getByText('SENTINEL')).toBeInTheDocument();
-    expect(screen.getByText('Overview')).toBeInTheDocument();
-    expect(screen.getByText('Tasks')).toBeInTheDocument();
+    expect(screen.getByText('Control room')).toBeInTheDocument();
+    expect(screen.getByText('Assessments')).toBeInTheDocument();
     expect(screen.getByText('Findings')).toBeInTheDocument();
     expect(screen.getByText('Approvals')).toBeInTheDocument();
     expect(screen.getByText('3')).toBeInTheDocument();

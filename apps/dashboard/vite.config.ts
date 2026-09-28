@@ -17,6 +17,10 @@ export default defineConfig({
         target: 'https://sentinel-a861.onrender.com',
         changeOrigin: true,
       },
+      '/health': {
+        target: 'https://sentinel-a861.onrender.com',
+        changeOrigin: true,
+      },
     },
   },
   test: {
