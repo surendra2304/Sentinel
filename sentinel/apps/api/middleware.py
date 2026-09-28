@@ -87,6 +87,8 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
 
     EXEMPT_PATHS: ClassVar[set[str]] = {
         "/",
+        "/dashboard",
+        "/dashboard/",
         "/health",
         "/ready",
         "/docs",
@@ -97,7 +99,7 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
-        if path in self.EXEMPT_PATHS:
+        if path in self.EXEMPT_PATHS or path.startswith("/assets/"):
             return await call_next(request)
 
         # Render-facing APIs must reject requests unless a strong owner-provided key

@@ -6,12 +6,14 @@ import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import httpx
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, PlainTextResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse, Response
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
@@ -134,6 +136,13 @@ app.add_middleware(
 )
 app.add_middleware(APIKeyAuthMiddleware)
 
+SENTINEL_DASHBOARD_DIR = Path(__file__).resolve().parents[3] / "apps" / "dashboard" / "dist"
+SENTINEL_DASHBOARD_INDEX = SENTINEL_DASHBOARD_DIR / "index.html"
+if SENTINEL_DASHBOARD_INDEX.is_file():
+    assets_dir = SENTINEL_DASHBOARD_DIR / "assets"
+    if assets_dir.is_dir():
+        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="dashboard-assets")
+
 
 # ---------------------------------------------------------------------------
 # Request & Response Schemas
@@ -185,8 +194,15 @@ class DecideApprovalRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 @app.api_route("/", methods=["GET", "HEAD"], tags=["System"])
-async def root_status() -> dict[str, Any]:
-    """Root status endpoint for monitoring probes and mesh ping."""
+async def root_status(request: Request) -> Any:
+    """Show the UI to browsers while retaining JSON root metadata for API clients."""
+    if "text/html" in request.headers.get("accept", "").lower():
+        if SENTINEL_DASHBOARD_INDEX.is_file():
+            return RedirectResponse(url="/dashboard/", status_code=307)
+        return HTMLResponse(
+            "<main><h1>Sentinel dashboard is not installed in this deployment.</h1></main>",
+            status_code=503,
+        )
     return {
         "status": "HEALTHY",
         "service": "SENTINEL",
@@ -194,6 +210,18 @@ async def root_status() -> dict[str, Any]:
         "environment": settings.environment.value,
         "timestamp": datetime.now(UTC).isoformat(),
     }
+
+
+@app.api_route("/dashboard", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/dashboard/", methods=["GET", "HEAD"], include_in_schema=False)
+async def dashboard_page() -> Response:
+    """Serve the React operations workspace bundled into the API image."""
+    if SENTINEL_DASHBOARD_INDEX.is_file():
+        return FileResponse(SENTINEL_DASHBOARD_INDEX, media_type="text/html")
+    return HTMLResponse(
+        "<main><h1>Sentinel dashboard is not installed in this deployment.</h1></main>",
+        status_code=503,
+    )
 
 
 @app.api_route("/health", methods=["GET", "HEAD"], tags=["System"])

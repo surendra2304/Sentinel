@@ -1,3 +1,12 @@
+# ── SENTINEL Dashboard Build ─────────────────────────────────────────────────
+FROM node:20-alpine AS dashboard-builder
+
+WORKDIR /dashboard
+COPY apps/dashboard/package.json apps/dashboard/package-lock.json ./
+RUN npm ci
+COPY apps/dashboard/ ./
+RUN npm run build
+
 # ── SENTINEL API Dockerfile ──────────────────────────────────────────────────
 # Stage 1: Build dependencies
 FROM python:3.11-slim AS builder
@@ -35,6 +44,7 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application source
 COPY --chown=sentinel:sentinel sentinel/ ./sentinel/
+COPY --from=dashboard-builder --chown=sentinel:sentinel /dashboard/dist ./apps/dashboard/dist
 COPY --chown=sentinel:sentinel contracts/ ./contracts/
 COPY --chown=sentinel:sentinel pyproject.toml ./
 COPY --chown=sentinel:sentinel alembic.ini ./
