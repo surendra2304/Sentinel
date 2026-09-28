@@ -12,7 +12,13 @@ from typing import Any
 import httpx
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse, Response
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    PlainTextResponse,
+    RedirectResponse,
+    Response,
+)
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
