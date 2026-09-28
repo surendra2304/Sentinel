@@ -170,7 +170,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: docker/Dockerfile.api
+          file: Dockerfile
           push: false
           tags: sentinel-api:ci
           cache-from: type=gha
