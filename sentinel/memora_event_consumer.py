@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import re
 from typing import Any
 
@@ -100,6 +101,54 @@ def _is_security_notice(event: dict[str, Any]) -> bool:
     return bool(re.search(r"\bcve-\d{4}-\d{3,}\b", text))
 
 
+def _futuris_forecast(event: dict[str, Any]) -> dict[str, Any] | None:
+    """Validate the narrow forecast envelope we retain as an advisory.
+
+    Futuris probabilities and point forecasts are evidence for a human/Sentinel
+    review, never authorization to scan, remediate, quarantine, or trade.
+    """
+    if event.get("event_type") != "futuris.forecast":
+        return None
+    event_id = event.get("event_id")
+    payload = event.get("payload")
+    if not isinstance(event_id, str) or not event_id.startswith("futuris-"):
+        raise MemoraDeliveryError("Futuris forecast event has an invalid event_id")
+    if not isinstance(payload, dict):
+        raise MemoraDeliveryError("Futuris forecast payload is malformed")
+    forecast_id = _bounded_text(payload.get("forecast_id"), 128)
+    target = _bounded_text(payload.get("target"), 500)
+    status = _bounded_text(payload.get("status"), 32).lower()
+    if not forecast_id or not target or status not in {"active", "resolved", "expired", "invalidated"}:
+        raise MemoraDeliveryError("Futuris forecast is missing required lifecycle fields")
+
+    numbers: dict[str, float] = {}
+    for key in ("prediction", "range_lower", "range_upper", "probability", "confidence"):
+        value = payload.get(key)
+        if value is None and key == "probability":
+            continue
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            raise MemoraDeliveryError("Futuris forecast contains an invalid numeric value")
+        number = float(value)
+        if key in {"probability", "confidence"} and not 0.0 <= number <= 1.0:
+            raise MemoraDeliveryError("Futuris forecast probability/confidence is out of range")
+        numbers[key] = number
+    if numbers["range_lower"] > numbers["prediction"] or numbers["prediction"] > numbers["range_upper"]:
+        raise MemoraDeliveryError("Futuris forecast interval does not contain its prediction")
+    if payload.get("prediction_is_not_authorization") is not True:
+        raise MemoraDeliveryError("Futuris forecast is missing the no-authorization invariant")
+
+    return {
+        "forecast_id": forecast_id,
+        "target": target,
+        "status": status,
+        "as_of": _bounded_text(payload.get("as_of"), 64),
+        "expires_at": _bounded_text(payload.get("expires_at"), 64),
+        "model_version": _bounded_text(payload.get("model_version"), 128),
+        "prediction_is_not_authorization": True,
+        **numbers,
+    }
+
+
 class MemoraEventConsumer:
     """Persist relevant IntelX notices before acknowledging their global event cursor."""
 
@@ -131,7 +180,16 @@ class MemoraEventConsumer:
                 raise MemoraDeliveryError("Memora returned events out of cursor order")
             previous_id = event_cursor
 
-            if _is_security_notice(event):
+            if event.get("event_type") == "futuris.forecast":
+                forecast = _futuris_forecast(event)
+                receipt = self.client.record_futuris_forecast_advisory(
+                    event["event_id"], forecast=forecast
+                )
+                expected_key = self.client.futuris_forecast_idempotency_key(event["event_id"])
+                if not _successful(receipt) or receipt.get("idempotency_key") != expected_key:
+                    raise MemoraDeliveryError("Memora did not confirm the Futuris forecast advisory write")
+                processed += 1
+            elif _is_security_notice(event):
                 payload = event["payload"]
                 relevance = payload.get("relevance")
                 relevance = relevance if isinstance(relevance, dict) else {}

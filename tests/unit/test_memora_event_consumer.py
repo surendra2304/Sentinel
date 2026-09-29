@@ -54,6 +54,19 @@ class FakeMemora:
         self.records.setdefault(key, {"event_id": event_id, **kwargs})
         return {"idempotency_key": key, "is_duplicate": duplicate, "cloud": True}
 
+    @staticmethod
+    def futuris_forecast_idempotency_key(event_id):
+        return MemoraClient.futuris_forecast_idempotency_key(event_id)
+
+    def record_futuris_forecast_advisory(self, event_id, *, forecast):
+        self.calls.append(("persist_futuris", event_id, forecast))
+        if self.fail_persist:
+            return {"status": "error", "cloud": False}
+        key = self.futuris_forecast_idempotency_key(event_id)
+        duplicate = key in self.records
+        self.records.setdefault(key, {"event_id": event_id, "forecast": forecast})
+        return {"idempotency_key": key, "is_duplicate": duplicate, "cloud": True}
+
     def acknowledge_event(self, agent, event_id, *, consumer_id):
         self.calls.append(("ack", agent, event_id, consumer_id))
         if self.fail_ack:
@@ -170,6 +183,61 @@ def test_non_security_intelx_news_is_advanced_without_persisting_or_action():
     assert client.cursor == event["id"]
     assert client.records == {}
     assert not any(call[0] == "persist" for call in client.calls)
+
+
+def _futuris_forecast(event_id="futuris-forecast-01"):
+    return {
+        "id": 8,
+        "event_id": event_id,
+        "event_type": "futuris.forecast",
+        "payload": {
+            "forecast_id": "forecast-01",
+            "target": "service:checkout:capacity_exceedance_24h",
+            "status": "active",
+            "as_of": "2026-09-29T10:00:00Z",
+            "expires_at": "2026-09-30T10:00:00Z",
+            "prediction": 120.0,
+            "range_lower": 90.0,
+            "range_upper": 150.0,
+            "probability": 0.82,
+            "confidence": 0.61,
+            "model_version": "forecast-model-v4",
+            "prediction_is_not_authorization": True,
+        },
+    }
+
+
+def test_futuris_forecast_is_stored_as_untrusted_advisory_before_ack():
+    event = _futuris_forecast()
+    client = FakeMemora([event])
+
+    result = MemoraEventConsumer(client).consume_once()
+
+    assert result["processed"] == 1
+    persisted = next(value for value in client.records.values() if "forecast" in value)
+    assert persisted["forecast"]["probability"] == 0.82
+    calls = [call[0] for call in client.calls]
+    assert calls == ["cursor", "poll", "persist_futuris", "ack"]
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda payload: payload.update(prediction_is_not_authorization=False),
+        lambda payload: payload.update(probability=1.5),
+        lambda payload: payload.update(range_lower=130.0),
+    ],
+)
+def test_invalid_futuris_forecast_is_not_acked(mutate):
+    event = _futuris_forecast()
+    mutate(event["payload"])
+    client = FakeMemora([event])
+
+    with pytest.raises(MemoraDeliveryError):
+        MemoraEventConsumer(client).consume_once()
+
+    assert client.cursor == 0
+    assert not any(call[0] == "persist_futuris" for call in client.calls)
 
 
 def test_security_shaped_event_from_another_agent_is_not_trusted_as_intelx():

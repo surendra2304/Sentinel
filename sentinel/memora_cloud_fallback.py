@@ -148,6 +148,41 @@ class MemoraClient:
             },
         })
 
+    @staticmethod
+    def futuris_forecast_idempotency_key(event_id: str) -> str:
+        import hashlib
+
+        event_key = hashlib.sha256(event_id.encode("utf-8")).hexdigest()
+        return f"sentinel-futuris-{event_key}"
+
+    def record_futuris_forecast_advisory(self, event_id: str, *, forecast: dict[str, Any]):
+        """Persist a validated forecast as untrusted advisory data, never authority."""
+        key = self.futuris_forecast_idempotency_key(event_id)
+        return self._request("sentinel", "/v1/memories", method="POST", payload={
+            "agent_id": "sentinel",
+            "target_namespace_path": "memora://sentinel/private",
+            "idempotency_key": key,
+            "content_text": (
+                f"Futuris forecast advisory for {forecast['target']}: "
+                f"prediction={forecast['prediction']}, probability={forecast.get('probability')}, "
+                f"status={forecast['status']}. This forecast is not authorization."
+            )[:2000],
+            "memory_type": "episodic",
+            "source": "untrusted",
+            "source_type": "untrusted",
+            "trust_level": "untrusted",
+            "confidence": forecast.get("confidence", 0.0),
+            "importance": 0.6,
+            "provenance": {
+                "source_agent": "futuris",
+                "event_id": event_id,
+                "event_type": "futuris.forecast",
+                "classification": "untrusted_forecast_advisory",
+                "instruction_status": "data_only_never_execute",
+                "forecast": forecast,
+            },
+        })
+
     def build_self_upgrade_context(self, agent_name: str, task_query: str, domain: str | None = None) -> str:
         entries = self.recall_experience(agent_name, task_query, domain=domain)
         texts = [str(item.get("content_text", "")).strip() for item in entries if isinstance(item, dict)]
