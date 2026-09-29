@@ -168,7 +168,17 @@ class MemoraEventConsumer:
             acknowledged = self.client.acknowledge_event(
                 "sentinel", event_cursor, consumer_id=self.consumer_id
             )
-            if not _successful(acknowledged) or acknowledged.get("after_id", 0) < event_cursor:
+            # The Memora endpoint returns an identity-bearing receipt only after
+            # the per-consumer cursor is durably advanced. A 200 response or a
+            # cursor-shaped object alone is not proof that this consumer acked it.
+            if (
+                not _successful(acknowledged)
+                or acknowledged.get("status") != "acknowledged"
+                or acknowledged.get("agent") != "sentinel"
+                or acknowledged.get("consumer_id") != self.consumer_id
+                or not isinstance(acknowledged.get("after_id"), int)
+                or acknowledged["after_id"] < event_cursor
+            ):
                 raise MemoraDeliveryError("Memora did not confirm the event acknowledgement")
 
         return {

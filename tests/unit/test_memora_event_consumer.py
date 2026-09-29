@@ -58,7 +58,13 @@ class FakeMemora:
         if self.fail_ack:
             return {"status": "error", "cloud": False, "after_id": self.cursor}
         self.cursor = event_id
-        return {"status": "acknowledged", "after_id": self.cursor, "cloud": True}
+        return {
+            "status": "acknowledged",
+            "agent": agent,
+            "consumer_id": consumer_id,
+            "after_id": self.cursor,
+            "cloud": True,
+        }
 
 
 def test_consumer_persists_relevant_notice_as_untrusted_before_ordered_ack():
@@ -121,6 +127,33 @@ def test_ack_failure_replays_idempotently_then_advances_cursor():
     assert len(client.records) == 1
     persist_calls = [call for call in client.calls if call[0] == "persist"]
     assert len(persist_calls) == 2
+
+
+def test_ack_receipt_must_confirm_sentinel_consumer_identity(monkeypatch):
+    event = _notice("intelx-security-wrong-ack-identity")
+    client = FakeMemora([event])
+    valid_ack = client.acknowledge_event
+
+    def wrong_identity(agent, event_id, *, consumer_id):
+        return {
+            "status": "acknowledged",
+            "agent": agent,
+            "consumer_id": "another-consumer",
+            "after_id": event_id,
+            "cloud": True,
+        }
+
+    monkeypatch.setattr(client, "acknowledge_event", wrong_identity)
+    with pytest.raises(MemoraDeliveryError, match="event acknowledgement"):
+        MemoraEventConsumer(client).consume_once()
+
+    # The memory write is idempotent, so retrying after a dubious receipt is safe.
+    assert len(client.records) == 1
+    assert client.cursor == 0
+
+    monkeypatch.setattr(client, "acknowledge_event", valid_ack)
+    assert MemoraEventConsumer(client).consume_once()["processed"] == 1
+    assert client.cursor == event["id"]
 
 
 def test_non_security_intelx_news_is_advanced_without_persisting_or_action():
