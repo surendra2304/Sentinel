@@ -82,7 +82,7 @@ def _is_security_notice(event: dict[str, Any]) -> bool:
     if not isinstance(event_id, str) or not event_id.startswith("intelx-"):
         return False
     payload = event.get("payload")
-    if not isinstance(payload, dict):
+    if not isinstance(payload, dict) or payload.get("source_agent") != "intelx":
         return False
     relevance = payload.get("relevance")
     relevance = relevance if isinstance(relevance, dict) else {}
