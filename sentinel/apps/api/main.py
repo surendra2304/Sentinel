@@ -210,11 +210,12 @@ async def root_status(request: Request) -> Any:
             status_code=503,
         )
     return {
-        "status": "HEALTHY",
+        "status": "ok",
+        "evidence_class": "process_liveness",
         "service": "SENTINEL",
         "version": "1.0.0",
         "environment": settings.environment.value,
-        "timestamp": datetime.now(UTC).isoformat(),
+        "observed_at": datetime.now(UTC).isoformat(),
     }
 
 
@@ -232,26 +233,42 @@ async def dashboard_page() -> Response:
 
 @app.api_route("/health", methods=["GET", "HEAD"], tags=["System"])
 async def health_check() -> dict[str, Any]:
-    """Liveness probe reporting system status and tamper-evident audit integrity."""
+    """Report process liveness and the independently checked audit chain."""
+    audit_ok = audit_logger.verify_integrity()
     return {
-        "status": "HEALTHY",
+        "status": "ok",
+        "evidence_class": "process_liveness",
         "service": "SENTINEL",
         "version": "1.0.0",
         "environment": settings.environment.value,
         "kill_switch_active": settings.kill_switch_active,
-        "audit_chain_valid": audit_logger.verify_integrity(),
+        "audit_chain_valid": audit_ok,
+        "audit_evidence_class": "audit_chain_integrity_check",
+        "observed_at": datetime.now(UTC).isoformat(),
     }
 
 
 @app.api_route("/ready", methods=["GET", "HEAD"], tags=["System"])
 async def readiness_check() -> dict[str, Any]:
-    """Readiness probe ensuring modules, event bus, and IntelX threat research connectivity are receptive."""
+    """Report only locally verifiable readiness; peer reachability is not inferred."""
+    modules = settings.modules.model_dump()
+    audit_ok = audit_logger.verify_integrity()
+    checks = {
+        "audit_integrity": audit_ok,
+        "event_bus_initialized": event_bus is not None,
+        "storage_backend_configured": bool(settings.storage_backend.strip()),
+    }
+    ready = all(checks.values())
     return {
-        "status": "READY",
-        "modules_active": sum(1 for v in settings.modules.model_dump().values() if v),
-        "event_bus": "IN_MEMORY_ONLINE",
+        "status": "READY" if ready else "DEGRADED",
+        "ready": ready,
+        "evidence_class": "local_readiness_checks",
+        "observed_at": datetime.now(UTC).isoformat(),
+        "checks": checks,
+        "modules_active": sum(1 for v in modules.values() if v),
+        "event_bus": type(event_bus).__name__ if event_bus is not None else "unavailable",
         "storage_backend": settings.storage_backend,
-        "intelx_connectivity": "ONLINE",
+        "peer_connectivity": "not_checked",
     }
 
 
@@ -1083,7 +1100,11 @@ async def get_finding_research_context(finding_id: str) -> dict[str, Any]:
 
 security_incident_mgr = IncidentManager()
 security_quarantine_mgr = QuarantineManager()
-capability_issuer = CapabilityIssuer(b"sentinel-master-capability-secret-key-32b!")
+capability_issuer = (
+    CapabilityIssuer(settings.capability_signing_key.encode("utf-8"))
+    if len(settings.capability_signing_key.encode("utf-8")) >= 32
+    else None
+)
 fail_closed_health = FailClosedHealth()
 
 
@@ -1120,15 +1141,33 @@ class IncidentRequest(BaseModel):
 @app.get(f"{settings.api_prefix}/health/ready", tags=["Security Governance"])
 async def security_readiness_check() -> dict[str, Any]:
     """Fail-closed security readiness probe verifying audit chain, keys, and policies."""
+    # The production manifest currently selects the in-memory backend and this
+    # module has no durable-store health probe. Configuration alone cannot prove
+    # persistence, so keep this security readiness gate closed until that exists.
     rep = fail_closed_health.check(
         audit_ok=audit_logger.verify_integrity(),
-        persistence_ok=True,
-        signing_key_ok=len(settings.audit.signing_key) >= 16,
-        policy_loaded=True,
+        persistence_ok=False,
+        signing_key_ok=len(settings.audit.signing_key.encode("utf-8")) >= 24,
+        policy_loaded=policy_engine is not None,
     )
     if not rep.ok:
-        raise HTTPException(status_code=503, detail={"status": "DEGRADED", "checks": rep.checks})
-    return {"status": "READY", "checks": rep.checks, "generated_at": rep.generated_at}
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "status": "DEGRADED",
+                "evidence_class": "security_readiness_checks",
+                "persistence_evidence": "unverified_no_durable_store_probe",
+                "checks": rep.checks,
+                "observed_at": datetime.fromtimestamp(rep.generated_at, UTC).isoformat(),
+            },
+        )
+    return {
+        "status": "READY",
+        "evidence_class": "security_readiness_checks",
+        "persistence_evidence": "verified",
+        "checks": rep.checks,
+        "observed_at": datetime.fromtimestamp(rep.generated_at, UTC).isoformat(),
+    }
 
 
 @app.get(f"{settings.api_prefix}/incidents", tags=["Security Governance"])
@@ -1187,6 +1226,11 @@ async def quarantine_subject(req: QuarantineRequest) -> dict[str, Any]:
 @app.post(f"{settings.api_prefix}/capabilities/issue", tags=["Security Governance"])
 async def issue_capability_token(req: IssueCapabilityRequest) -> dict[str, Any]:
     """Issue a signed, scoped, expiring capability token."""
+    if capability_issuer is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Capability signing is unavailable: configure a 32-byte SENTINEL_CAPABILITY_SIGNING_KEY.",
+        )
     token = capability_issuer.issue(
         actor_id=req.actor_id,
         tenant_id=req.tenant_id,
@@ -1200,6 +1244,11 @@ async def issue_capability_token(req: IssueCapabilityRequest) -> dict[str, Any]:
 @app.post(f"{settings.api_prefix}/capabilities/verify", tags=["Security Governance"])
 async def verify_capability_token(req: VerifyCapabilityRequest) -> dict[str, Any]:
     """Verify an action and resource against a capability token."""
+    if capability_issuer is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Capability verification is unavailable: configure a 32-byte SENTINEL_CAPABILITY_SIGNING_KEY.",
+        )
     try:
         cap = capability_issuer.verify(
             req.token,

@@ -16,6 +16,8 @@ services:
         value: "production"
       - key: SENTINEL_API_KEY
         sync: false
+      - key: SENTINEL_CAPABILITY_SIGNING_KEY
+        sync: false
       - key: SENTINEL_STORAGE_BACKEND
         value: "memory"
       - key: SENTINEL_S3_BACKEND

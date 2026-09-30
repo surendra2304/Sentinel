@@ -109,6 +109,11 @@ class Settings(BaseSettings):
     api_port: int = 8000
     api_prefix: str = "/api/v1"
     secret_key: str = "sentinel-insecure-secret-key-change-in-production"
+    # Capability signatures must use a deployment-specific secret. Never embed a
+    # fallback signing key in source: tokens signed with a public key are forgeable.
+    capability_signing_key: str = Field(
+        default_factory=lambda: os.environ.get("SENTINEL_CAPABILITY_SIGNING_KEY", "")
+    )
 
     # Sub-configurations
     db: DatabaseSettings = Field(default_factory=DatabaseSettings)

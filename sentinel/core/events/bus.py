@@ -5,7 +5,7 @@ designed to be easily swapped with Redis/NATS without altering publisher interfa
 """
 
 import asyncio
-import contextlib
+import logging
 import uuid
 from abc import ABC, abstractmethod
 from collections import defaultdict
@@ -14,6 +14,8 @@ from datetime import UTC, datetime
 from typing import Any
 
 from sentinel.core.models import Event, EventType
+
+logger = logging.getLogger(__name__)
 
 # Type alias for event listener callbacks
 EventListener = Callable[[Event], Coroutine[Any, Any, None]]
@@ -79,8 +81,20 @@ class InMemoryEventBus(EventBus):
                 await q.put(event)
 
     async def _safe_dispatch(self, listener: EventListener, event: Event) -> None:
-        with contextlib.suppress(Exception):
+        try:
             await listener(event)
+        except Exception as exc:
+            # Keep one broken consumer from blocking other listeners, but make
+            # the lost delivery visible without logging event payloads.
+            logger.error(
+                "Event listener failed; delivery was not confirmed",
+                extra={
+                    "event_id": event.event_id,
+                    "event_topic": event.topic,
+                    "listener": getattr(listener, "__qualname__", type(listener).__name__),
+                    "error_type": type(exc).__name__,
+                },
+            )
 
     def _matches(self, pattern: str, topic: str) -> bool:
         """Match wildcard patterns, e.g. 'task.*' matches 'task.created'."""

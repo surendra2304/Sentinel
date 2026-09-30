@@ -79,14 +79,19 @@ async def test_health_readiness_and_prometheus_metrics():
         # 1. Liveness
         res_health = await client.get("/health")
         assert res_health.status_code == 200
-        assert res_health.json()["status"] == "HEALTHY"
+        health_data = res_health.json()
+        assert health_data["status"] == "ok"
+        assert health_data["evidence_class"] == "process_liveness"
+        assert health_data["observed_at"]
 
-        # 2. Readiness with IntelX connectivity
+        # 2. Local readiness must not claim an unperformed peer connectivity check.
         res_ready = await client.get("/ready")
         assert res_ready.status_code == 200
         ready_data = res_ready.json()
         assert ready_data["status"] == "READY"
-        assert ready_data["intelx_connectivity"] == "ONLINE"
+        assert ready_data["evidence_class"] == "local_readiness_checks"
+        assert ready_data["peer_connectivity"] == "not_checked"
+        assert ready_data["observed_at"]
 
         # 3. Prometheus metrics
         res_prom = await client.get("/api/v1/metrics/prometheus")

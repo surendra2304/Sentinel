@@ -4,6 +4,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from typer.testing import CliRunner
 
+from sentinel.apps.api import main as api_main
 from sentinel.apps.api.main import app
 from sentinel.apps.cli.main import app as cli_app
 from sentinel.core.events.bus import InMemoryEventBus
@@ -21,11 +22,24 @@ async def test_api_task_gateway_lifecycle():
         # 1. Health and Readiness checks
         res_health = await client.get("/health")
         assert res_health.status_code == 200
-        assert res_health.json()["status"] == "HEALTHY"
+        health = res_health.json()
+        assert health["status"] == "ok"
+        assert health["evidence_class"] == "process_liveness"
+        assert health["observed_at"]
 
         res_ready = await client.get("/ready")
         assert res_ready.status_code == 200
-        assert res_ready.json()["status"] == "READY"
+        ready = res_ready.json()
+        assert ready["status"] == "READY"
+        assert ready["evidence_class"] == "local_readiness_checks"
+        assert ready["observed_at"]
+        assert ready["peer_connectivity"] == "not_checked"
+
+        security_ready = await client.get("/api/v1/health/ready")
+        assert security_ready.status_code == 503
+        readiness_detail = security_ready.json()["detail"]
+        assert readiness_detail["persistence_evidence"] == "unverified_no_durable_store_probe"
+        assert readiness_detail["checks"]["persistence"] is False
 
         # 2. Submit Task
         payload = {
@@ -71,6 +85,19 @@ async def test_api_task_gateway_lifecycle():
         res_cancel = await client.post(f"/api/v1/tasks/{task_id}/cancel?reason=TestOperatorHalt")
         assert res_cancel.status_code == 200
         assert res_cancel.json()["status"] == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_capability_routes_fail_closed_without_configured_signing_secret(monkeypatch):
+    monkeypatch.setattr(api_main, "capability_issuer", None)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/capabilities/issue",
+            json={"actor_id": "test", "actions": ["read"], "resources": ["report"]},
+        )
+    assert response.status_code == 503
+    assert "SENTINEL_CAPABILITY_SIGNING_KEY" in response.json()["detail"]
 
 
 # ---------------------------------------------------------------------------
@@ -178,6 +205,42 @@ async def test_event_bus_pub_sub_multiple_subscribers():
     assert len(received_events_1) == 1  # Unsubscribed, no increase
     assert len(received_events_2) == 2
     assert len(received_events_wildcard) == 2
+
+
+@pytest.mark.asyncio
+async def test_event_bus_logs_failed_listener_without_blocking_other_subscribers(caplog):
+    bus = InMemoryEventBus()
+    received = []
+
+    async def broken_listener(_event: Event):
+        raise RuntimeError("sensitive event payload must not be logged")
+
+    async def healthy_listener(event: Event):
+        received.append(event.event_id)
+
+    await bus.subscribe("risk.updated", broken_listener)
+    await bus.subscribe("risk.updated", healthy_listener)
+    event = Event(
+        event_id="evt-risk-delivery-test",
+        event_type=EventType.ALERT,
+        topic="risk.updated",
+        source="sentinel.test",
+        payload={"secret": "must not appear in the failure log"},
+        correlation_id="corr-risk-delivery-test",
+    )
+
+    await bus.publish(event)
+    await asyncio.sleep(0.05)
+
+    assert received == [event.event_id]
+    failure = next(
+        record for record in caplog.records
+        if record.message == "Event listener failed; delivery was not confirmed"
+    )
+    assert failure.event_id == event.event_id
+    assert failure.event_topic == event.topic
+    assert failure.error_type == "RuntimeError"
+    assert "sensitive event payload" not in caplog.text
 
 
 # ---------------------------------------------------------------------------
