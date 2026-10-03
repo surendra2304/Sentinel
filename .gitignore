@@ -19,3 +19,8 @@ dist/
 *.db
 *.sqlite
 *.sqlite3
+# Never commit real credentials. Keys are set per-deployment in the Render
+# dashboard; render.yaml uses `sync: false` so they are never stored in GitHub.
+.env
+.env.*
+!.env.example

@@ -30,7 +30,13 @@ async def test_api_task_gateway_lifecycle():
         res_ready = await client.get("/ready")
         assert res_ready.status_code == 200
         ready = res_ready.json()
-        assert ready["status"] == "READY"
+        # Readiness must agree with its own reported checks; with the in-memory
+        # backend in production the durable-audit check fails, so DEGRADED is the
+        # truthful answer and READY must not be hard-coded past it.
+        _checks = ready["checks"]
+        assert ready["status"] == ("READY" if all(_checks.values()) else "DEGRADED")
+        assert ready["ready"] is all(_checks.values())
+        assert _checks["audit_durable"] is False
         assert ready["evidence_class"] == "local_readiness_checks"
         assert ready["observed_at"]
         assert ready["peer_connectivity"] == "not_checked"

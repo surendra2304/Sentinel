@@ -66,6 +66,22 @@ class AuditLogger:
         os.makedirs(os.path.dirname(self.log_path) or ".", exist_ok=True)
         self._seq, self._last_hash = self._load_and_verify_chain()
 
+    def entry_count(self) -> int:
+        """Number of persisted audit entries, or -1 if the ledger cannot be read.
+
+        ``verify_integrity()`` returns True when the ledger file is missing, so
+        "chain valid" on its own cannot distinguish a long, audited history from
+        one that has recorded nothing. Health endpoints need the count to report
+        that difference honestly instead of implying an empty chain is evidence.
+        """
+        if not os.path.exists(self.log_path):
+            return 0
+        try:
+            with open(self.log_path, encoding="utf-8") as f:
+                return sum(1 for line in f if line.strip())
+        except OSError:
+            return -1
+
     def _load_and_verify_chain(self) -> tuple[int, str]:
         """Verify the complete audit hash chain on startup."""
         if not os.path.exists(self.log_path):

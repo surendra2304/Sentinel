@@ -88,7 +88,14 @@ async def test_health_readiness_and_prometheus_metrics():
         res_ready = await client.get("/ready")
         assert res_ready.status_code == 200
         ready_data = res_ready.json()
-        assert ready_data["status"] == "READY"
+# Readiness must agree with its own reported checks. The suite runs with
+        # SENTINEL_ENVIRONMENT=production and the in-memory backend, so the
+        # durable-audit check genuinely fails: DEGRADED is the truthful answer and
+        # READY must not be hard-coded past it.
+        _checks = ready_data["checks"]
+        assert ready_data["status"] == ("READY" if all(_checks.values()) else "DEGRADED")
+        assert ready_data["ready"] is all(_checks.values())
+        assert _checks["audit_durable"] is False
         assert ready_data["evidence_class"] == "local_readiness_checks"
         assert ready_data["peer_connectivity"] == "not_checked"
         assert ready_data["observed_at"]

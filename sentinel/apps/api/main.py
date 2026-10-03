@@ -26,7 +26,7 @@ from sse_starlette.sse import EventSourceResponse
 from sentinel.api.metrics import router as metrics_router
 from sentinel.apps.api.middleware import APIKeyAuthMiddleware
 from sentinel.audit.audit_logger import AuditLogger
-from sentinel.config.settings import get_settings
+from sentinel.config.settings import EnvironmentType, get_settings
 from sentinel.core.auth.capabilities import CapabilityError, CapabilityIssuer
 from sentinel.core.events.bus import event_bus
 from sentinel.core.gateway.models import RiskLevel as GatewayRiskLevel
@@ -231,10 +231,24 @@ async def dashboard_page() -> Response:
     )
 
 
+# Backends that survive a process restart. Every other backend keeps the security
+# record in process memory, so a redeploy discards findings, evidence and
+# approvals while the audit chain still verifies -- an empty chain is trivially
+# intact. /api/v1/health/ready already reports this honestly; /health and /ready
+# must not imply otherwise.
+_DURABLE_STORAGE_BACKENDS = frozenset({"postgres"})
+
+
+def _storage_is_durable() -> bool:
+    return settings.storage_backend.strip().lower() in _DURABLE_STORAGE_BACKENDS
+
+
 @app.api_route("/health", methods=["GET", "HEAD"], tags=["System"])
 async def health_check() -> dict[str, Any]:
-    """Report process liveness and the independently checked audit chain."""
+    """Report process liveness, chain integrity, and whether the record is durable."""
     audit_ok = audit_logger.verify_integrity()
+    entries = audit_logger.entry_count()
+    durable = _storage_is_durable()
     return {
         "status": "ok",
         "evidence_class": "process_liveness",
@@ -244,6 +258,14 @@ async def health_check() -> dict[str, Any]:
         "kill_switch_active": settings.kill_switch_active,
         "audit_chain_valid": audit_ok,
         "audit_evidence_class": "audit_chain_integrity_check",
+        "audit_chain_entries": entries,
+        # True means "nothing to verify", not "verified": an empty ledger passes
+        # verify_integrity() trivially, so it is never evidence of integrity.
+        "audit_chain_vacuous": bool(audit_ok) and entries == 0,
+        "audit_durable": durable,
+        "audit_persistence_evidence": (
+            "durable_store_configured" if durable else "in_memory_backend_lost_on_redeploy"
+        ),
         "observed_at": datetime.now(UTC).isoformat(),
     }
 
@@ -253,10 +275,16 @@ async def readiness_check() -> dict[str, Any]:
     """Report only locally verifiable readiness; peer reachability is not inferred."""
     modules = settings.modules.model_dump()
     audit_ok = audit_logger.verify_integrity()
+    durable = _storage_is_durable()
+    is_production = settings.environment == EnvironmentType.PRODUCTION
     checks = {
         "audit_integrity": audit_ok,
         "event_bus_initialized": event_bus is not None,
         "storage_backend_configured": bool(settings.storage_backend.strip()),
+        # "memory" is a non-empty string, so the check above passes trivially. In
+        # production an in-memory backend means the security record does not
+        # survive a redeploy, so readiness must say so instead of reporting READY.
+        "audit_durable": durable if is_production else True,
     }
     ready = all(checks.values())
     return {
