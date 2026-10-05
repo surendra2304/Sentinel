@@ -1324,7 +1324,7 @@ async def sentinel_ask_inference(req: SentinelInferenceRequest):
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Inference is unavailable: INFERENCE_API_KEY is not configured.",
         )
-    url = f"{os.getenv('INFERENCE_URL', 'https://inference-r1sn.onrender.com').rstrip('/')}/v1/agent/assist"
+    url = f"{os.getenv('INFERENCE_URL', 'https://inference-h7bn.onrender.com').rstrip('/')}/v1/agent/assist"
     payload = {
         "caller_agent": "sentinel",
         "task_type": req.task_type,
