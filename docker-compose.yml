@@ -7,14 +7,14 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${SENTINEL_DB_USER:-sentinel}
-      POSTGRES_PASSWORD: ${SENTINEL_DB_PASSWORD:-sentinel_secret_dev}
+      POSTGRES_PASSWORD: ${SENTINEL_DB_PASSWORD:?SENTINEL_DB_PASSWORD is required}
       POSTGRES_DB: ${SENTINEL_DB_NAME:-sentinel_db}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U sentinel -d sentinel_db"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -25,15 +25,15 @@ services:
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${SENTINEL_S3_ACCESS_KEY:-sentinel_minio_user}
-      MINIO_ROOT_PASSWORD: ${SENTINEL_S3_SECRET_KEY:-sentinel_minio_secret}
+      MINIO_ROOT_USER: ${SENTINEL_S3_ACCESS_KEY:?SENTINEL_S3_ACCESS_KEY is required}
+      MINIO_ROOT_PASSWORD: ${SENTINEL_S3_SECRET_KEY:?SENTINEL_S3_SECRET_KEY is required}
     ports:
       - "9000:9000"
       - "9001:9001"
     volumes:
       - minio_data:/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "https://friday-zw59.onrender.com/minio/health/live"]
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 15s
       timeout: 10s
       retries: 3
@@ -48,15 +48,25 @@ services:
       - .env
     environment:
       SENTINEL_ENVIRONMENT: ${SENTINEL_ENVIRONMENT:-development}
+      SENTINEL_STORAGE_BACKEND: postgres
+      SENTINEL_S3_BACKEND: s3
       SENTINEL_DB_HOST: sentinel-db
       SENTINEL_DB_PORT: "5432"
       SENTINEL_DB_USER: ${SENTINEL_DB_USER:-sentinel}
-      SENTINEL_DB_PASSWORD: ${SENTINEL_DB_PASSWORD:-sentinel_secret_dev}
+      SENTINEL_DB_PASSWORD: ${SENTINEL_DB_PASSWORD:?SENTINEL_DB_PASSWORD is required}
       SENTINEL_DB_NAME: ${SENTINEL_DB_NAME:-sentinel_db}
       SENTINEL_S3_ENDPOINT: sentinel-minio:9000
-      SENTINEL_S3_ACCESS_KEY: ${SENTINEL_S3_ACCESS_KEY:-sentinel_minio_user}
-      SENTINEL_S3_SECRET_KEY: ${SENTINEL_S3_SECRET_KEY:-sentinel_minio_secret}
+      SENTINEL_S3_ACCESS_KEY: ${SENTINEL_S3_ACCESS_KEY:?SENTINEL_S3_ACCESS_KEY is required}
+      SENTINEL_S3_SECRET_KEY: ${SENTINEL_S3_SECRET_KEY:?SENTINEL_S3_SECRET_KEY is required}
       SENTINEL_S3_BUCKET_NAME: sentinel-evidence
+      SENTINEL_AUDIT_SIGNING_KEY: ${SENTINEL_AUDIT_SIGNING_KEY:?SENTINEL_AUDIT_SIGNING_KEY is required}
+      SENTINEL_MAX_HTTP_CONCURRENCY: ${SENTINEL_MAX_HTTP_CONCURRENCY:-256}
+      SENTINEL_MAX_HEALTH_CONCURRENCY: ${SENTINEL_MAX_HEALTH_CONCURRENCY:-16}
+      SENTINEL_MAX_AGENT_PROPOSALS_PER_TASK: ${SENTINEL_MAX_AGENT_PROPOSALS_PER_TASK:-8}
+      SENTINEL_MAX_PLAN_STEPS_PER_ITERATION: ${SENTINEL_MAX_PLAN_STEPS_PER_ITERATION:-16}
+      SENTINEL_MAX_ACTIONS_PER_AGENT_PER_TASK: ${SENTINEL_MAX_ACTIONS_PER_AGENT_PER_TASK:-32}
+      SENTINEL_MAX_AGENT_ANALYSIS_SECONDS: ${SENTINEL_MAX_AGENT_ANALYSIS_SECONDS:-15}
+      SENTINEL_MAX_TASK_ITERATIONS: ${SENTINEL_MAX_TASK_ITERATIONS:-10}
       SENTINEL_API_RATE_LIMIT: "100/minute"
     ports:
       - "8000:8000"

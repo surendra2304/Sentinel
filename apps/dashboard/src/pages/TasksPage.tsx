@@ -234,7 +234,7 @@ export const TasksPage: React.FC = () => {
             {tasks.length === 0 && !loading && !error && (
               <tr>
                 <td colSpan={6} className="py-8 text-center text-slate-500">
-                  No tasks registered. Click "Launch New Task" above to dispatch an autonomous security assessment!
+                  No tasks registered. Click &quot;Launch New Task&quot; above to dispatch an autonomous security assessment!
                 </td>
               </tr>
             )}

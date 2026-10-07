@@ -1,6 +1,6 @@
 export type SeverityLevel = 'critical' | 'high' | 'medium' | 'low' | 'info';
 export type FindingStatus = 'open' | 'triaged' | 'confirmed' | 'in_remediation' | 'remediated' | 'false_positive' | 'accepted_risk';
-export type TaskStatus = 'submitted' | 'planning' | 'executing' | 'awaiting_approval' | 'reporting' | 'complete' | 'failed' | 'cancelled';
+export type TaskStatus = 'submitted' | 'planning' | 'executing' | 'awaiting_approval' | 'reporting' | 'complete' | 'completed' | 'blocked' | 'partially_completed' | 'failed' | 'cancelled';
 
 export interface Target {
   id: string;
@@ -48,15 +48,18 @@ export interface Evidence {
 export interface ApprovalRecord {
   approval_id: string;
   task_id: string;
+  action_id: string;
   action_type: string;
-  target: string;
+  target_refs: string[];
   requested_by: string;
-  reason: string;
-  status: 'pending' | 'approved' | 'rejected' | 'expired';
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'EXPIRED' | 'CONSUMED';
+  justification_needed: string;
+  justification_provided?: string | null;
+  approved_by?: string | null;
+  authorization_reference?: string | null;
+  requested_at: string;
+  decided_at?: string | null;
   expires_at: string;
-  approved_by?: string;
-  authorization_reference?: string;
-  decided_at?: string;
 }
 
 export interface Alert {
@@ -79,7 +82,7 @@ export interface AuditEntry {
   action_type: string;
   scope_policy: string;
   decision: string;
-  details: Record<string, any>;
+  details: Record<string, unknown>;
   sha256_hash: string;
   previous_entry_hash: string;
 }

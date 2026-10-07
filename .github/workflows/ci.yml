@@ -8,7 +8,7 @@ on:
 
 env:
   PYTHON_VERSION: "3.11"
-  NODE_VERSION: "20"
+  NODE_VERSION: "22"
 
 jobs:
   # ── Job 1: Lint & Type Check ──────────────────────────────────────────────
@@ -90,6 +90,8 @@ jobs:
           cache-dependency-path: apps/dashboard/package-lock.json
       - name: Install npm deps
         run: npm ci
+      - name: Dashboard lint
+        run: npm run lint
       - name: Run Vitest
         run: npm test -- --run
       - name: Build production bundle
@@ -144,7 +146,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: apps/dashboard/package-lock.json
       - name: Install dependencies
