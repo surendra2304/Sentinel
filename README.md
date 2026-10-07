@@ -6,17 +6,19 @@
 
 ## Quickstart (< 10 commands)
 
-ash
+```bash
 git clone https://github.com/surendra2304/Sentinel.git && cd Sentinel
-cp .env.example .env          # Edit SENTINEL_DB_PASSWORD, SENTINEL_API_KEY, etc.
+cp .env.example .env          # Set DB/S3 passwords and a unique SENTINEL_AUDIT_SIGNING_KEY
 docker compose up -d          # Starts: API (8000), Dashboard (3000), PostgreSQL, MinIO
 docker compose ps             # Verify all services healthy
-# CLI (local dev)
 pip install -e ".[dev]"
-sentinel task submit --target https://example.com --mode passive_recon
+sentinel task submit --objective "Passive recon" --target example.com --mode passive_recon --authorization-reference CHG-1234 --authorized-by operator@example.com
 sentinel task list
-sentinel report generate --task-id TASK_ID --type executive
+sentinel report TASK_ID
 # Dashboard: http://localhost:3000
+```
+
+Task submission requires an explicit owner, written authorization reference, target scope, impact ceiling, and bounded time window. The CLI builds a limited scope for the specified targets; it sends remote requests only when both `SENTINEL_API_URL` and `SENTINEL_API_KEY` are explicitly configured. Production Compose requires a unique API key and enables API-key authentication. Third-party OSINT enrichment is disabled by default; opt in with `--allow-third-party-enrichment` only when the task authorization permits target metadata to be shared with external enrichment services. GeoIP lookup is limited to globally routable IP addresses.
 
 
 ---
@@ -26,7 +28,7 @@ sentinel report generate --task-id TASK_ID --type executive
 | Capability | Description |
 |---|---|
 | **10 Security Domains** | Recon/DNS, Network, Web, API, Device/Mobile, Cloud, Vulnerability, Threat Intel, DFIR, Compliance |
-| **Autonomous Orchestrator** | HeuristicPlanner/LLMPlanner drives multi-phase investigations; evidence-first quality gate |
+| **Autonomous Orchestrator** | Bounded multi-phase investigations, specialist routing, and evidence-backed policy-checked handoffs |
 | **Governed Autonomy** | PolicyEngine + ScopeResolver on every action; approval workflow for elevated-impact operations |
 | **Evidence Chain** | SHA-256 cryptographic artifacts; all findings anchored to raw evidence; audit-trail HMAC-signed |
 | **4 Report Types** | Executive, Technical Pentest, SOC/IR, Machine JSON — each with evidence manifest |
@@ -35,6 +37,8 @@ sentinel report generate --task-id TASK_ID --type executive
 | **Security Operations** | Scheduled assessments, continuous monitoring, baseline diffs, alert deduplication |
 | **Web Dashboard** | React 18 + TypeScript + Vite — real-time task progress, finding explorer, attack graph |
 | **CLI + REST API** | Full programmatic access; same task/result model for all interfaces |
+
+> **Current autonomy boundary:** The heuristic planner routes web/network phases to registered specialists, and the coordinator can accept bounded, evidence-backed follow-up proposals through the normal policy/approval path. Versioned checkpoints and conservative restart recovery are implemented. This remains sequential, single-process orchestration—not distributed agent collaboration, peer review/consensus, general self-healing, or production-certified autonomy. Ambiguous in-flight actions fail closed. See [`GAPS.md`](GAPS.md) and [`AUDIT_REPORT.md`](AUDIT_REPORT.md).
 
 ---
 
@@ -97,4 +101,4 @@ FRIDAY (orchestrator)
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). All PRs must pass: uff check . && mypy sentinel && pytest && python verify_diary.py.
+See [CONTRIBUTING.md](CONTRIBUTING.md). All PRs must pass: `ruff check .`, `mypy sentinel`, `pytest`, and `python verify_diary.py`.

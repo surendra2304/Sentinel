@@ -27,9 +27,9 @@
 * Sentinel is the real-time security gatekeeper of the ecosystem. It scans code for leaked secrets, audits dependencies for CVE vulnerabilities, inspects AI prompts for injection attacks, and enforces permission policies.
 
 ### What Sentinel DOES:
-* Operates as the **Local & Ecosystem Cybersecurity Shield, CVE Vulnerability Scanner & Tool Gatekeeper** within the 9-agent FRIDAY Universe.
-* Communicates directly with peer agents via authenticated REST and WebSocket protocols.
-* Persists private long-term memory records to **Memora** under memora://sentinel/private.
+* Intended to operate as the **Local & Ecosystem Cybersecurity Shield, CVE Vulnerability Scanner & Tool Gatekeeper** within the 9-agent FRIDAY Universe.
+* The repository contains specialist-agent and FRIDAY integration scaffolding, but distributed peer-to-peer REST/WebSocket collaboration is not verified and is not currently an end-to-end capability; see `GAPS.md`.
+* Memora is an optional external integration. No remote URL is assumed by default, and durable cross-restart long-term task memory is not currently verified or implemented end to end.
 
 ---
 
