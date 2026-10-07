@@ -114,13 +114,10 @@ jobs:
           cache: pip
       - name: Install pip-audit
         run: pip install pip-audit
-      - name: Run pip-audit
-        run: pip-audit --requirement <(pip install -e ".[dev]" --dry-run 2>/dev/null | grep -v "^Would" || true)
-        continue-on-error: true
       - name: Install project for audit
         run: pip install -e ".[dev]"
       - name: Audit installed packages
-        run: pip-audit --skip-editable || true
+        run: pip-audit --skip-editable
 
   # ── Job 6: Secret Scanning ────────────────────────────────────────────────
   secret-scan:
