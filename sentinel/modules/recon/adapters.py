@@ -9,6 +9,7 @@ Includes:
 """
 
 import hashlib
+import ipaddress
 import json
 import time
 import urllib.parse
@@ -54,38 +55,52 @@ class SubdomainEnumAdapter(ToolAdapter):
         base_domain = parsed.hostname or raw_domain
 
         subdomains: set[str] = set()
-        sources: dict[str, Any] = {"crt_sh": [], "brute_force": [], "wildcard_detected": False}
+        passive_only = action.parameters.get("passive_only") is True
+        allow_third_party_enrichment = action.parameters.get("allow_third_party_enrichment") is True
+        sources: dict[str, Any] = {
+            "crt_sh": [],
+            "brute_force": [],
+            "wildcard_detected": False,
+            "passive_only": passive_only,
+            "external_lookup_performed": False,
+        }
 
-        # 1. DNS Wildcard Detection
         resolver = dns.asyncresolver.Resolver()
         resolver.timeout = 2.0
         resolver.lifetime = 2.0
 
-        random_sub = f"sentinel-wildcard-check-{int(time.time())}.{base_domain}"
-        try:
-            await resolver.resolve(random_sub, "A")
-            sources["wildcard_detected"] = True
-        except Exception:
-            sources["wildcard_detected"] = False
+        # Wildcard detection sends a fresh DNS query to the assessed domain, so
+        # it is skipped when the caller explicitly requests passive-only sources.
+        if not passive_only:
+            random_sub = f"sentinel-wildcard-check-{int(time.time())}.{base_domain}"
+            try:
+                await resolver.resolve(random_sub, "A")
+                sources["wildcard_detected"] = True
+            except Exception:
+                sources["wildcard_detected"] = False
 
-        # 2. Passive Certificate Transparency via crt.sh
-        try:
-            async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
-                res = await client.get(f"https://crt.sh/?q=%.{base_domain}&output=json")
-                if res.status_code == 200:
-                    entries = res.json()
-                    for item in entries:
-                        name_val = item.get("name_value", "")
-                        for sub in name_val.split("\n"):
-                            sub_clean = sub.strip().lower()
-                            if sub_clean and not sub_clean.startswith("*.") and base_domain in sub_clean:
-                                subdomains.add(sub_clean)
-                                sources["crt_sh"].append(sub_clean)
-        except Exception as e:
-            sources["crt_sh_error"] = str(e)
+        # Third-party certificate-transparency lookup discloses the target name.
+        if allow_third_party_enrichment:
+            sources["external_lookup_performed"] = True
+            try:
+                async with httpx.AsyncClient(timeout=10.0, follow_redirects=False) as client:
+                    res = await client.get(f"https://crt.sh/?q=%.{base_domain}&output=json")
+                    if res.status_code == 200:
+                        entries = res.json()
+                        for item in entries:
+                            name_val = item.get("name_value", "")
+                            for sub in name_val.split("\n"):
+                                sub_clean = sub.strip().lower()
+                                if sub_clean and not sub_clean.startswith("*.") and base_domain in sub_clean:
+                                    subdomains.add(sub_clean)
+                                    sources["crt_sh"].append(sub_clean)
+            except Exception as e:
+                sources["crt_sh_error"] = str(e)
+        else:
+            sources["crt_sh_skipped"] = "Third-party enrichment is not authorized by the task scope."
 
         # 3. Active Brute-Force with Common Subdomain Wordlist (if not wildcard)
-        if not sources["wildcard_detected"]:
+        if not passive_only and not sources["wildcard_detected"]:
             wordlist = action.parameters.get("wordlist", ["www", "api", "admin", "mail", "dev", "staging", "vpn", "test"])
             for word in wordlist:
                 candidate = f"{word}.{base_domain}"
@@ -148,7 +163,7 @@ class IPIntelligenceAdapter(ToolAdapter):
     async def run(self, action: ActionRequest) -> tuple[ActionResult, bytes, str]:
         start_time = time.time()
         target = action.target_refs[0].strip()
-        parsed = urllib.parse.urlparse(target)
+        parsed = urllib.parse.urlparse(target if "://" in target else f"//{target}")
         host = parsed.hostname or target
 
         data: dict[str, Any] = {
@@ -157,29 +172,43 @@ class IPIntelligenceAdapter(ToolAdapter):
             "country": "Unknown",
             "city": "Unknown",
             "asn": "AS00000",
-            "org": "Private / Local Network",
-            "is_private": False,
+            "org": "Unknown",
+            "is_private": None,
+            "is_global": None,
+            "external_lookup_performed": False,
         }
 
-        # Check local / private IP ranges
-        if host in ("127.0.0.1", "localhost", "::1") or host.startswith(("10.", "192.168.", "172.16.")):
-            data["is_private"] = True
-            data["org"] = "Internal / Private Network"
-            data["country"] = "Localhost"
+        try:
+            address = ipaddress.ip_address(host)
+        except ValueError:
+            # Do not disclose internal or customer hostnames to a public lookup
+            # service; this adapter enriches explicit IP addresses only.
+            data["fallback_note"] = "External GeoIP lookup skipped for hostnames to avoid third-party disclosure."
         else:
-            try:
-                # Query public IP-API service with 5s timeout
-                async with httpx.AsyncClient(timeout=5.0) as client:
-                    res = await client.get(f"http://ip-api.com/json/{host}")
-                    if res.status_code == 200:
-                        res_json = res.json()
-                        data["ip"] = res_json.get("query", host)
-                        data["country"] = res_json.get("country", "Unknown")
-                        data["city"] = res_json.get("city", "Unknown")
-                        data["asn"] = res_json.get("as", "Unknown")
-                        data["org"] = res_json.get("org", "Unknown")
-            except Exception as e:
-                data["fallback_note"] = f"External API lookup failed ({e}), using offline metadata."
+            data["is_private"] = address.is_private or address.is_loopback or address.is_link_local
+            data["is_global"] = address.is_global
+            if not address.is_global:
+                data["org"] = "Internal / Non-public Network"
+                data["country"] = "Local / Non-public"
+                data["fallback_note"] = "External GeoIP lookup skipped for non-public IP addresses."
+            elif action.parameters.get("allow_third_party_enrichment") is not True:
+                data["fallback_note"] = "External GeoIP lookup skipped because scope consent was not granted."
+            else:
+                data["external_lookup_performed"] = True
+                try:
+                    # Query the public IP-API service only after explicit scope consent.
+                    encoded_ip = urllib.parse.quote(address.compressed, safe="")
+                    async with httpx.AsyncClient(timeout=5.0) as client:
+                        res = await client.get(f"http://ip-api.com/json/{encoded_ip}")
+                        if res.status_code == 200:
+                            res_json = res.json()
+                            data["ip"] = res_json.get("query", host)
+                            data["country"] = res_json.get("country", "Unknown")
+                            data["city"] = res_json.get("city", "Unknown")
+                            data["asn"] = res_json.get("as", "Unknown")
+                            data["org"] = res_json.get("org", "Unknown")
+                except Exception as e:
+                    data["fallback_note"] = f"External API lookup failed ({e}), using offline metadata."
 
         duration = time.time() - start_time
         summary = f"IP Intelligence for '{host}': ASN={data['asn']} ({data['org']}), Country={data['country']}."
@@ -304,7 +333,7 @@ class TechnologyFingerprintAdapter(ToolAdapter):
         }
 
         try:
-            async with httpx.AsyncClient(verify=False, follow_redirects=True, timeout=8.0) as client:
+            async with httpx.AsyncClient(verify=False, follow_redirects=False, timeout=8.0) as client:
                 res = await client.get(url)
 
                 # 1. Server Header
@@ -397,7 +426,7 @@ class OSINTAdapter(ToolAdapter):
         }
 
         try:
-            async with httpx.AsyncClient(verify=False, follow_redirects=True, timeout=6.0) as client:
+            async with httpx.AsyncClient(verify=False, follow_redirects=False, timeout=6.0) as client:
                 # 1. Fetch .well-known/security.txt
                 for path in ["/.well-known/security.txt", "/security.txt"]:
                     sec_res = await client.get(f"{base_url}{path}")

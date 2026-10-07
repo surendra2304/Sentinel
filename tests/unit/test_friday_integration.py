@@ -157,7 +157,13 @@ async def test_friday_approval_relay_attribution_and_expiration_rejection():
         id="task-fri-appr-01",
         objective="Validate approval relay attribution and expiration",
         target_set=TargetSet(id="ts-appr", name="TS", targets=[Target(id="t-1", type=TargetType.DOMAIN, value="auth.test")]),
-        scope=Scope(id="s-appr", name="S", allowed_targets=["auth.test"], offensive_actions_enabled=True),
+        scope=Scope(
+            id="s-appr",
+            name="S",
+            allowed_targets=["auth.test"],
+            maximum_impact=ImpactLevel.HIGH,
+            offensive_actions_enabled=True,
+        ),
         policy=Policy(id="p-appr", name="P"),
         correlation_id="corr-appr-01",
     )

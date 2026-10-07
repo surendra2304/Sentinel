@@ -18,7 +18,8 @@ from sentinel.core.models import (
     FindingStatus,
     SeverityLevel,
 )
-from sentinel.storage.repositories.factory import get_finding_repository
+from sentinel.storage.repositories.factory import get_evidence_repository, get_finding_repository
+from sentinel.storage.repositories.interfaces import FindingRepository
 
 
 class Observation(BaseModel):
@@ -52,7 +53,7 @@ class FindingEngine:
         self._dedup_index: dict[tuple[str, str, str], str] = {}
 
     @property
-    def repo(self):
+    def repo(self) -> FindingRepository:
         return get_finding_repository()
 
     async def ingest_observation(self, observation: Observation) -> Finding:
@@ -61,38 +62,66 @@ class FindingEngine:
         if not observation.evidence_refs:
             raise ValueError(f"Evidence-First violation: Observation '{observation.title}' must contain valid evidence_refs.")
 
+        evidence_repo = get_evidence_repository()
+        for evidence_ref in observation.evidence_refs:
+            evidence = await evidence_repo.get_evidence_record(evidence_ref)
+            if evidence is None:
+                raise ValueError(f"Evidence-First violation: Evidence reference '{evidence_ref}' does not exist.")
+            if evidence.task_id != observation.task_id:
+                raise ValueError(
+                    f"Evidence-First violation: Evidence reference '{evidence_ref}' belongs to another task."
+                )
+
         dedup_key = (observation.task_id, observation.target_ref.lower(), observation.title.strip().lower())
 
-        # Check for existing duplicate finding on same asset
-        if dedup_key in self._dedup_index:
-            finding_id = self._dedup_index[dedup_key]
-            existing = self._findings.get(finding_id) or await self.repo.get_finding(finding_id)
+        # Restore the deduplication target from persistent storage after a restart.
+        finding_id = self._dedup_index.get(dedup_key)
+        existing = self._findings.get(finding_id) if finding_id else None
+        if existing is None and finding_id:
+            existing = await self.repo.get_finding(finding_id)
+        if existing is None:
+            candidates = await self.repo.list_findings(
+                task_id=observation.task_id,
+                target_ref=observation.target_ref,
+            )
+            existing = next(
+                (
+                    finding
+                    for finding in candidates
+                    if finding.title.strip().lower() == observation.title.strip().lower()
+                ),
+                None,
+            )
             if existing:
-                # Merge evidence references without duplicates
-                for ref in observation.evidence_refs:
-                    if ref not in existing.evidence_refs:
-                        existing.evidence_refs.append(ref)
+                finding_id = existing.id
+                self._dedup_index[dedup_key] = existing.id
+        if existing:
+            # Merge evidence references without duplicates.
+            for ref in observation.evidence_refs:
+                if ref not in existing.evidence_refs:
+                    existing.evidence_refs.append(ref)
 
-                for cve in observation.related_cves:
-                    if cve not in existing.related_cves:
-                        existing.related_cves.append(cve)
+            for cve in observation.related_cves:
+                if cve not in existing.related_cves:
+                    existing.related_cves.append(cve)
 
-                # Update confidence (weighted average) and last seen
-                existing.confidence = round((existing.confidence + observation.confidence) / 2.0, 2)
-                existing.last_seen = datetime.now(UTC)
+            # Update confidence (weighted average) and last seen.
+            existing.confidence = round((existing.confidence + observation.confidence) / 2.0, 2)
+            existing.last_seen = datetime.now(UTC)
 
-                self._findings[finding_id] = existing
-                await self.repo.save_finding(existing)
+            self._findings[existing.id] = existing
+            self._dedup_index[dedup_key] = existing.id
+            await self.repo.save_finding(existing)
 
-                # Audit update & emit event
-                await emit_event(
-                    event_type=EventType.FINDING,
-                    topic="finding.updated",
-                    source="sentinel.finding_engine",
-                    payload={"finding_id": existing.id, "task_id": existing.task_id, "evidence_count": len(existing.evidence_refs)},
-                    correlation_id=existing.task_id,
-                )
-                return existing
+            # Audit update & emit event.
+            await emit_event(
+                event_type=EventType.FINDING,
+                topic="finding.updated",
+                source="sentinel.finding_engine",
+                payload={"finding_id": existing.id, "task_id": existing.task_id, "evidence_count": len(existing.evidence_refs)},
+                correlation_id=existing.task_id,
+            )
+            return existing
 
         # Create new finding
         finding_id = f"find-{uuid.uuid4().hex[:12]}"
@@ -218,6 +247,33 @@ class FindingEngine:
                 continue
             results.append(f)
         return results
+
+    async def get_finding_async(self, finding_id: str) -> Finding | None:
+        """Load a finding from its repository, including after process restart."""
+        finding = await self.repo.get_finding(finding_id)
+        if finding:
+            self._findings[finding.id] = finding
+            self._dedup_index[(finding.task_id, finding.target_ref.lower(), finding.title.strip().lower())] = finding.id
+        return finding
+
+    async def list_findings_async(
+        self,
+        task_id: str | None = None,
+        severity: SeverityLevel | None = None,
+        status: FindingStatus | None = None,
+        target_ref: str | None = None,
+    ) -> list[Finding]:
+        """List repository-backed findings and hydrate the local deduplication cache."""
+        findings = await self.repo.list_findings(
+            task_id=task_id,
+            severity=severity,
+            status=status,
+            target_ref=target_ref,
+        )
+        for finding in findings:
+            self._findings[finding.id] = finding
+            self._dedup_index[(finding.task_id, finding.target_ref.lower(), finding.title.strip().lower())] = finding.id
+        return findings
 
     def adjust_confidence(self, finding_id: str, delta: float, reason: str = "") -> Finding | None:
         """Apply a confidence delta (positive or negative) from quality review.

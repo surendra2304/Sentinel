@@ -63,7 +63,7 @@ class SecurityIntelligenceAgent(BaseAgent):
             reasoning="Performed cross-domain finding correlation and quality review.",
         )
 
-        findings = finding_engine.list_findings(task_id=task.id)
+        findings = await finding_engine.list_findings_async(task_id=task.id)
         findings_payload = [
             {
                 "id": f.id,

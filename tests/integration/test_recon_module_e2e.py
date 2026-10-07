@@ -2,6 +2,7 @@ import json
 import socketserver
 import threading
 from http import server
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -63,11 +64,13 @@ class MockReconTargetServer(server.SimpleHTTPRequestHandler):
 
 @pytest.fixture(scope="module")
 def recon_test_target():
-    test_server = socketserver.TCPServer(("127.0.0.1", 18895), MockReconTargetServer)
+    test_server = socketserver.TCPServer(("127.0.0.1", 0), MockReconTargetServer)
     thread = threading.Thread(target=test_server.serve_forever, daemon=True)
     thread.start()
-    yield "http://127.0.0.1:18895"
+    port = test_server.server_address[1]
+    yield f"http://127.0.0.1:{port}"
     test_server.shutdown()
+    test_server.server_close()
 
 
 # ---------------------------------------------------------------------------
@@ -130,7 +133,7 @@ async def test_recon_module_and_asset_graph_e2e(recon_test_target):
     scope = Scope(
         id="scope-recon-e2e",
         name="Recon Scope",
-        allowed_targets=["127.0.0.1", "127.0.0.1:18895", recon_test_target],
+        allowed_targets=["127.0.0.1", urlsplit(recon_test_target).netloc, recon_test_target],
         max_intensity=5,
     )
 

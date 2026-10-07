@@ -9,14 +9,22 @@ Verifies:
 
 import json
 import zipfile
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from sentinel.core.models import (
     Finding,
     FindingStatus,
+    Policy,
+    Scope,
     SeverityLevel,
+    Target,
+    TargetSet,
+    Task,
+    TaskMode,
     TaskStatus,
+    TimeWindow,
 )
 from sentinel.core.orchestrator.lifecycle import TaskLifecycleManager
 
@@ -97,12 +105,101 @@ def test_evidence_bundle_verification_failure_path(tmp_path):
         assert actual_hash != entry["sha256"]
 
 
+@pytest.mark.parametrize(
+    ("orchestrator_status", "should_generate_report"),
+    [
+        (TaskStatus.COMPLETE, True),
+        (TaskStatus.COMPLETED, True),
+        (TaskStatus.BLOCKED, True),
+        (TaskStatus.PARTIALLY_COMPLETED, True),
+        (TaskStatus.FAILED, True),
+        (TaskStatus.CANCELLED, False),
+    ],
+)
+@pytest.mark.asyncio
+async def test_lifecycle_preserves_terminal_orchestrator_status_and_generates_report(
+    monkeypatch,
+    orchestrator_status,
+    should_generate_report,
+):
+
+    from importlib import import_module
+
+    from sentinel.intelligence.reporting.generator import ReportType, report_generator
+
+    now = datetime.now(UTC)
+    target = Target(id="lifecycle-target", type="ip", value="127.0.0.1")
+    task = Task(
+        id=f"task-lifecycle-reporting-{orchestrator_status.value}",
+        objective="Lifecycle reporting regression",
+        target_set=TargetSet(id="lifecycle-target-set", name="local target", targets=[target]),
+        scope=Scope(
+            id="lifecycle-scope",
+            name="loopback scope",
+            owner="lifecycle-test-operator",
+            written_authorization_reference="CHG-LIFECYCLE-REPORT-1001",
+            allowed_targets=["127.0.0.1"],
+            allowed_methods=["passive_recon"],
+            time_window=TimeWindow(start_time=now - timedelta(minutes=1), end_time=now + timedelta(hours=1)),
+        ),
+        policy=Policy(id="lifecycle-policy", name="local policy"),
+        mode=TaskMode.PASSIVE_RECON,
+        status=TaskStatus.SUBMITTED,
+        correlation_id="corr-lifecycle-reporting",
+    )
+    manager = TaskLifecycleManager()
+    await manager.repo.create_task(task)
+
+    class CompletedOrchestrator:
+        async def run_task(self, received_task, max_iterations):
+            assert max_iterations == manager.settings.max_task_iterations
+            received_task.status = orchestrator_status
+            received_task.progress_percentage = 100.0
+            received_task.completed_at = datetime.now(UTC)
+            return received_task
+
+    monkeypatch.setattr(
+        import_module("sentinel.core.orchestrator.orchestrator"),
+        "AutonomousOrchestrator",
+        CompletedOrchestrator,
+    )
+    reports = []
+    monkeypatch.setattr(
+        report_generator,
+        "generate_report",
+        lambda task_arg, *, findings, report_type: reports.append((task_arg.id, findings, report_type)),
+    )
+
+    await manager._execute_task_pipeline(task.id)
+
+    persisted = await manager.repo.get_task(task.id)
+    assert persisted is not None
+    assert persisted.status == orchestrator_status
+    assert persisted.progress_percentage == 100.0
+    assert reports == (
+        [(task.id, [], ReportType.TECHNICAL)] if should_generate_report else []
+    )
+
+
 @pytest.mark.asyncio
 async def test_task_lifecycle_cancellation_and_transitions():
     mgr = TaskLifecycleManager()
+    now = datetime.now(UTC)
     task = await mgr.create_and_submit_task(
         objective="Lifecycle state machine audit",
         targets=[{"type": "domain", "value": "test.target.local"}],
+        scope_data={
+            "owner": "lifecycle-test-operator",
+            "written_authorization_reference": "CHG-LIFECYCLE-1001",
+            "allowed_targets": ["test.target.local"],
+            "allowed_methods": ["passive_recon", "discovery"],
+            "time_window": {
+                "start_time": now - timedelta(minutes=1),
+                "end_time": now + timedelta(hours=1),
+            },
+            "rate_limit": 50,
+            "maximum_impact": "low",
+        },
     )
     assert task.status == TaskStatus.SUBMITTED
 

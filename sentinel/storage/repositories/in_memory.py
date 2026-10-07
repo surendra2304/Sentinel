@@ -1,6 +1,8 @@
 """Fast in-memory Repository implementation for unit testing and local development."""
 
+from copy import deepcopy
 from datetime import UTC, datetime
+from typing import Any
 
 from sentinel.core.models import (
     Evidence,
@@ -22,6 +24,7 @@ from sentinel.storage.repositories.interfaces import (
 class InMemoryTaskRepository(TaskRepository):
     def __init__(self) -> None:
         self._tasks: dict[str, Task] = {}
+        self._checkpoints: dict[str, dict[str, Any]] = {}
 
     async def create_task(self, task: Task) -> Task:
         self._tasks[task.id] = task.model_copy(deep=True)
@@ -48,12 +51,29 @@ class InMemoryTaskRepository(TaskRepository):
         return [t.model_copy(deep=True) for t in tasks[offset : offset + limit]]
 
     async def get_active_non_terminal_tasks(self) -> list[Task]:
-        terminal = {TaskStatus.COMPLETE, TaskStatus.FAILED, TaskStatus.CANCELLED}
+        terminal = {
+            TaskStatus.COMPLETE,
+            TaskStatus.COMPLETED,
+            TaskStatus.BLOCKED,
+            TaskStatus.PARTIALLY_COMPLETED,
+            TaskStatus.FAILED,
+            TaskStatus.CANCELLED,
+        }
         return [
             t.model_copy(deep=True)
             for t in self._tasks.values()
             if t.status not in terminal
         ]
+
+    async def save_checkpoint(self, task_id: str, payload: dict[str, Any]) -> int:
+        current = self._checkpoints.get(task_id)
+        version = int(current["version"]) + 1 if current else 1
+        self._checkpoints[task_id] = {"version": version, "payload": deepcopy(payload)}
+        return version
+
+    async def get_checkpoint(self, task_id: str) -> dict[str, Any] | None:
+        checkpoint = self._checkpoints.get(task_id)
+        return deepcopy(checkpoint) if checkpoint else None
 
 
 class InMemoryFindingRepository(FindingRepository):

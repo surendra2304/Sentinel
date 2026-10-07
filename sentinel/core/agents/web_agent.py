@@ -33,6 +33,7 @@ class WebSecurityAgent(BaseAgent):
     @property
     def capabilities(self) -> list[str]:
         return [
+            "http.observe",
             "web.crawl",
             "web.endpoint_mapping",
             "web.header_analysis",
@@ -74,8 +75,33 @@ class WebSecurityAgent(BaseAgent):
             except Exception:
                 data = {}
 
-            # 1. Process Web Config & Header Findings
-            if source_tool == "web_config_analysis_adapter":
+            # 1. Process HTTP observations routed from the planner's web phase.
+            if source_tool == "http_observer_adapter":
+                security_headers = data.get("security_headers", {})
+                missing_headers = [key for key, value in security_headers.items() if value == "MISSING"]
+                if missing_headers:
+                    report.observations.append(
+                        Observation(
+                            task_id=task.id,
+                            target_ref=target_ref,
+                            source_module="web",
+                            title=f"Missing Defensive Security Headers: {', '.join(missing_headers[:2])}",
+                            description=(
+                                f"HTTP endpoint '{target_ref}' is missing defensive headers: "
+                                f"{', '.join(missing_headers)}"
+                            ),
+                            severity=SeverityLevel.LOW,
+                            confidence=1.0,
+                            evidence_refs=[evi["id"]],
+                            remediation=(
+                                "Configure Strict-Transport-Security, X-Frame-Options, and "
+                                "Content-Security-Policy where appropriate."
+                            ),
+                        )
+                    )
+
+            # 2. Process Web Config & Header Findings
+            elif source_tool == "web_config_analysis_adapter":
                 findings_list = data.get("findings", [])
                 for f in findings_list:
                     sev = SeverityLevel(f.get("severity", "low").lower())

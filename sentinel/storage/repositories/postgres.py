@@ -7,6 +7,9 @@ from sqlalchemy import and_, select, update
 
 from sentinel.core.models import (
     AssetCriticality,
+    AuthorizationMetadata,
+    AuthorizationType,
+    ChainOfCustodyEvent,
     EnvironmentLabel,
     Evidence,
     Finding,
@@ -24,13 +27,14 @@ from sentinel.core.models import (
 )
 from sentinel.core.policy.engine import ApprovalRecord
 from sentinel.storage.database.models import (
-    ActionRequestModel,
+    ApprovalModel,
     EvidenceModel,
     FindingModel,
     PolicyModel,
     ScopeModel,
     TargetModel,
     TargetSetModel,
+    TaskCheckpointModel,
     TaskModel,
     targetset_targets,
 )
@@ -64,9 +68,12 @@ class PostgresTaskRepository(TaskRepository):
                     expiry=task.scope.authorization.expiry,
                     max_intensity=float(task.scope.max_intensity),
                     offensive_actions_enabled=task.scope.offensive_actions_enabled,
+                    scope_contract=task.scope.model_dump(mode="json"),
                     created_at=task.scope.created_at,
                 )
                 session.add(scope_m)
+            else:
+                cast(Any, scope_m).scope_contract = task.scope.model_dump(mode="json")
 
             # 2. Upsert Policy
             policy_m = await session.get(PolicyModel, task.policy.id)
@@ -81,9 +88,12 @@ class PostgresTaskRepository(TaskRepository):
                     credential_handling_rules=task.policy.credential_handling_rules,
                     require_approval_for_offensive=task.policy.require_approval_for_offensive,
                     kill_switch_active=task.policy.kill_switch_active,
+                    policy_contract=task.policy.model_dump(mode="json"),
                     created_at=task.policy.created_at,
                 )
                 session.add(policy_m)
+            else:
+                cast(Any, policy_m).policy_contract = task.policy.model_dump(mode="json")
 
             # 3. Upsert Targets & TargetSet
             t_set_m = await session.get(TargetSetModel, task.target_set.id)
@@ -188,11 +198,48 @@ class PostgresTaskRepository(TaskRepository):
             return [self._to_domain_task(m) for m in res.scalars().all()]
 
     async def get_active_non_terminal_tasks(self) -> list[Task]:
-        terminal = ["complete", "failed", "cancelled"]
+        terminal = [
+            TaskStatus.COMPLETE.value,
+            TaskStatus.COMPLETED.value,
+            TaskStatus.BLOCKED.value,
+            TaskStatus.PARTIALLY_COMPLETED.value,
+            TaskStatus.FAILED.value,
+            TaskStatus.CANCELLED.value,
+        ]
         async with get_db_session() as session:
             stmt = select(TaskModel).where(TaskModel.status.not_in(terminal))
             res = await session.execute(stmt)
             return [self._to_domain_task(m) for m in res.scalars().all()]
+
+    async def save_checkpoint(self, task_id: str, payload: dict[str, Any]) -> int:
+        async with get_db_session() as session:
+            checkpoint = await session.get(TaskCheckpointModel, task_id)
+            if checkpoint is None:
+                checkpoint = TaskCheckpointModel(
+                    task_id=task_id,
+                    version=1,
+                    payload=payload,
+                    updated_at=datetime.now(UTC),
+                )
+                session.add(checkpoint)
+                await session.flush()
+                return 1
+
+            checkpoint_model = cast(Any, checkpoint)
+            checkpoint_model.version = int(checkpoint_model.version) + 1
+            checkpoint_model.payload = payload
+            checkpoint_model.updated_at = datetime.now(UTC)
+            return int(checkpoint_model.version)
+
+    async def get_checkpoint(self, task_id: str) -> dict[str, Any] | None:
+        async with get_db_session() as session:
+            checkpoint = await session.get(TaskCheckpointModel, task_id)
+            if checkpoint is None:
+                return None
+            return {
+                "version": int(checkpoint.version),
+                "payload": dict(checkpoint.payload or {}),
+            }
 
     @staticmethod
     def _to_domain_task(m: Any) -> Task:
@@ -217,22 +264,47 @@ class PostgresTaskRepository(TaskRepository):
         target_set = TargetSet(
             id=str(m.target_set_id),
             name=str(m.target_set.name) if m.target_set else "TargetSet",
+            description=m.target_set.description if m.target_set else None,
+            context_notes=dict(m.target_set.context_notes or {}) if m.target_set else {},
             targets=targets,
         )
-        scope = Scope(
-            id=str(m.scope_id),
-            name=str(m.scope.name) if m.scope else "Scope",
-            allowed_targets=list(m.scope.allowed_targets) if m.scope else [],
-            in_scope_declarations=list(m.scope.in_scope_declarations) if m.scope else [],
-            out_of_scope_declarations=list(m.scope.out_of_scope_declarations) if m.scope else [],
-            environment=EnvironmentLabel(str(m.scope.environment)) if m.scope else EnvironmentLabel.PRODUCTION,
-        )
-        policy = Policy(
-            id=str(m.policy_id),
-            name=str(m.policy.name) if m.policy else "Policy",
-            allowed_module_classes=list(m.policy.allowed_module_classes) if m.policy else [],
-            allowed_action_classes=list(m.policy.allowed_action_classes) if m.policy else [],
-        )
+        scope_contract = getattr(m.scope, "scope_contract", None) if m.scope else None
+        if scope_contract:
+            scope = Scope.model_validate(scope_contract)
+        else:
+            # Legacy rows predate the full JSON contract. Preserve fields that were
+            # actually stored; do not invent a missing authorization reference or window.
+            scope = Scope(
+                id=str(m.scope_id),
+                name=str(m.scope.name) if m.scope else "Scope",
+                allowed_targets=list(m.scope.allowed_targets) if m.scope else [],
+                in_scope_declarations=list(m.scope.in_scope_declarations) if m.scope else [],
+                out_of_scope_declarations=list(m.scope.out_of_scope_declarations) if m.scope else [],
+                environment=EnvironmentLabel(str(m.scope.environment)) if m.scope else EnvironmentLabel.PRODUCTION,
+                authorization=AuthorizationMetadata(
+                    authorization_type=AuthorizationType(str(m.scope.authorization_type)) if m.scope else AuthorizationType.OWNED,
+                    reference_ticket_id=m.scope.reference_ticket_id if m.scope else None,
+                    authorized_by=m.scope.authorized_by if m.scope else None,
+                    expiry=m.scope.expiry if m.scope else None,
+                ),
+                max_intensity=int(m.scope.max_intensity) if m.scope else 5,
+                offensive_actions_enabled=bool(m.scope.offensive_actions_enabled) if m.scope else False,
+            )
+        policy_contract = getattr(m.policy, "policy_contract", None) if m.policy else None
+        if policy_contract:
+            policy = Policy.model_validate(policy_contract)
+        else:
+            policy = Policy(
+                id=str(m.policy_id),
+                name=str(m.policy.name) if m.policy else "Policy",
+                allowed_module_classes=list(m.policy.allowed_module_classes) if m.policy else [],
+                allowed_action_classes=list(m.policy.allowed_action_classes) if m.policy else [],
+                rate_limit_rps=int(m.policy.rate_limit_rps) if m.policy else 50,
+                max_intensity=int(m.policy.max_intensity) if m.policy else 5,
+                credential_handling_rules=dict(m.policy.credential_handling_rules or {}) if m.policy else {},
+                require_approval_for_offensive=bool(m.policy.require_approval_for_offensive) if m.policy else True,
+                kill_switch_active=bool(m.policy.kill_switch_active) if m.policy else False,
+            )
         return Task(
             id=str(m.id),
             objective=str(m.objective),
@@ -358,12 +430,16 @@ class PostgresEvidenceRepository(EvidenceRepository):
                     artifact_storage_key=evidence.artifact_storage_key,
                     content_type=evidence.content_type,
                     sha256_hash=evidence.sha256_hash,
-                    integrity_metadata={},
+                    integrity_metadata=evidence.integrity_metadata,
                     collected_by=evidence.collected_by,
                     chain_of_custody=[c.model_dump(mode="json") for c in evidence.chain_of_custody],
                     context_metadata=evidence.context_metadata,
                 )
                 session.add(e_m)
+            else:
+                e_m.chain_of_custody = [c.model_dump(mode="json") for c in evidence.chain_of_custody]  # type: ignore[assignment]
+                e_m.context_metadata = evidence.context_metadata  # type: ignore[assignment]
+                e_m.integrity_metadata = evidence.integrity_metadata  # type: ignore[assignment]
         return evidence
 
     async def get_evidence_record(self, evidence_id: str) -> Evidence | None:
@@ -400,41 +476,49 @@ class PostgresEvidenceRepository(EvidenceRepository):
             artifact_storage_key=str(e_m.artifact_storage_key),
             content_type=str(e_m.content_type),
             sha256_hash=str(e_m.sha256_hash),
+            integrity_metadata=dict(e_m.integrity_metadata or {}),
             collected_by=str(e_m.collected_by),
+            chain_of_custody=[
+                ChainOfCustodyEvent.model_validate(c) for c in (e_m.chain_of_custody or [])
+            ],
             context_metadata=dict(e_m.context_metadata or {}),
         )
 
 
 class PostgresApprovalRepository(ApprovalRepository):
-    """PostgreSQL-backed Approval records repository."""
+    """PostgreSQL-backed durable operator approvals."""
 
     async def save_approval(self, approval: ApprovalRecord) -> ApprovalRecord:
+        values = {
+            "task_id": approval.task_id,
+            "action_id": approval.action_id,
+            "action_type": approval.action_type,
+            "target_refs": approval.target_refs,
+            "requested_by": approval.requested_by,
+            "action_fingerprint": approval.action_fingerprint,
+            "status": approval.status,
+            "justification_needed": approval.justification_needed,
+            "justification_provided": approval.justification_provided,
+            "approved_by": approval.approved_by,
+            "authorization_reference": approval.authorization_reference,
+            "requested_at": approval.requested_at,
+            "decided_at": approval.decided_at,
+            "expires_at": approval.expires_at,
+        }
         async with get_db_session() as session:
-            req_m = await session.get(ActionRequestModel, approval.approval_id)
-            if not req_m:
-                req_m = ActionRequestModel(
-                    id=approval.approval_id,
-                    task_id=approval.task_id,
-                    agent=approval.requested_by,
-                    action_type=approval.action_type,
-                    parameters={"justification": approval.justification_needed},
-                    target_refs=approval.target_refs,
-                    expected_impact_level="high",
-                    requires_approval=True,
-                    status=approval.status,
-                    created_at=approval.requested_at,
-                )
-                session.add(req_m)
+            model = await session.get(ApprovalModel, approval.approval_id)
+            if model is None:
+                session.add(ApprovalModel(approval_id=approval.approval_id, **values))
             else:
-                req_m.status = approval.status  # type: ignore[assignment]
+                model_values = cast(Any, model)
+                for field_name, field_value in values.items():
+                    setattr(model_values, field_name, field_value)
         return approval
 
     async def get_approval(self, approval_id: str) -> ApprovalRecord | None:
         async with get_db_session() as session:
-            req_m = await session.get(ActionRequestModel, approval_id)
-            if not req_m:
-                return None
-            return self._to_domain_approval(req_m)
+            model = await session.get(ApprovalModel, approval_id)
+            return self._to_domain_approval(model) if model else None
 
     async def list_approvals(
         self,
@@ -442,24 +526,30 @@ class PostgresApprovalRepository(ApprovalRepository):
         status: str | None = None,
     ) -> list[ApprovalRecord]:
         async with get_db_session() as session:
-            stmt = select(ActionRequestModel).order_by(ActionRequestModel.created_at.desc())
+            stmt = select(ApprovalModel).order_by(ApprovalModel.requested_at.desc())
             if task_id:
-                stmt = stmt.where(ActionRequestModel.task_id == task_id)
+                stmt = stmt.where(ApprovalModel.task_id == task_id)
             if status:
-                stmt = stmt.where(ActionRequestModel.status == status)
-            res = await session.execute(stmt)
-            return [self._to_domain_approval(m) for m in res.scalars().all()]
+                stmt = stmt.where(ApprovalModel.status == status)
+            result = await session.execute(stmt)
+            return [self._to_domain_approval(model) for model in result.scalars().all()]
 
     @staticmethod
-    def _to_domain_approval(req_m: Any) -> ApprovalRecord:
+    def _to_domain_approval(model: Any) -> ApprovalRecord:
         return ApprovalRecord(
-            approval_id=str(req_m.id),
-            task_id=str(req_m.task_id),
-            action_id=str(req_m.id),
-            action_type=str(req_m.action_type),
-            target_refs=list(req_m.target_refs or []),
-            requested_by=str(req_m.agent),
-            status=str(req_m.status),
-            justification_needed=str(req_m.parameters.get("justification", "")) if req_m.parameters else "",
-            requested_at=cast(datetime, req_m.created_at),
+            approval_id=str(model.approval_id),
+            task_id=str(model.task_id),
+            action_id=str(model.action_id),
+            action_type=str(model.action_type),
+            target_refs=list(model.target_refs or []),
+            requested_by=str(model.requested_by),
+            action_fingerprint=model.action_fingerprint,
+            status=str(model.status),
+            justification_needed=str(model.justification_needed),
+            justification_provided=model.justification_provided,
+            approved_by=model.approved_by,
+            authorization_reference=model.authorization_reference,
+            requested_at=cast(datetime, model.requested_at),
+            decided_at=cast(datetime | None, model.decided_at),
+            expires_at=cast(datetime, model.expires_at),
         )

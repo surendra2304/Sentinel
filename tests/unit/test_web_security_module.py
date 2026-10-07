@@ -2,6 +2,7 @@ import json
 import socketserver
 import threading
 from http import server
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -66,11 +67,13 @@ class MisconfiguredWebAppHandler(server.SimpleHTTPRequestHandler):
 
 @pytest.fixture(scope="module")
 def vulnerable_web_target():
-    test_server = socketserver.TCPServer(("127.0.0.1", 18898), MisconfiguredWebAppHandler)
+    test_server = socketserver.TCPServer(("127.0.0.1", 0), MisconfiguredWebAppHandler)
     thread = threading.Thread(target=test_server.serve_forever, daemon=True)
     thread.start()
-    yield "http://127.0.0.1:18898"
+    port = test_server.server_address[1]
+    yield f"http://127.0.0.1:{port}"
     test_server.shutdown()
+    test_server.server_close()
 
 
 # ---------------------------------------------------------------------------
@@ -83,7 +86,7 @@ async def test_web_adapters_standalone(vulnerable_web_target):
         id="task-web-unit",
         objective="Audit vulnerable web target",
         target_set=TargetSet(id="ts", name="TS"),
-        scope=Scope(id="s", name="S", allowed_targets=["127.0.0.1:18898"]),
+        scope=Scope(id="s", name="S", allowed_targets=[urlsplit(vulnerable_web_target).netloc]),
         policy=Policy(id="p", name="P", allowed_module_classes=["web"], allowed_action_classes=["web.*"]),
         correlation_id="corr-web-unit",
     )

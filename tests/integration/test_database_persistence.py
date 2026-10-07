@@ -172,6 +172,23 @@ async def test_postgres_repository_persistence(tmp_path, sample_task, monkeypatc
     assert fetched_task.scope.allowed_targets == ["persistence.test.local"]
     assert len(fetched_task.target_set.targets) == 1
 
+    checkpoint_payload = {
+        "task_id": sample_task.id,
+        "state_flags": {"phase_recon_baseline_done": True},
+        "deferred_plan_steps": [],
+        "in_flight_action": None,
+    }
+    checkpoint_version = await task_repo.save_checkpoint(sample_task.id, checkpoint_payload)
+    assert checkpoint_version == 1
+    persisted_checkpoint = await task_repo.get_checkpoint(sample_task.id)
+    assert persisted_checkpoint == {"version": 1, "payload": checkpoint_payload}
+    updated_version = await task_repo.save_checkpoint(
+        sample_task.id,
+        {**checkpoint_payload, "last_iteration": 2},
+    )
+    assert updated_version == 2
+    assert (await task_repo.get_checkpoint(sample_task.id))["version"] == 2
+
     # 2. Persist Finding
     finding = Finding(
         id="find-sql-01",
@@ -213,6 +230,7 @@ async def test_postgres_repository_persistence(tmp_path, sample_task, monkeypatc
         action_type="network.port_scan",
         target_refs=["persistence.test.local"],
         requested_by="network_agent",
+        action_fingerprint="c" * 64,
         status="PENDING",
         justification_needed="Intensive active scan",
     )
@@ -220,6 +238,14 @@ async def test_postgres_repository_persistence(tmp_path, sample_task, monkeypatc
     fetched_appr = await approval_repo.get_approval(approval.approval_id)
     assert fetched_appr is not None
     assert fetched_appr.action_type == "network.port_scan"
+    assert fetched_appr.action_fingerprint == "c" * 64
+    restarted_approval_repo = PostgresApprovalRepository()
+    listed_approvals = await restarted_approval_repo.list_approvals(
+        task_id=sample_task.id,
+        status="PENDING",
+    )
+    assert [record.approval_id for record in listed_approvals] == [approval.approval_id]
+    await engine.dispose()
 
 
 # ---------------------------------------------------------------------------

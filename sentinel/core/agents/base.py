@@ -26,7 +26,7 @@ class AgentReport(BaseModel):
     agent_name: str
     task_id: str
     observations: list[Observation] = Field(default_factory=list)
-    actions_requested: list[ActionRequest] = Field(default_factory=list)
+    actions_requested: list[ActionRequest] = Field(default_factory=list, max_length=32)
     findings: list[Finding] = Field(default_factory=list)
     evidence_refs: list[str] = Field(default_factory=list)
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
@@ -83,6 +83,15 @@ class AgentRegistry:
 
     def list_agents(self) -> list[BaseAgent]:
         return list(self._agents.values())
+
+    def supports_action(self, agent_name: str, action_type: str) -> bool:
+        """Return whether a registered agent declares the requested capability."""
+        agent = self.get_agent(agent_name)
+        return bool(agent and action_type in agent.capabilities)
+
+    def agents_for_action(self, action_type: str) -> list[BaseAgent]:
+        """Return registered specialists that explicitly declare an action capability."""
+        return [agent for agent in self._agents.values() if action_type in agent.capabilities]
 
 
 # Global Agent Registry Singleton

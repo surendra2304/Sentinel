@@ -4,8 +4,10 @@ Coordinates host liveness, exposure analysis, segmentation testing,
 firewall reviews, and traffic inspection. Produces structured Findings.
 """
 
+import ipaddress
 import json
 from typing import Any
+from urllib.parse import urlparse
 
 from sentinel.core.agents.base import AgentReport, BaseAgent
 from sentinel.core.models import (
@@ -16,6 +18,7 @@ from sentinel.core.models import (
     Task,
 )
 from sentinel.intelligence.risk.finding_engine import Observation
+from sentinel.modules.recon.graph import EdgeType, NodeType, asset_graph_store
 
 
 class NetworkAgent(BaseAgent):
@@ -32,6 +35,7 @@ class NetworkAgent(BaseAgent):
     @property
     def capabilities(self) -> list[str]:
         return [
+            "network.service_scan",
             "network.host_discovery",
             "network.ping_sweep",
             "network.exposure_analysis",
@@ -69,8 +73,56 @@ class NetworkAgent(BaseAgent):
             except Exception:
                 data = {}
 
-            # 1. Process Exposure Analysis Violations
-            if source_tool == "network_exposure_adapter":
+            # 1. Process planned service scans and preserve graph relationships.
+            if source_tool == "network_scanner_adapter":
+                parsed_target = urlparse(target_ref if "://" in target_ref else f"http://{target_ref}")
+                host = parsed_target.hostname or target_ref
+                try:
+                    ipaddress.ip_address(host)
+                    node_type = NodeType.IP
+                except ValueError:
+                    node_type = NodeType.DOMAIN
+                host_node = asset_graph_store.add_node(
+                    task_id=task.id,
+                    node_type=node_type,
+                    label=host,
+                    is_internet_facing=True,
+                )
+                open_ports = data.get("open_ports", [])
+                for port in open_ports:
+                    port_node = asset_graph_store.add_node(
+                        task_id=task.id,
+                        node_type=NodeType.PORT,
+                        label=f"{host}:{port}",
+                        properties={"port": port},
+                    )
+                    asset_graph_store.add_edge(
+                        task_id=task.id,
+                        source_id=host_node.id,
+                        target_id=port_node.id,
+                        edge_type=EdgeType.LISTENS_ON,
+                    )
+                if open_ports:
+                    report.observations.append(
+                        Observation(
+                            task_id=task.id,
+                            target_ref=target_ref,
+                            source_module="network",
+                            title=f"Exposed Listening Network Services on Ports {open_ports}",
+                            description=f"Host '{target_ref}' has accessible listening ports: {open_ports}",
+                            severity=(
+                                SeverityLevel.MEDIUM
+                                if any(port in [21, 23, 8080] for port in open_ports)
+                                else SeverityLevel.LOW
+                            ),
+                            confidence=1.0,
+                            evidence_refs=[evi["id"]],
+                            remediation="Close unused network ports or restrict access using perimeter firewalls.",
+                        )
+                    )
+
+            # 2. Process Exposure Analysis Violations
+            elif source_tool == "network_exposure_adapter":
                 exposure_flags = data.get("exposure_flags", [])
                 for flag in exposure_flags:
                     sev = SeverityLevel(flag.get("severity", "medium").lower())

@@ -35,6 +35,7 @@ from sentinel.modules.endpoint.models import (
     InstalledSoftware,
     PersistenceItem,
 )
+from sentinel.storage.evidence.store import evidence_store
 
 
 @pytest.fixture
@@ -258,6 +259,16 @@ async def test_endpoint_agent_observation_synthesis(sample_endpoint_task):
             },
         }
     ]
+    evidence = await evidence_store.record_evidence(
+        task_id=sample_endpoint_task.id,
+        target_ref=sample_endpoint_task.target_set.targets[0].value,
+        source_agent="endpoint_agent",
+        source_module="endpoint",
+        source_tool="fixture",
+        raw_data=json.dumps(mock_evidence[0]["data"]).encode("utf-8"),
+        content_type="application/json",
+    )
+    mock_evidence[0]["id"] = evidence.id
 
     report = await agent.analyze(
         task=sample_endpoint_task,
@@ -272,13 +283,13 @@ async def test_endpoint_agent_observation_synthesis(sample_endpoint_task):
     obs = report.observations[0]
     assert obs.title == "SSH PermitRootLogin Enabled"
     assert obs.severity == SeverityLevel.HIGH
-    assert obs.evidence_refs == ["evi-ep-001"]
+    assert obs.evidence_refs == [evidence.id]
 
     # Ingest observation into FindingEngine and verify evidence integrity
     finding = await finding_engine.ingest_observation(obs)
     assert finding.id.startswith("find-")
     assert finding.severity == SeverityLevel.HIGH
-    assert "evi-ep-001" in finding.evidence_refs
+    assert evidence.id in finding.evidence_refs
 
 
 def test_endpoint_offline_macos_export_evaluation():

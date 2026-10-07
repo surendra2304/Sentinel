@@ -1,6 +1,7 @@
 import http.server
 import socketserver
 import threading
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -33,11 +34,13 @@ class MockTestServer(http.server.SimpleHTTPRequestHandler):
 
 @pytest.fixture(scope="module")
 def live_test_target():
-    server = socketserver.TCPServer(("127.0.0.1", 18890), MockTestServer)
+    server = socketserver.TCPServer(("127.0.0.1", 0), MockTestServer)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-    yield "http://127.0.0.1:18890"
+    port = server.server_address[1]
+    yield f"http://127.0.0.1:{port}"
     server.shutdown()
+    server.server_close()
 
 
 @pytest.mark.asyncio
@@ -46,7 +49,7 @@ async def test_autonomous_orchestrator_e2e(live_test_target):
     target = Target(
         id="t-e2e-01",
         type=TargetType.URL,
-        value="http://127.0.0.1:18890",
+        value=live_test_target,
         metadata=TargetMetadata(
             criticality=AssetCriticality.HIGH,
             environment=EnvironmentLabel.STAGING,
@@ -58,7 +61,7 @@ async def test_autonomous_orchestrator_e2e(live_test_target):
     scope = Scope(
         id="scope-e2e",
         name="E2E Testing Scope",
-        allowed_targets=["127.0.0.1", "http://127.0.0.1:18890", "127.0.0.1:18890"],
+        allowed_targets=["127.0.0.1", live_test_target, urlsplit(live_test_target).netloc],
         max_intensity=5,
     )
 

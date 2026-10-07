@@ -23,10 +23,10 @@ async def main():
     print("Client: Sentinel Ecosystem Integration Client")
     print("=" * 80)
 
-    inf_url = os.getenv("INFERENCE_URL", "https://inference-h7bn.onrender.com").rstrip("/")
+    inf_url = os.getenv("INFERENCE_URL", "").strip().rstrip("/")
     api_key = os.getenv("INFERENCE_API_KEY")
-    if not api_key:
-        print("Request not sent: configure INFERENCE_API_KEY first.")
+    if not inf_url or not api_key:
+        print("Request not sent: configure both INFERENCE_URL and INFERENCE_API_KEY first.")
         return
     print(f"Target URL: {inf_url}")
 

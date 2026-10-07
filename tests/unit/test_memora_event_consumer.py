@@ -254,6 +254,24 @@ def test_security_shaped_event_from_another_agent_is_not_trusted_as_intelx():
     assert not any(call[0] == "persist" for call in client.calls)
 
 
+def test_memora_client_does_not_use_baked_in_remote_endpoint(monkeypatch):
+    monkeypatch.delenv("MEMORA_URL", raising=False)
+    monkeypatch.setenv("SENTINEL_API_KEY", "sentinel-agent-test-key")
+    requests = []
+
+    def reject_network(request, timeout):
+        requests.append((request, timeout))
+        raise AssertionError("Memora URL must be explicitly configured")
+
+    monkeypatch.setattr("urllib.request.urlopen", reject_network)
+    client = MemoraClient()
+    result = client._request("sentinel", "/v1/memories")
+
+    assert result["status"] == "error"
+    assert result["error"] == "MEMORA_URL is not configured"
+    assert requests == []
+
+
 def test_memora_client_uses_sentinel_identity_and_idempotent_episodic_write(monkeypatch):
     captured = []
     monkeypatch.setenv("SENTINEL_API_KEY", "sentinel-agent-test-key")

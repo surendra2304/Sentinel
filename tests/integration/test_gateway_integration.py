@@ -1,4 +1,5 @@
 import asyncio
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -6,9 +7,22 @@ from typer.testing import CliRunner
 
 from sentinel.apps.api import main as api_main
 from sentinel.apps.api.main import app
+from sentinel.apps.cli import main as cli_main
 from sentinel.apps.cli.main import app as cli_app
 from sentinel.core.events.bus import InMemoryEventBus
-from sentinel.core.models import Event, EventType
+from sentinel.core.models import (
+    Event,
+    EventType,
+    Policy,
+    Scope,
+    Target,
+    TargetSet,
+    TargetType,
+    Task,
+    TaskMode,
+    TaskStatus,
+    TimeWindow,
+)
 from sentinel.core.orchestrator.lifecycle import TaskLifecycleManager
 
 # ---------------------------------------------------------------------------
@@ -48,12 +62,27 @@ async def test_api_task_gateway_lifecycle():
         assert readiness_detail["checks"]["persistence"] is False
 
         # 2. Submit Task
+        now = datetime.now(UTC)
         payload = {
             "objective": "Comprehensive perimeter security scan",
             "targets": [
                 {"type": "domain", "value": "api.sentinel.security"},
                 {"type": "ip", "value": "192.168.1.100"},
             ],
+            "scope": {
+                "id": "scope-gateway-integration",
+                "name": "Gateway integration scope",
+                "owner": "test-operator",
+                "written_authorization_reference": "CHG-TEST-1001",
+                "allowed_targets": ["api.sentinel.security", "192.168.1.100"],
+                "allowed_methods": ["passive_recon", "discovery", "validation"],
+                "time_window": {
+                    "start_time": (now - timedelta(minutes=1)).isoformat(),
+                    "end_time": (now + timedelta(hours=2)).isoformat(),
+                },
+                "rate_limit": 50,
+                "maximum_impact": "low",
+            },
             "mode": "assessment",
             "requested_output": "comprehensive_report",
         }
@@ -110,8 +139,53 @@ async def test_capability_routes_fail_closed_without_configured_signing_secret(m
 # 2. CLI Integration Tests
 # ---------------------------------------------------------------------------
 
-def test_cli_operations():
+def test_cli_operations(monkeypatch):
     runner = CliRunner()
+    monkeypatch.delenv("SENTINEL_API_URL", raising=False)
+    monkeypatch.delenv("SENTINEL_API_KEY", raising=False)
+
+    def reject_unconfigured_remote(*_args, **_kwargs):
+        raise AssertionError("CLI must not contact an unconfigured remote API")
+
+    monkeypatch.setattr(cli_main.httpx, "Client", reject_unconfigured_remote)
+
+    async def create_local_task_without_starting_assessment(**kwargs):
+        now = datetime.now(UTC)
+        target = Target(
+            id="cli-ops-target",
+            type=TargetType.IP,
+            value=kwargs["targets"][0]["value"],
+        )
+        scope = Scope(
+            id="cli-ops-scope",
+            name="CLI test scope",
+            allowed_targets=[target.value],
+            owner=kwargs["scope_data"]["owner"],
+            written_authorization_reference=kwargs["scope_data"]["written_authorization_reference"],
+            allowed_methods=["passive_recon", "discovery", "validation"],
+            time_window=TimeWindow(
+                start_time=now - timedelta(minutes=1),
+                end_time=now + timedelta(hours=1),
+            ),
+        )
+        task = Task(
+            id="task-cli-operations",
+            objective=kwargs["objective"],
+            target_set=TargetSet(id="ts-cli-operations", name="CLI test targets", targets=[target]),
+            scope=scope,
+            policy=Policy(id="policy-cli-operations", name="CLI test policy"),
+            mode=TaskMode.PASSIVE_RECON,
+            status=TaskStatus.SUBMITTED,
+            correlation_id="corr-cli-operations",
+        )
+        await cli_main.lifecycle_manager.repo.create_task(task)
+        return task
+
+    monkeypatch.setattr(
+        cli_main.lifecycle_manager,
+        "create_and_submit_task",
+        create_local_task_without_starting_assessment,
+    )
 
     # 1. CLI Status
     result_status = runner.invoke(cli_app, ["status"])
@@ -121,7 +195,14 @@ def test_cli_operations():
     # 2. CLI Task Submit
     result_submit = runner.invoke(
         cli_app,
-        ["task", "submit", "--objective", "Audit internal host", "--target", "10.0.0.50", "--mode", "passive_recon"],
+        [
+            "task", "submit",
+            "--objective", "Audit internal host",
+            "--target", "10.0.0.50",
+            "--mode", "passive_recon",
+            "--authorization-reference", "CHG-CLI-OPS-1001",
+            "--authorized-by", "cli-operator@example.invalid",
+        ],
     )
     assert result_submit.exit_code == 0
     assert "Task submitted successfully" in result_submit.output
@@ -256,13 +337,25 @@ async def test_event_bus_logs_failed_listener_without_blocking_other_subscribers
 @pytest.mark.asyncio
 async def test_task_crash_recovery():
     manager = TaskLifecycleManager()
-    task = await manager.create_and_submit_task(
+    target = Target(id="crash-recovery-target", type=TargetType.DOMAIN, value="test.recovery.internal")
+    task = Task(
+        id="task-crash-recovery-no-checkpoint",
         objective="Crash recovery resilience test",
-        targets=[{"type": "domain", "value": "test.recovery.internal"}],
+        target_set=TargetSet(id="ts-crash-recovery", name="crash recovery fixture", targets=[target]),
+        scope=Scope(
+            id="scope-crash-recovery",
+            name="crash recovery fixture scope",
+            owner="crash-test-operator",
+            written_authorization_reference="CHG-CRASH-1001",
+            allowed_targets=[target.value],
+        ),
+        policy=Policy(id="policy-crash-recovery", name="crash recovery fixture policy"),
+        mode=TaskMode.ASSESSMENT,
+        status=TaskStatus.EXECUTING,
+        correlation_id="corr-crash-recovery",
     )
-    # Simulate mid-flight crash where task is left in EXECUTING state
-    task.status = task.status.__class__.EXECUTING
-    await manager.repo.update_task(task)
+    # Persist an interrupted task without a checkpoint to exercise fail-closed recovery.
+    await manager.repo.create_task(task)
 
     recovered_count = await manager.recover_tasks_on_startup()
     assert recovered_count == 1

@@ -7,11 +7,12 @@ Defends against target smuggling, IDN/punycode spoofing, and embedded IP tricker
 """
 
 import ipaddress
+import posixpath
 import re
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
-from urllib.parse import unquote, urlparse
+from urllib.parse import ParseResult, unquote, urlparse
 
 from sentinel.core.models import (
     AssessmentScope,
@@ -222,9 +223,22 @@ class ScopeResolver:
                 except Exception:
                     pass
 
-        # Apex Domain match: example.com matches example.com, and sub.example.com if specified
+        # Apex Domain match: example.com matches example.com and its subdomains.
         if target.type == TargetType.DOMAIN and not rule_str.startswith("*.") and "." in rule_str and (t_val == rule_str.lower() or t_val.endswith("." + rule_str.lower())):
             return True
+
+        # A bare domain rule authorizes its web host (and subdomains) independent
+        # of URL path, but does not authorize nonstandard ports.
+        if target.type == TargetType.URL and not rule_str.startswith(("http://", "https://", "*.")) and "/" not in rule_str and ":" not in rule_str:
+            try:
+                target_url = urlparse(t_val)
+                host = (target_url.hostname or "").lower()
+                domain_rule = rule_str.lower().rstrip(".")
+                port = target_url.port or {"http": 80, "https": 443}.get(target_url.scheme.lower())
+                if port in {80, 443} and (host == domain_rule or host.endswith("." + domain_rule)):
+                    return True
+            except ValueError:
+                pass
 
         # CIDR Subnet Containment
         if "/" in rule_str:
@@ -235,8 +249,14 @@ class ScopeResolver:
                     return ip in network
                 if target.type == TargetType.CIDR:
                     target_net = ipaddress.ip_network(t_val, strict=False)
-                    if network.version == target_net.version:
-                        return network.subnet_of(target_net) or network == target_net or target_net.subnet_of(network)  # type: ignore[arg-type]
+                    # A requested CIDR must be wholly contained by the authorized
+                    # network. Accepting the inverse containment authorizes scans
+                    # broader than the scope rule.
+                    if isinstance(network, ipaddress.IPv4Network) and isinstance(target_net, ipaddress.IPv4Network):
+                        return target_net.subnet_of(network)
+                    if isinstance(network, ipaddress.IPv6Network) and isinstance(target_net, ipaddress.IPv6Network):
+                        return target_net.subnet_of(network)
+                    return False
                 if target.type == TargetType.URL:
                     host = urlparse(t_val).hostname or ""
                     try:
@@ -253,18 +273,27 @@ class ScopeResolver:
                 target_parsed = urlparse(t_val)
                 rule_parsed = urlparse(rule_str)
 
-                # Match host
-                if target_parsed.hostname != rule_parsed.hostname:
+                # Scheme, hostname, and effective port are all part of a URL scope.
+                if target_parsed.scheme.lower() != rule_parsed.scheme.lower():
+                    return False
+                if (target_parsed.hostname or "").lower() != (rule_parsed.hostname or "").lower():
                     return False
 
-                # Match port if rule specifies port
-                if rule_parsed.port and target_parsed.port != rule_parsed.port:
+                def effective_port(parsed: ParseResult) -> int | None:
+                    if parsed.port is not None:
+                        return parsed.port
+                    return {"http": 80, "https": 443}.get(parsed.scheme.lower())
+
+                if effective_port(target_parsed) != effective_port(rule_parsed):
                     return False
 
-                # Match path prefix
-                rule_path = unquote(rule_parsed.path).rstrip("/")
-                target_path = unquote(target_parsed.path).rstrip("/")
-                return not (rule_path and not target_path.startswith(rule_path))
+                # Compare normalized path segments, not raw string prefixes. This
+                # rejects sibling prefixes such as /api-admin and dot-segment escapes.
+                rule_path = posixpath.normpath("/" + unquote(rule_parsed.path or "").lstrip("/"))
+                target_path = posixpath.normpath("/" + unquote(target_parsed.path or "").lstrip("/"))
+                if rule_path == "/":
+                    return True
+                return target_path == rule_path or target_path.startswith(rule_path + "/")
             except Exception:
                 pass
 

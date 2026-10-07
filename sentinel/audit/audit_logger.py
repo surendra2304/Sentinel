@@ -58,8 +58,12 @@ class AuditLogger:
             signing_key
             or os.environ.get("SENTINEL_AUDIT_HMAC_KEY")
             or os.environ.get("SENTINEL_AUDIT_SIGNING_KEY")
-            or "sentinel-audit-hmac-secret-key-change-in-prod"
         )
+        if not key:
+            raise ValueError(
+                "Audit signing key is required; set SENTINEL_AUDIT_SIGNING_KEY "
+                "or SENTINEL_AUDIT_HMAC_KEY. Refusing to use a built-in key."
+            )
         self.signing_key = key.encode("utf-8")
         self.fail_closed = fail_closed
         self._lock = RLock()

@@ -77,19 +77,20 @@ class DNSIntelligenceAdapter(ToolAdapter):
             except Exception:
                 pass
 
-        # 3. Zone Transfer (AXFR) detection against NS servers
-        ns_servers = data["records"].get("NS", [])
-        for ns in ns_servers:
-            ns_clean = ns.rstrip(".")
-            try:
-                # Attempt AXFR zone transfer
-                z = dns.zone.from_xfr(dns.query.xfr(ns_clean, target, timeout=3.0))
-                if z:
-                    data["zone_transfer"]["vulnerable"] = True
-                    data["zone_transfer"]["details"] = f"Nameserver {ns_clean} permits unauthenticated AXFR zone transfer!"
-                    break
-            except Exception:
-                pass
+        # 3. AXFR is an active request to the target nameservers; do not make it
+        # when this action was explicitly constrained to passive data collection.
+        if not action.parameters.get("passive_only", False):
+            ns_servers = data["records"].get("NS", [])
+            for ns in ns_servers:
+                ns_clean = ns.rstrip(".")
+                try:
+                    z = dns.zone.from_xfr(dns.query.xfr(ns_clean, target, timeout=3.0))
+                    if z:
+                        data["zone_transfer"]["vulnerable"] = True
+                        data["zone_transfer"]["details"] = f"Nameserver {ns_clean} permits unauthenticated AXFR zone transfer!"
+                        break
+                except Exception:
+                    pass
 
         duration = time.time() - start_time
         summary = f"DNS intelligence on '{target}': {sum(len(v) for v in data['records'].values())} records found across 7 types."

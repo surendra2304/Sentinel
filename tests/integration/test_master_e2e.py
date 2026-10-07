@@ -203,6 +203,15 @@ async def test_full_stack_evidence_chain(
     # ── Step 4: Deduplication check ───────────────────────────────────────
     # Ingest same observation again - should merge, not create new finding
     pre_count = len(finding_engine.list_findings(task_id=task_id))
+    extra_artifact = await evidence_store.record_evidence(
+        task_id=task_id,
+        target_ref="lab.sentinel.local",
+        source_agent="vulnerability_agent",
+        source_module="vulnerability.correlation",
+        source_tool="duplicate-confirmation",
+        raw_data=b"independent confirmation of the path traversal",
+        content_type="text/plain",
+    )
     await finding_engine.ingest_observation(Observation(
         task_id=task_id,
         target_ref="lab.sentinel.local",
@@ -211,7 +220,7 @@ async def test_full_stack_evidence_chain(
         description="Nuclei confirmed CVE-2021-41773.",
         severity=SeverityLevel.CRITICAL,
         confidence=1.0,
-        evidence_refs=["extra-evi-001"],  # New evidence ref merged in
+        evidence_refs=[extra_artifact.id],  # New evidence ref merged in
         related_cves=["CVE-2021-41773"],
     ))
     post_count = len(finding_engine.list_findings(task_id=task_id))

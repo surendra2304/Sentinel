@@ -70,7 +70,7 @@ class APIDiscoveryAdapter(ToolAdapter):
 
         spec_paths = self.rules.get("well_known_specs", ["/openapi.json", "/swagger.json", "/docs", "/graphql"])
 
-        async with httpx.AsyncClient(verify=False, follow_redirects=True, timeout=6.0) as client:
+        async with httpx.AsyncClient(verify=False, follow_redirects=False, timeout=6.0) as client:
             for path in spec_paths:
                 try:
                     probe_url = f"{url}{path}"
@@ -138,7 +138,7 @@ class OpenAPISchemaParserAdapter(ToolAdapter):
         spec_data = action.parameters.get("spec_json")
 
         if not spec_data and spec_url:
-            async with httpx.AsyncClient(verify=False, follow_redirects=True, timeout=8.0) as client:
+            async with httpx.AsyncClient(verify=False, follow_redirects=False, timeout=8.0) as client:
                 try:
                     res = await client.get(spec_url)
                     if res.status_code == 200:

@@ -28,8 +28,10 @@ def test_alembic_upgrade_downgrade_sqlite(tmp_path):
             "sentinel_scopes",
             "sentinel_policies",
             "sentinel_tasks",
+            "sentinel_task_checkpoints",
             "sentinel_action_requests",
             "sentinel_action_results",
+            "sentinel_approvals",
             "sentinel_evidence",
             "sentinel_findings",
             "sentinel_risks",
@@ -39,6 +41,15 @@ def test_alembic_upgrade_downgrade_sqlite(tmp_path):
         }
         for table in expected_tables:
             assert table in tables, f"Expected table {table} not found in database!"
+
+        scope_columns = {row[1] for row in conn.execute(text("PRAGMA table_info(sentinel_scopes)"))}
+        policy_columns = {row[1] for row in conn.execute(text("PRAGMA table_info(sentinel_policies)"))}
+        checkpoint_columns = {row[1] for row in conn.execute(text("PRAGMA table_info(sentinel_task_checkpoints)"))}
+        approval_columns = {row[1] for row in conn.execute(text("PRAGMA table_info(sentinel_approvals)"))}
+        assert {"approval_id", "task_id", "action_id", "action_fingerprint", "status", "approved_by"}.issubset(approval_columns)
+        assert "scope_contract" in scope_columns
+        assert "policy_contract" in policy_columns
+        assert {"task_id", "version", "payload", "updated_at"}.issubset(checkpoint_columns)
 
     # Test downgrade to base
     command.downgrade(alembic_cfg, "base")

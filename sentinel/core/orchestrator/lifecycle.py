@@ -5,9 +5,8 @@ and immediate kill-switch execution cancellation across repository backends.
 """
 
 import asyncio
-import contextlib
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
 
 from sentinel.audit.audit_logger import AuditLogger
@@ -22,7 +21,6 @@ from sentinel.core.models import (
     Task,
     TaskMode,
     TaskStatus,
-    TimeWindow,
 )
 from sentinel.logging.logger import get_logger
 from sentinel.storage.repositories.factory import get_task_repository
@@ -88,37 +86,42 @@ class TaskLifecycleManager:
         # 2. Scope & Policy configuration
         from sentinel.core.scope.resolver import ScopeResolver
 
-        if scope_data:
-            s_dict = dict(scope_data)
-            if "owner" not in s_dict:
-                s_dict["owner"] = "security_operator"
-            if "written_authorization_reference" not in s_dict and "authorization" not in s_dict:
-                s_dict["written_authorization_reference"] = f"AUTH-TASK-{task_id}"
-            if "time_window" not in s_dict and "authorization" not in s_dict:
-                s_dict["time_window"] = TimeWindow(
-                    start_time=datetime.now(UTC),
-                    end_time=datetime.now(UTC) + timedelta(hours=24),
-                )
-            if "allowed_methods" not in s_dict:
-                s_dict["allowed_methods"] = ["passive_recon", "discovery", "validation"]
-            scope = Scope(**s_dict)
-        else:
-            scope = Scope(
-                id=f"scope-{task_id}",
-                name=f"Scope for {task_id}",
-                allowed_targets=[t.value for t in parsed_targets],
-                targets=[t.value for t in parsed_targets],
-                owner="security_operator",
-                written_authorization_reference=f"AUTH-TASK-{task_id}",
-                allowed_methods=["passive_recon", "discovery", "validation"],
-                time_window=TimeWindow(
-                    start_time=datetime.now(UTC),
-                    end_time=datetime.now(UTC) + timedelta(hours=24),
-                ),
-            )
+        if not scope_data:
+            raise ValueError("An explicit authorization scope is required; Sentinel will not synthesize consent.")
 
-        # Validate Scope fail-closed per Prompt 5 Rule 4
+        s_dict = dict(scope_data)
+        if not str(s_dict.get("owner", "")).strip():
+            raise ValueError("Scope must include the actual authorizing owner.")
+        if not str(s_dict.get("written_authorization_reference", "")).strip():
+            authorization = s_dict.get("authorization")
+            auth_reference = (
+                authorization.get("reference_ticket_id")
+                if isinstance(authorization, dict)
+                else getattr(authorization, "reference_ticket_id", None)
+            )
+            if not str(auth_reference or "").strip():
+                raise ValueError("Scope must include a written authorization reference; synthetic references are prohibited.")
+        if not s_dict.get("time_window"):
+            raise ValueError("Scope must include an explicit authorization time window.")
+        if not s_dict.get("allowed_methods"):
+            raise ValueError("Scope must explicitly allow at least one assessment method.")
+        if "maximum_impact" not in s_dict:
+            raise ValueError("Scope must explicitly set a maximum impact level.")
+        if "rate_limit" not in s_dict:
+            raise ValueError("Scope must explicitly set a positive rate limit.")
+
+        # These identifiers are descriptive, not authorization claims.
+        s_dict.setdefault("id", f"scope-{task_id}")
+        s_dict.setdefault("name", f"Scope for {task_id}")
+        scope = Scope(**s_dict)
+
+        # Validate the authorization contract and bind every requested target to it.
         ScopeResolver.validate_scope(scope)
+        resolver = ScopeResolver(scope)
+        for target in parsed_targets:
+            is_in_scope, _verdict, explanation = resolver.is_target_in_scope(target)
+            if not is_in_scope:
+                raise ValueError(f"Requested target '{target.value}' is outside the explicit scope: {explanation}")
 
         policy = (
             Policy(**policy_data)
@@ -174,11 +177,26 @@ class TaskLifecycleManager:
             correlation_id=task.correlation_id,
         )
 
-        # Start execution loop in background
+        # Start execution loop in background.
+        self._start_task_job(task_id)
+
+        return task
+
+    def _start_task_job(self, task_id: str) -> asyncio.Task[Any]:
+        """Start at most one local worker for a task and discard completed handles."""
+        current = self._running_jobs.get(task_id)
+        if current is not None and not current.done():
+            return current
+
         job = asyncio.create_task(self._execute_task_pipeline(task_id))
         self._running_jobs[task_id] = job
 
-        return task
+        def forget_completed(completed_job: asyncio.Task[Any]) -> None:
+            if self._running_jobs.get(task_id) is completed_job:
+                self._running_jobs.pop(task_id, None)
+
+        job.add_done_callback(forget_completed)
+        return job
 
     async def _execute_task_pipeline(self, task_id: str) -> None:
         """Sequential autonomous lifecycle execution pipeline."""
@@ -187,30 +205,58 @@ class TaskLifecycleManager:
             return
 
         try:
-            # Transition: SUBMITTED -> PLANNING
-            await self._update_status(task, TaskStatus.PLANNING, 10.0, "AI Planner structuring inspection graph.")
+            if task.status == TaskStatus.SUBMITTED:
+                await self._update_status(
+                    task,
+                    TaskStatus.PLANNING,
+                    10.0,
+                    "AI Planner structuring inspection graph.",
+                )
+            elif task.status not in (TaskStatus.PLANNING, TaskStatus.EXECUTING, TaskStatus.REPORTING):
+                return
 
             from sentinel.core.orchestrator.orchestrator import AutonomousOrchestrator
             from sentinel.intelligence.reporting.generator import ReportType, report_generator
             from sentinel.intelligence.risk.finding_engine import finding_engine
 
             orchestrator = AutonomousOrchestrator()
-            task = await orchestrator.run_task(task, max_iterations=5)
+            task = await orchestrator.run_task(
+                task,
+                max_iterations=self.settings.max_task_iterations,
+            )
 
             if task.status == TaskStatus.AWAITING_APPROVAL:
                 await self.repo.update_task(task)
                 return
 
+            terminal_statuses = {
+                TaskStatus.COMPLETE,
+                TaskStatus.COMPLETED,
+                TaskStatus.BLOCKED,
+                TaskStatus.PARTIALLY_COMPLETED,
+                TaskStatus.FAILED,
+                TaskStatus.CANCELLED,
+            }
             if task.status != TaskStatus.CANCELLED:
-                # Transition: EXECUTING -> REPORTING
-                await self._update_status(task, TaskStatus.REPORTING, 90.0, "Synthesizing evidence and generating report.")
+                if task.status not in terminal_statuses:
+                    await self._update_status(
+                        task,
+                        TaskStatus.REPORTING,
+                        90.0,
+                        "Synthesizing evidence and generating report.",
+                    )
 
-                task_findings = finding_engine.list_findings(task_id=task.id)
-                with contextlib.suppress(Exception):
+                task_findings = await finding_engine.list_findings_async(task_id=task.id)
+                try:
                     report_generator.generate_report(task, findings=task_findings, report_type=ReportType.TECHNICAL)
+                except Exception:
+                    logger.exception("Task report generation failed", extra={"task_id": task.id})
 
-                # Transition: REPORTING -> COMPLETE
-                await self._update_status(task, TaskStatus.COMPLETE, 100.0, "Task execution finished successfully.")
+                if task.status == TaskStatus.REPORTING:
+                    await self._update_status(task, TaskStatus.COMPLETE, 100.0, "Task execution finished successfully.")
+
+            # Persist final outcomes, including terminal statuses returned by the orchestrator.
+            await self.repo.update_task(task)
 
         except asyncio.CancelledError:
             # Handle cancellation gracefully
@@ -276,7 +322,14 @@ class TaskLifecycleManager:
         if not task:
             raise KeyError(f"Task {task_id} not found.")
 
-        if task.status in (TaskStatus.COMPLETE, TaskStatus.FAILED, TaskStatus.CANCELLED):
+        if task.status in (
+            TaskStatus.COMPLETE,
+            TaskStatus.COMPLETED,
+            TaskStatus.BLOCKED,
+            TaskStatus.PARTIALLY_COMPLETED,
+            TaskStatus.FAILED,
+            TaskStatus.CANCELLED,
+        ):
             return task
 
         # Cancel running asyncio task
@@ -350,27 +403,214 @@ class TaskLifecycleManager:
     async def list_tasks(self) -> list[Task]:
         return await self.repo.list_tasks()
 
+    async def resolve_approval(self, approval: Any) -> bool:
+        """Resume a paused task after its exact checkpointed action is approved or denied."""
+        if approval.status not in {"APPROVED", "REJECTED"}:
+            raise ValueError("Only a finalized approval can resolve a paused task.")
+
+        task = await self.repo.get_task(approval.task_id)
+        if task is None:
+            return False
+        current_job = self._running_jobs.get(task.id)
+        if current_job is not None and not current_job.done():
+            await asyncio.shield(current_job)
+            task = await self.repo.get_task(approval.task_id)
+        if task is None or task.status != TaskStatus.AWAITING_APPROVAL:
+            return False
+
+        checkpoint = await self.repo.get_checkpoint(task.id)
+        checkpoint_version = checkpoint.get("version") if isinstance(checkpoint, dict) else None
+        if not isinstance(checkpoint_version, int) or isinstance(checkpoint_version, bool) or checkpoint_version < 1:
+            raise ValueError("The paused task checkpoint has an invalid version.")
+        payload = checkpoint.get("payload") if isinstance(checkpoint, dict) else None
+        if not isinstance(payload, dict):
+            raise ValueError("The paused task has no valid checkpoint for approval resumption.")
+
+        from sentinel.core.memory.working_memory import MemoryStore, TaskWorkingMemory, memory_store
+        from sentinel.core.orchestrator.coordination import AgentCoordinator
+        from sentinel.core.planner.heuristic import PlannedStep
+        from sentinel.core.policy.engine import PolicyEngine
+
+        try:
+            memory = TaskWorkingMemory.model_validate(payload)
+        except ValueError as exc:
+            raise ValueError("The paused task checkpoint failed schema validation.") from exc
+        if memory.in_flight_action is not None or not memory.deferred_plan_steps:
+            raise ValueError("The paused task checkpoint is not safe to resume.")
+
+        first_step = PlannedStep.model_validate(memory.deferred_plan_steps[0])
+        action = first_step.action_request
+        if (
+            action is None
+            or action.id != approval.action_id
+            or action.action_type != approval.action_type
+            or action.target_refs != approval.target_refs
+            or approval.action_fingerprint != PolicyEngine._approval_action_fingerprint(action)
+        ):
+            raise ValueError("The finalized approval does not match the next checkpointed action.")
+
+        if approval.status == "REJECTED":
+            memory.deferred_plan_steps.pop(0)
+            fingerprint = AgentCoordinator.action_fingerprint(first_step.agent_name, action)
+            memory.attempted_action_fingerprints.add(fingerprint)
+            memory.completed_actions.append(action.id)
+            memory.action_outcomes[fingerprint] = {
+                "status": "blocked",
+                "detail": "Operator denied the action approval request.",
+                "action_id": action.id,
+                "agent": first_step.agent_name,
+            }
+
+        memory.state_flags.pop("awaiting_approval_id", None)
+        await MemoryStore(checkpoint_repository=self.repo).persist_memory(memory)
+        memory_store.clear_memory(task.id)
+        task.status = TaskStatus.EXECUTING
+        task.progress_percentage = min(task.progress_percentage, 85.0)
+        await self.repo.update_task(task)
+        self._start_task_job(task.id)
+        self.audit_logger.log_event(
+            entry_id=f"audit-approval-resume-{approval.approval_id}-{uuid.uuid4().hex[:8]}",
+            event_type="TASK_APPROVAL_RESUMED",
+            actor=approval.approved_by or "operator",
+            action_type="ACTION_APPROVAL",
+            scope_policy=task.scope.id,
+            decision=approval.status,
+            details={"task_id": task.id, "action_id": action.id},
+        )
+        return True
+
     async def recover_tasks_on_startup(self) -> int:
-        """Ensure no lingering tasks remain in intermediate states after crash/restart."""
-        count = 0
+        """Resume checkpoint-safe tasks; fail closed when a side effect is ambiguous."""
+        recovered_count = 0
         active_tasks = await self.repo.get_active_non_terminal_tasks()
+        resumable_statuses = {
+            TaskStatus.PLANNING,
+            TaskStatus.EXECUTING,
+            TaskStatus.REPORTING,
+        }
+
         for task in active_tasks:
-            if task.status in (TaskStatus.PLANNING, TaskStatus.EXECUTING, TaskStatus.AWAITING_APPROVAL, TaskStatus.REPORTING):
+            if task.status == TaskStatus.AWAITING_APPROVAL:
+                checkpoint = await self.repo.get_checkpoint(task.id)
+                payload = checkpoint.get("payload") if isinstance(checkpoint, dict) else None
+                state_flags = payload.get("state_flags") if isinstance(payload, dict) else None
+                approval_id = state_flags.get("awaiting_approval_id") if isinstance(state_flags, dict) else None
+                approval = None
+                if isinstance(approval_id, str):
+                    from sentinel.storage.repositories.factory import get_approval_repository
+
+                    approval = await get_approval_repository().get_approval(approval_id)
+                if approval is not None and approval.status in {"APPROVED", "REJECTED"}:
+                    try:
+                        if await self.resolve_approval(approval):
+                            recovered_count += 1
+                            self.audit_logger.log_event(
+                                entry_id=f"audit-recovery-approval-{task.id}-{uuid.uuid4().hex[:8]}",
+                                event_type="TASK_RECOVERY_RESUMED",
+                                actor="system_startup",
+                                action_type="CRASH_RECOVERY",
+                                scope_policy=task.scope.id,
+                                decision="FINALIZED_APPROVAL_RECOVERED",
+                                details={"task_id": task.id, "approval_id": approval.approval_id},
+                            )
+                            continue
+                    except ValueError as exc:
+                        logger.error(
+                            "Unable to resume finalized approval after restart",
+                            extra={"task_id": task.id, "approval_id": approval.approval_id, "error": str(exc)},
+                        )
+
+                self.audit_logger.log_event(
+                    entry_id=f"audit-recovery-awaiting-{task.id}-{uuid.uuid4().hex[:8]}",
+                    event_type="TASK_RECOVERY_PAUSED",
+                    actor="system_startup",
+                    action_type="CRASH_RECOVERY",
+                    scope_policy=task.scope.id,
+                    decision="AWAITING_OPERATOR",
+                    details={"task_id": task.id, "reason": "Explicit operator approval is still pending."},
+                )
+                continue
+
+            if task.status == TaskStatus.SUBMITTED:
+                self._start_task_job(task.id)
+                recovered_count += 1
+                self.audit_logger.log_event(
+                    entry_id=f"audit-recovery-submit-{task.id}-{uuid.uuid4().hex[:8]}",
+                    event_type="TASK_RECOVERY_RESUMED",
+                    actor="system_startup",
+                    action_type="CRASH_RECOVERY",
+                    scope_policy=task.scope.id,
+                    decision="RESUBMITTED",
+                    details={"task_id": task.id, "reason": "Task was submitted before the previous process stopped."},
+                )
+                continue
+
+            if task.status not in resumable_statuses:
+                continue
+
+            checkpoint = await self.repo.get_checkpoint(task.id)
+            checkpoint_data = checkpoint if isinstance(checkpoint, dict) else {}
+            version_value = checkpoint_data.get("version")
+            checkpoint_version = (
+                version_value
+                if isinstance(version_value, int) and not isinstance(version_value, bool)
+                else 0
+            )
+            payload = checkpoint_data.get("payload")
+            failure_reason: str | None = None
+            if checkpoint_version < 1:
+                failure_reason = "Checkpoint version is missing or invalid."
+            elif not isinstance(payload, dict):
+                failure_reason = "No valid durable checkpoint exists for the interrupted task."
+            elif payload.get("task_id") != task.id:
+                failure_reason = "Checkpoint task identity does not match the persisted task."
+            elif payload.get("in_flight_action") is not None:
+                failure_reason = "Action outcome is ambiguous after restart; automatic replay is unsafe."
+            else:
+                from sentinel.core.memory.working_memory import TaskWorkingMemory
+
+                try:
+                    TaskWorkingMemory.model_validate(payload)
+                except ValueError:
+                    failure_reason = "Checkpoint data failed schema validation."
+
+            if failure_reason is not None:
                 task.status = TaskStatus.FAILED
                 task.updated_at = datetime.now(UTC)
                 task.completed_at = datetime.now(UTC)
                 await self.repo.update_task(task)
-                count += 1
+                recovered_count += 1
                 self.audit_logger.log_event(
-                    entry_id=f"audit-recover-{task.id}",
+                    entry_id=f"audit-recover-fail-{task.id}-{uuid.uuid4().hex[:8]}",
                     event_type="TASK_RECOVERY_FAILED",
                     actor="system_startup",
                     action_type="CRASH_RECOVERY",
                     scope_policy=task.scope.id,
                     decision="MARKED_FAILED",
-                    details={"task_id": task.id, "reason": "Server restarted during active execution."},
+                    details={"task_id": task.id, "reason": failure_reason},
                 )
-        return count
+                continue
+
+            from sentinel.core.memory.working_memory import memory_store
+
+            memory_store.clear_memory(task.id)
+            self._start_task_job(task.id)
+            recovered_count += 1
+            self.audit_logger.log_event(
+                entry_id=f"audit-recovery-resume-{task.id}-{uuid.uuid4().hex[:8]}",
+                event_type="TASK_RECOVERY_RESUMED",
+                actor="system_startup",
+                action_type="CRASH_RECOVERY",
+                scope_policy=task.scope.id,
+                decision="RESUMED_FROM_CHECKPOINT",
+                details={
+                    "task_id": task.id,
+                    "checkpoint_version": checkpoint_version,
+                    "deferred_steps": len(payload.get("deferred_plan_steps", [])) if isinstance(payload, dict) else 0,
+                },
+            )
+
+        return recovered_count
 
 
 # Lifecycle manager singleton

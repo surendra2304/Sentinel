@@ -16,6 +16,7 @@ from sentinel.core.models import (
     ActionRequest,
     ImpactLevel,
     Task,
+    TaskMode,
 )
 
 
@@ -63,6 +64,7 @@ class HeuristicPlanner(BasePlanner):
     ) -> ExecutionPlan:
         plan = ExecutionPlan(task_id=task.id)
         targets = task.target_set.targets
+        allow_third_party_enrichment = task.scope.authorization.allow_third_party_enrichment
 
         if not targets:
             plan.is_terminal = True
@@ -89,10 +91,11 @@ class HeuristicPlanner(BasePlanner):
                                 agent="recon_agent",
                                 action_type="dns.full_enum",
                                 target_refs=[hostname],
+                                parameters={"passive_only": task.mode == TaskMode.PASSIVE_RECON},
                                 expected_impact_level=ImpactLevel.LOW,
                             ),
                             phase="RECON_DNS",
-                            justification=f"Enumerate complete DNS records and zone transfer capabilities for '{hostname}'.",
+                            justification=f"Collect DNS records from authorized sources for '{hostname}'.",
                         )
                     )
                     # Subdomain Enumeration
@@ -105,10 +108,14 @@ class HeuristicPlanner(BasePlanner):
                                 agent="recon_agent",
                                 action_type="recon.subdomains",
                                 target_refs=[hostname],
+                                parameters={
+                                    "passive_only": task.mode == TaskMode.PASSIVE_RECON,
+                                    "allow_third_party_enrichment": allow_third_party_enrichment,
+                                },
                                 expected_impact_level=ImpactLevel.LOW,
                             ),
                             phase="RECON_SUBDOMAINS",
-                            justification=f"Discover subdomains via certificate transparency and wordlists for '{hostname}'.",
+                            justification=f"Discover subdomains using certificate transparency and authorized active checks for '{hostname}'.",
                         )
                     )
 
@@ -122,6 +129,7 @@ class HeuristicPlanner(BasePlanner):
                             agent="recon_agent",
                             action_type="recon.ip_intel",
                             target_refs=[hostname],
+                            parameters={"allow_third_party_enrichment": allow_third_party_enrichment},
                             expected_impact_level=ImpactLevel.LOW,
                         ),
                         phase="RECON_IP",
@@ -129,24 +137,34 @@ class HeuristicPlanner(BasePlanner):
                     )
                 )
 
-                # 3. OSINT & Security.txt
-                plan.steps.append(
-                    PlannedStep(
-                        agent_name="recon_agent",
-                        action_request=ActionRequest(
-                            id=f"act-plan-osint-{uuid.uuid4().hex[:8]}",
-                            task_id=task.id,
-                            agent="recon_agent",
-                            action_type="recon.osint",
-                            target_refs=[val],
-                            expected_impact_level=ImpactLevel.LOW,
-                        ),
-                        phase="RECON_OSINT",
-                        justification=f"Audit security.txt contacts and robots.txt disclosures for '{val}'.",
+                # Fetching security.txt and robots.txt contacts the target over HTTP;
+                # that observation is not part of a passive-only reconnaissance task.
+                if task.mode != TaskMode.PASSIVE_RECON:
+                    plan.steps.append(
+                        PlannedStep(
+                            agent_name="recon_agent",
+                            action_request=ActionRequest(
+                                id=f"act-plan-osint-{uuid.uuid4().hex[:8]}",
+                                task_id=task.id,
+                                agent="recon_agent",
+                                action_type="recon.osint",
+                                target_refs=[val],
+                                expected_impact_level=ImpactLevel.LOW,
+                            ),
+                            phase="RECON_OSINT",
+                            justification=f"Audit security.txt contacts and robots.txt disclosures for '{val}'.",
+                        )
                     )
-                )
 
             memory.state_flags["phase_recon_baseline_done"] = True
+            return plan
+
+        if task.mode == TaskMode.PASSIVE_RECON:
+            plan.reasoning_trace.append(
+                "Passive reconnaissance complete; active HTTP and network probing phases are disabled."
+            )
+            plan.is_terminal = True
+            plan.confidence_is_sufficient = True
             return plan
 
         # Phase 2: Web & Technology Fingerprinting
@@ -156,11 +174,11 @@ class HeuristicPlanner(BasePlanner):
                 val = t.value
                 plan.steps.append(
                     PlannedStep(
-                        agent_name="recon_agent",
+                        agent_name="web_security_agent",
                         action_request=ActionRequest(
                             id=f"act-plan-http-{uuid.uuid4().hex[:8]}",
                             task_id=task.id,
-                            agent="recon_agent",
+                            agent="web_security_agent",
                             action_type="http.observe",
                             target_refs=[val],
                             expected_impact_level=ImpactLevel.LOW,
@@ -198,11 +216,11 @@ class HeuristicPlanner(BasePlanner):
 
                 plan.steps.append(
                     PlannedStep(
-                        agent_name="recon_agent",
+                        agent_name="network_agent",
                         action_request=ActionRequest(
                             id=f"act-plan-net-{uuid.uuid4().hex[:8]}",
                             task_id=task.id,
-                            agent="recon_agent",
+                            agent="network_agent",
                             action_type="network.service_scan",
                             target_refs=[host_target],
                             parameters={"ports": [port, 80, 443, 8080, 8443, 18890], "force_python_fallback": True},
