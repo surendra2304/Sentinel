@@ -57,7 +57,7 @@ describe('Sentinel control room', () => {
     render(<BrowserRouter><OverviewPage /></BrowserRouter>);
 
     expect(await screen.findByText('Exposed admin endpoint')).toBeInTheDocument();
-    expect(screen.getByText('Risk update: high tier · score 88 · finding finding-7')).toBeInTheDocument();
+    expect(await screen.findByText('Risk update: high tier · score 88 · finding finding-7')).toBeInTheDocument();
     expect(await screen.findByText('88')).toBeInTheDocument();
     expect(screen.getByText('Streaming')).toBeInTheDocument();
     expect(fetchConsoleRiskSummary).toHaveBeenCalledWith('task-42');

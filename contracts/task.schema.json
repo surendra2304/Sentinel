@@ -11,7 +11,7 @@
       "type": "string"
     },
     "AuthorizationMetadata": {
-      "description": "Authorization context and legal boundaries.",
+      "description": "Authorization context, legal boundaries, and explicit data-sharing consent.",
       "properties": {
         "authorization_type": {
           "$ref": "#/$defs/AuthorizationType",
@@ -53,6 +53,11 @@
           ],
           "default": null,
           "title": "Expiry"
+        },
+        "allow_third_party_enrichment": {
+          "default": false,
+          "title": "Allow Third Party Enrichment",
+          "type": "boolean"
         }
       },
       "title": "AuthorizationMetadata",
