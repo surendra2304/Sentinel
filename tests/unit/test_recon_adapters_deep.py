@@ -5,6 +5,7 @@ import json
 import pytest
 
 from sentinel.core.models import ActionRequest
+from sentinel.modules.recon import adapters as recon_adapters
 from sentinel.modules.recon.adapters import (
     CertificateInspectorAdapter,
     IPIntelligenceAdapter,
@@ -22,30 +23,111 @@ async def test_subdomain_enum_adapter(monkeypatch):
         task_id="t1",
         agent="recon_agent",
         action_type="recon.subdomain_enum",
-        target_refs=["example.com"],
-        parameters={"wordlist": ["api", "www"]},
+        target_refs=["authorized.invalid"],
+        parameters={"passive_only": True, "wordlist": ["api", "www"]},
     )
     res, raw, _ = await adp.run(req)
     assert res.success is True
     data = json.loads(raw.decode("utf-8"))
-    assert data["domain"] == "example.com"
+    assert data["domain"] == "authorized.invalid"
+    assert data["sources"]["external_lookup_performed"] is False
     assert "sources" in data
 
 
 @pytest.mark.asyncio
-async def test_ip_intelligence_adapter():
-    adp = IPIntelligenceAdapter()
-    req = ActionRequest(
+async def test_subdomain_adapter_requires_explicit_third_party_consent(monkeypatch):
+    def reject_external_request(*_args, **_kwargs):
+        raise AssertionError("third-party CT lookup must require scope consent")
+
+    monkeypatch.setattr(recon_adapters.httpx, "AsyncClient", reject_external_request)
+    action = ActionRequest(
+        id="no-third-party-consent",
+        task_id="no-third-party-consent-task",
+        agent="recon_agent",
+        action_type="recon.subdomains",
+        target_refs=["private.example.invalid"],
+        parameters={"passive_only": True},
+    )
+
+    _, raw, _ = await SubdomainEnumAdapter().run(action)
+    sources = json.loads(raw)["sources"]
+    assert sources["external_lookup_performed"] is False
+    assert "not authorized" in sources["crt_sh_skipped"]
+
+
+@pytest.mark.asyncio
+async def test_ip_intelligence_adapter_uses_mocked_public_enrichment(monkeypatch):
+    requests = []
+    transport = recon_adapters.httpx.MockTransport(
+        lambda request: _mock_ip_intelligence_response(request, requests)
+    )
+    real_async_client = recon_adapters.httpx.AsyncClient
+
+    def client_factory(*args, **kwargs):
+        return real_async_client(*args, transport=transport, **kwargs)
+
+    monkeypatch.setattr(recon_adapters.httpx, "AsyncClient", client_factory)
+    action = ActionRequest(
         id="act-ip-01",
         task_id="t1",
         agent="recon_agent",
         action_type="recon.ip_intel",
         target_refs=["8.8.8.8"],
+        parameters={"allow_third_party_enrichment": True},
     )
-    res, raw, _ = await adp.run(req)
-    assert res.success is True
-    data = json.loads(raw.decode("utf-8"))
+    result, raw, _ = await IPIntelligenceAdapter().run(action)
+    data = json.loads(raw)
+
+    assert result.success is True
     assert data["ip"] == "8.8.8.8"
+    assert data["country"] == "United States"
+    assert data["external_lookup_performed"] is True
+    assert requests == ["http://ip-api.com/json/8.8.8.8"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("target", "consent"),
+    [
+        ("8.8.8.8", False),
+        ("172.31.9.10", True),
+        ("https://[fc00::1]/", True),
+        ("db.internal", True),
+    ],
+)
+async def test_ip_intelligence_never_looks_up_without_consent_or_for_non_public_hosts(monkeypatch, target, consent):
+    def reject_external_request(*_args, **_kwargs):
+        raise AssertionError("unapproved or non-public GeoIP lookup attempted")
+
+    monkeypatch.setattr(recon_adapters.httpx, "AsyncClient", reject_external_request)
+    action = ActionRequest(
+        id=f"ip-no-lookup-{target}",
+        task_id="ip-no-lookup-task",
+        agent="recon_agent",
+        action_type="recon.ip_intel",
+        target_refs=[target],
+        parameters={"allow_third_party_enrichment": consent},
+    )
+
+    result, raw, _ = await IPIntelligenceAdapter().run(action)
+    data = json.loads(raw)
+    assert result.success is True
+    assert data["external_lookup_performed"] is False
+    assert "skipped" in data["fallback_note"].lower()
+
+
+def _mock_ip_intelligence_response(request, captured):
+    captured.append(str(request.url))
+    return recon_adapters.httpx.Response(
+        200,
+        json={
+            "query": "8.8.8.8",
+            "country": "United States",
+            "city": "Mountain View",
+            "as": "AS15169 Google LLC",
+            "org": "Google LLC",
+        },
+    )
 
 
 @pytest.mark.asyncio

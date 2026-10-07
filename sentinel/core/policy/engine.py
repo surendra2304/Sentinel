@@ -11,6 +11,8 @@ Evaluates every executable ActionRequest against all policy dimensions:
 All evaluations append immutable, tamper-evident cryptographic audit logs.
 """
 
+import hashlib
+import json
 import logging
 import time
 import uuid
@@ -31,10 +33,25 @@ from sentinel.core.models import (
     Policy,
     Scope,
     Task,
+    TaskMode,
 )
 from sentinel.core.scope.resolver import ScopeResolver
 
 logger = logging.getLogger(__name__)
+
+_IMPACT_ORDER = {
+    ImpactLevel.NONE: 0,
+    ImpactLevel.LOW: 1,
+    ImpactLevel.MEDIUM: 2,
+    ImpactLevel.HIGH: 3,
+    ImpactLevel.CRITICAL: 4,
+}
+
+# Only actions with no direct probing of the assessed host are allowed in
+# passive mode. The two mixed-mode adapters must be explicitly restricted to
+# their passive data sources by the planner.
+_PASSIVE_ACTIONS = frozenset({"dns.full_enum", "recon.subdomains", "recon.ip_intel"})
+_PASSIVE_ONLY_ADAPTER_ACTIONS = frozenset({"dns.full_enum", "recon.subdomains"})
 
 
 class PolicyDecisionType(StrEnum):
@@ -64,6 +81,7 @@ class ApprovalRecord(BaseModel):
     action_type: str
     target_refs: list[str]
     requested_by: str
+    action_fingerprint: str | None = None
     status: str = "PENDING"  # PENDING, APPROVED, REJECTED, EXPIRED
     justification_needed: str
     justification_provided: str | None = None
@@ -80,8 +98,9 @@ class ApprovalRecord(BaseModel):
 class PolicyEngine:
     """Comprehensive, zero-trust Scope and Policy Validation Engine."""
 
-    def __init__(self, audit_logger: AuditLogger | None = None):
+    def __init__(self, audit_logger: AuditLogger | None = None, approval_repository: Any | None = None):
         self.settings = get_settings()
+        self._approval_repository = approval_repository
         self.audit = audit_logger or AuditLogger(
             log_path=self.settings.audit.log_file_path,
             signing_key=self.settings.audit.signing_key,
@@ -118,8 +137,62 @@ class PolicyEngine:
                 actor=actor,
             )
 
+        allow_third_party_enrichment = action.parameters.get("allow_third_party_enrichment") is True
+        authorized_for_external_enrichment = getattr(
+            getattr(eff_scope, "authorization", None),
+            "allow_third_party_enrichment",
+            False,
+        )
+        if allow_third_party_enrichment and not authorized_for_external_enrichment:
+            return self._record_and_return_decision(
+                action=action,
+                task=task,
+                decision_type=PolicyDecisionType.DENY,
+                reason="Third-party enrichment was requested but is not authorized by the scope.",
+                actor=actor,
+            )
+
         # -------------------------------------------------------------------
-        # Dimension 2: Target Scope Boundary Validation (Zero Tolerance)
+        # Dimension 2: Scope validity, impact ceiling, and task-mode boundary
+        # -------------------------------------------------------------------
+        time_window = getattr(eff_scope, "time_window", None)
+        if time_window is not None and not time_window.is_active():
+            return self._record_and_return_decision(
+                action=action,
+                task=task,
+                decision_type=PolicyDecisionType.DENY,
+                reason="Scope authorization is outside its active time window.",
+                actor=actor,
+            )
+
+        maximum_impact = getattr(eff_scope, "maximum_impact", ImpactLevel.LOW)
+        if _IMPACT_ORDER[action.expected_impact_level] > _IMPACT_ORDER[maximum_impact]:
+            return self._record_and_return_decision(
+                action=action,
+                task=task,
+                decision_type=PolicyDecisionType.DENY,
+                reason=(
+                    f"Action impact '{action.expected_impact_level.value}' exceeds "
+                    f"scope maximum '{maximum_impact.value}'."
+                ),
+                actor=actor,
+            )
+
+        if task.mode == TaskMode.PASSIVE_RECON:
+            is_passive = action.action_type in _PASSIVE_ACTIONS
+            requires_passive_adapter_mode = action.action_type in _PASSIVE_ONLY_ADAPTER_ACTIONS
+            passive_adapter_mode_enabled = action.parameters.get("passive_only") is True
+            if not is_passive or (requires_passive_adapter_mode and not passive_adapter_mode_enabled):
+                return self._record_and_return_decision(
+                    action=action,
+                    task=task,
+                    decision_type=PolicyDecisionType.DENY,
+                    reason=f"Action '{action.action_type}' is not permitted in passive reconnaissance mode.",
+                    actor=actor,
+                )
+
+        # -------------------------------------------------------------------
+        # Dimension 3: Target Scope Boundary Validation (Zero Tolerance)
         # -------------------------------------------------------------------
         for target_ref in action.target_refs:
             is_in_scope, verdict, explanation = resolver.is_target_in_scope(target_ref)
@@ -133,7 +206,7 @@ class PolicyEngine:
                 )
 
         # -------------------------------------------------------------------
-        # Dimension 3: Module & Action Class Allowlists & Methods (Deny-by-default)
+        # Dimension 4: Module & Action Class Allowlists & Methods (Deny-by-default)
         # -------------------------------------------------------------------
         if eff_policy.allowed_action_classes:
             matched_action = any(
@@ -225,8 +298,12 @@ class PolicyEngine:
             or (eff_policy.require_approval_for_offensive and eff_scope.offensive_actions_enabled and is_offensive_action)
         )
 
-        if needs_approval:
-            approval = self._create_approval_request(action, task, "High-impact / sensitive action requires operator sign-off.")
+        if needs_approval and not await self._consume_approved_action(action, task):
+            approval = await self._create_approval_request(
+                action,
+                task,
+                "High-impact / sensitive action requires operator sign-off.",
+            )
             return self._record_and_return_decision(
                 action=action,
                 task=task,
@@ -326,7 +403,20 @@ class PolicyEngine:
         self._target_rate_windows[norm].append(now)
         return True
 
-    def _create_approval_request(self, action: ActionRequest, task: Task, justification: str) -> ApprovalRecord:
+    @property
+    def approval_repository(self) -> Any:
+        if self._approval_repository is not None:
+            return self._approval_repository
+        from sentinel.storage.repositories.factory import get_approval_repository
+
+        return get_approval_repository()
+
+    async def _create_approval_request(
+        self,
+        action: ActionRequest,
+        task: Task,
+        justification: str,
+    ) -> ApprovalRecord:
         app_id = f"appr-{uuid.uuid4().hex[:12]}"
         record = ApprovalRecord(
             approval_id=app_id,
@@ -335,20 +425,85 @@ class PolicyEngine:
             action_type=action.action_type,
             target_refs=action.target_refs,
             requested_by=action.agent,
+            action_fingerprint=self._approval_action_fingerprint(action),
             justification_needed=justification,
         )
+        await self.approval_repository.save_approval(record)
         self._approvals[app_id] = record
         return record
 
+    async def _consume_approved_action(self, action: ActionRequest, task: Task) -> bool:
+        """Consume an approval only for the exact task/action/targets/parameters once."""
+        persisted = await self.approval_repository.list_approvals(
+            task_id=task.id,
+            status="APPROVED",
+        )
+        self._approvals.update({record.approval_id: record for record in persisted})
+        candidates = [
+            record
+            for record in self._approvals.values()
+            if record.task_id == task.id and record.status == "APPROVED"
+        ]
+
+        action_fingerprint = self._approval_action_fingerprint(action)
+        for record in candidates:
+            if (
+                record.action_id != action.id
+                or record.action_type != action.action_type
+                or record.target_refs != action.target_refs
+                or record.action_fingerprint != action_fingerprint
+            ):
+                continue
+            if record.is_expired():
+                record.status = "EXPIRED"
+                await self.approval_repository.save_approval(record)
+                continue
+            if not (record.approved_by and record.justification_provided):
+                continue
+
+            record.status = "CONSUMED"
+            record.decided_at = datetime.now(UTC)
+            await self.approval_repository.save_approval(record)
+            self.audit.log_event(
+                entry_id=f"audit-appr-consumed-{record.approval_id}",
+                event_type="ACTION_APPROVAL_CONSUMED",
+                actor="sentinel_executor",
+                action_type=record.action_type,
+                scope_policy=record.task_id,
+                decision="CONSUMED",
+                details={"approval_id": record.approval_id, "action_id": record.action_id},
+            )
+            return True
+        return False
+
+    @staticmethod
+    def _approval_action_fingerprint(action: ActionRequest) -> str:
+        payload = action.model_dump(mode="json", exclude={"id", "created_at", "status"})
+        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
     def get_pending_approvals(self, task_id: str | None = None) -> list[ApprovalRecord]:
-        """List active pending approvals with expiration pruning."""
+        """List cached pending approvals; async service callers should use the repository method."""
         pending = []
-        for rec in list(self._approvals.values()):
-            if rec.status == "PENDING":
-                if rec.is_expired():
-                    rec.status = "EXPIRED"
-                elif not task_id or rec.task_id == task_id:
-                    pending.append(rec)
+        for record in list(self._approvals.values()):
+            if record.status == "PENDING":
+                if record.is_expired():
+                    record.status = "EXPIRED"
+                elif not task_id or record.task_id == task_id:
+                    pending.append(record)
+        return pending
+
+    async def list_pending_approvals(self, task_id: str | None = None) -> list[ApprovalRecord]:
+        """Load durable pending approvals and expire stale records."""
+        records = await self.approval_repository.list_approvals(task_id=task_id, status="PENDING")
+        pending: list[ApprovalRecord] = []
+        for record in records:
+            if record.is_expired():
+                record.status = "EXPIRED"
+                await self.approval_repository.save_approval(record)
+            else:
+                pending.append(record)
+            self._approvals[record.approval_id] = record
         return pending
 
     async def decide_approval(
@@ -360,45 +515,50 @@ class PolicyEngine:
         authorization_reference: str | None = None,
     ) -> ApprovalRecord:
         """Approve or deny a pending action approval request with full attribution."""
-        record = self._approvals.get(approval_id)
+        record: ApprovalRecord | None = await self.approval_repository.get_approval(approval_id)
+        if record is None:
+            record = self._approvals.get(approval_id)
         if not record:
             raise KeyError(f"Approval record '{approval_id}' not found.")
 
         if record.status != "PENDING":
             raise ValueError(f"Approval '{approval_id}' is already finalized with status: {record.status}")
-
         if record.is_expired():
             record.status = "EXPIRED"
+            await self.approval_repository.save_approval(record)
+            self._approvals[approval_id] = record
             raise ValueError(f"Approval '{approval_id}' has expired.")
+        if not operator.strip() or not justification.strip():
+            raise ValueError("An operator identity and non-empty justification are required.")
 
-        record.status = "APPROVED" if approve else "REJECTED"
-        record.approved_by = operator
-        record.authorization_reference = authorization_reference
-        record.justification_provided = justification
-        record.decided_at = datetime.now(UTC)
+        decided = record.model_copy(deep=True)
+        decided.status = "APPROVED" if approve else "REJECTED"
+        decided.approved_by = operator.strip()
+        decided.authorization_reference = authorization_reference
+        decided.justification_provided = justification.strip()
+        decided.decided_at = datetime.now(UTC)
 
-        # Audit and emit event
         decision_label = "APPROVED" if approve else "DENIED"
         self.audit.log_event(
             entry_id=f"audit-appr-{approval_id}",
             event_type=f"ACTION_APPROVAL_{decision_label}",
-            actor=operator,
-            action_type=record.action_type,
-            scope_policy=record.task_id,
+            actor=decided.approved_by,
+            action_type=decided.action_type,
+            scope_policy=decided.task_id,
             decision=decision_label,
-            details={"approval_id": approval_id, "justification": justification},
+            details={"approval_id": approval_id, "justification": decided.justification_provided},
         )
+        await self.approval_repository.save_approval(decided)
+        self._approvals[approval_id] = decided
 
-        topic = "action.approved" if approve else "action.denied"
         await emit_event(
             event_type=EventType.ACTION,
-            topic=topic,
+            topic="action.approved" if approve else "action.denied",
             source="sentinel.policy.approvals",
-            payload={"approval_id": approval_id, "action_id": record.action_id, "decision": decision_label},
-            correlation_id=record.task_id,
+            payload={"approval_id": approval_id, "action_id": decided.action_id, "decision": decision_label},
+            correlation_id=decided.task_id,
         )
-
-        return record
+        return decided
 
     def _record_and_return_decision(
         self,

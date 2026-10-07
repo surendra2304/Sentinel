@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
 from sentinel.api.metrics import router as metrics_router
-from sentinel.apps.api.middleware import APIKeyAuthMiddleware
+from sentinel.apps.api.middleware import APIKeyAuthMiddleware, RequestCapacityMiddleware
 from sentinel.audit.audit_logger import AuditLogger
 from sentinel.config.settings import EnvironmentType, get_settings
 from sentinel.core.auth.capabilities import CapabilityError, CapabilityIssuer
@@ -141,6 +141,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.add_middleware(APIKeyAuthMiddleware)
+app.add_middleware(
+    RequestCapacityMiddleware,
+    max_concurrent_requests=settings.max_http_concurrency,
+    max_health_requests=settings.max_health_concurrency,
+)
 
 SENTINEL_DASHBOARD_DIR = Path(__file__).resolve().parents[3] / "apps" / "dashboard" / "dist"
 SENTINEL_DASHBOARD_INDEX = SENTINEL_DASHBOARD_DIR / "index.html"
@@ -165,7 +170,7 @@ class TargetInput(BaseModel):
 class SubmitTaskRequest(BaseModel):
     objective: str
     targets: list[TargetInput]
-    scope: dict[str, Any] | None = None
+    scope: dict[str, Any]
     policy: dict[str, Any] | None = None
     mode: TaskMode = TaskMode.ASSESSMENT
     requested_output: str = "comprehensive_report"
@@ -384,8 +389,8 @@ async def cancel_task(task_id: str, reason: str = Query("Operator Kill Switch"))
 
 @app.get(f"{settings.api_prefix}/approvals", response_model=list[ApprovalRecord], tags=["Policy & Approvals"])
 async def list_pending_approvals(task_id: str | None = Query(None)) -> list[ApprovalRecord]:  # noqa: B008
-    """List pending operator approval requests."""
-    return policy_engine.get_pending_approvals(task_id=task_id)
+    """List pending operator approval requests from durable storage."""
+    return await policy_engine.list_pending_approvals(task_id=task_id)
 
 
 @app.post(f"{settings.api_prefix}/approvals/{{approval_id}}/decide", response_model=ApprovalRecord, tags=["Policy & Approvals"])
@@ -399,11 +404,19 @@ async def decide_approval(approval_id: str, request: DecideApprovalRequest) -> A
             justification=request.justification,
             authorization_reference=request.authorization_reference,
         )
-        return record
     except KeyError as err:
         raise HTTPException(status_code=404, detail=str(err)) from err
     except ValueError as err:
         raise HTTPException(status_code=400, detail=str(err)) from err
+
+    try:
+        await lifecycle_manager.resolve_approval(record)
+    except ValueError as err:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Approval was recorded, but the task checkpoint could not be safely resumed: {err}",
+        ) from err
+    return record
 
 
 # ---------------------------------------------------------------------------
@@ -417,13 +430,13 @@ async def list_findings(
     status: FindingStatus | None = Query(None),  # noqa: B008
 ) -> list[Finding]:
     """List and filter security findings."""
-    return finding_engine.list_findings(task_id=task_id, severity=severity, status=status)
+    return await finding_engine.list_findings_async(task_id=task_id, severity=severity, status=status)
 
 
 @app.get(f"{settings.api_prefix}/findings/{{finding_id}}", response_model=Finding, tags=["Findings & Evidence"])
 async def get_finding_detail(finding_id: str) -> Finding:
     """Get finding details including evidence references."""
-    finding = finding_engine.get_finding(finding_id)
+    finding = await finding_engine.get_finding_async(finding_id)
     if not finding:
         raise HTTPException(status_code=404, detail=f"Finding '{finding_id}' not found.")
     return finding
@@ -432,7 +445,7 @@ async def get_finding_detail(finding_id: str) -> Finding:
 @app.get(f"{settings.api_prefix}/tasks/{{task_id}}/risk-summary", response_model=TaskRiskSummary, tags=["Risk Intelligence"])
 async def get_task_risk_summary(task_id: str) -> TaskRiskSummary:
     """Retrieve computed risk summary and breakdown for a task."""
-    findings = finding_engine.list_findings(task_id=task_id)
+    findings = await finding_engine.list_findings_async(task_id=task_id)
     return risk_engine.get_task_risk_summary(task_id, findings)
 
 
@@ -487,7 +500,7 @@ async def stream_task_events(task_id: str, request: Request) -> EventSourceRespo
 
 @app.get(f"{settings.api_prefix}/tasks/{{task_id}}/findings", tags=["Findings & Evidence"])
 async def get_task_findings(task_id: str) -> dict[str, Any]:
-    findings = finding_engine.list_findings(task_id=task_id)
+    findings = await finding_engine.list_findings_async(task_id=task_id)
     return {
         "task_id": task_id,
         "findings": [f.model_dump() for f in findings],
@@ -497,7 +510,7 @@ async def get_task_findings(task_id: str) -> dict[str, Any]:
 
 @app.get(f"{settings.api_prefix}/tasks/{{task_id}}/evidence", tags=["Findings & Evidence"])
 async def get_task_evidence(task_id: str) -> dict[str, Any]:
-    evidence_list = evidence_store.query_evidence(task_id=task_id)
+    evidence_list = await evidence_store.query_evidence_async(task_id=task_id)
     return {
         "task_id": task_id,
         "evidence": [e.model_dump() for e in evidence_list],
@@ -516,7 +529,7 @@ async def get_task_report(
     if not task:
         raise HTTPException(status_code=404, detail=f"Task {task_id} not found.")
 
-    findings = finding_engine.list_findings(task_id=task_id)
+    findings = await finding_engine.list_findings_async(task_id=task_id)
     attack_paths = attack_path_analyzer.analyze_paths(asset_graph_store, findings)
     recommendations = recommendation_engine.generate_recommendations(findings, attack_paths)
 
@@ -549,7 +562,7 @@ async def get_task_report(
 @app.get(f"{settings.api_prefix}/tasks/{{task_id}}/evidence/bundle", tags=["Findings & Evidence"])
 async def download_evidence_bundle(task_id: str) -> Response:
     """Export and download self-contained, hash-verified zip evidence bundle."""
-    findings = finding_engine.list_findings(task_id=task_id)
+    findings = await finding_engine.list_findings_async(task_id=task_id)
     finding_map = {f.id: f.evidence_refs for f in findings}
     zip_bytes = await evidence_store.create_evidence_zip_bundle(task_id=task_id, finding_links=finding_map)
     return Response(
@@ -743,7 +756,7 @@ async def stream_friday_task_events(task_id: str, request: Request) -> EventSour
             }
 
             # 2. Replay existing findings if any
-            existing_findings = finding_engine.list_findings(task_id=task.id)
+            existing_findings = await finding_engine.list_findings_async(task_id=task.id)
             for f in existing_findings:
                 finding_evt = FridaySSEEvent(
                     event_type="finding_detected",
@@ -804,7 +817,7 @@ async def stream_friday_task_events(task_id: str, request: Request) -> EventSour
 @app.get(f"{settings.api_prefix}/friday/posture", response_model=FridaySecurityPostureResponse, tags=["FRIDAY Integration"])
 async def get_friday_security_posture() -> FridaySecurityPostureResponse:
     """Security posture endpoint returning overall score, domain breakdowns, and severity counts."""
-    all_findings = finding_engine.list_findings()
+    all_findings = await finding_engine.list_findings_async()
 
     crit = sum(1 for f in all_findings if f.severity == SeverityLevel.CRITICAL)
     high = sum(1 for f in all_findings if f.severity == SeverityLevel.HIGH)
@@ -877,7 +890,7 @@ async def get_friday_security_posture() -> FridaySecurityPostureResponse:
 @app.get(f"{settings.api_prefix}/friday/assets", response_model=FridayAssetInventoryResponse, tags=["FRIDAY Integration"])
 async def get_friday_asset_inventory() -> FridayAssetInventoryResponse:
     """Asset inventory endpoint returning all known targets with security status."""
-    all_findings = finding_engine.list_findings()
+    all_findings = await finding_engine.list_findings_async()
     asset_map: dict[str, dict[str, Any]] = {}
 
     for f in all_findings:
@@ -962,8 +975,8 @@ async def get_friday_delegation_result(delegation_id: str) -> FridayResultPayloa
     task = await lifecycle_manager.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail=f"Delegation {delegation_id!r} not found.")
-    findings = finding_engine.list_findings(task_id=task_id)
-    evidence_list = evidence_store.query_evidence(task_id=task_id)
+    findings = await finding_engine.list_findings_async(task_id=task_id)
+    evidence_list = await evidence_store.query_evidence_async(task_id=task_id)
     attack_paths = attack_path_analyzer.analyze_paths(asset_graph_store, findings)
     recommendations = recommendation_engine.generate_recommendations(findings, attack_paths)
     blocked = [
@@ -972,7 +985,7 @@ async def get_friday_delegation_result(delegation_id: str) -> FridayResultPayloa
             target=", ".join(a.target_refs),
             reason=f"Blocked by Sentinel policy: {a.justification_provided or 'No authorization'}",
         )
-        for a in policy_engine.get_pending_approvals(task_id=task_id) if a.status == "rejected"
+        for a in await policy_engine.approval_repository.list_approvals(task_id=task_id, status="REJECTED")
     ]
     summary = FridaySummarizer.generate_summary(task, findings, blocked)
     return FridayResultPayload(
@@ -1007,8 +1020,8 @@ async def get_task_status_friday(task_id: str) -> FridayResultPayload:
     if not task:
         raise HTTPException(status_code=404, detail=f"Task {task_id!r} not found.")
 
-    findings = finding_engine.list_findings(task_id=task_id)
-    evidence_list = evidence_store.query_evidence(task_id=task_id)
+    findings = await finding_engine.list_findings_async(task_id=task_id)
+    evidence_list = await evidence_store.query_evidence_async(task_id=task_id)
     evidence_hashes = {e.id: e.sha256_hash for e in evidence_list}
     attack_paths = attack_path_analyzer.analyze_paths(asset_graph_store, findings)
     recommendations = recommendation_engine.generate_recommendations(findings, attack_paths)
@@ -1019,7 +1032,7 @@ async def get_task_status_friday(task_id: str) -> FridayResultPayload:
             target=", ".join(a.target_refs),
             reason=f"Blocked by Sentinel policy: {a.justification_provided or 'No authorization'}",
         )
-        for a in policy_engine.get_pending_approvals(task_id=task_id) if a.status == "rejected"
+        for a in await policy_engine.approval_repository.list_approvals(task_id=task_id, status="REJECTED")
     ]
     summary = FridaySummarizer.generate_summary(task, findings, blocked)
 
@@ -1108,7 +1121,7 @@ async def submit_friday_research(req: FridayResearchRequest) -> dict[str, Any]:
 async def get_finding_research_context(finding_id: str) -> dict[str, Any]:
     """Retrieve IntelX research context for a specific Sentinel finding."""
     from sentinel.intelligence.threat_context import threat_context_enricher
-    finding = finding_engine.get_finding(finding_id)
+    finding = await finding_engine.get_finding_async(finding_id)
     if not finding:
         raise HTTPException(status_code=404, detail=f"Finding '{finding_id}' not found.")
 
@@ -1324,7 +1337,13 @@ async def sentinel_ask_inference(req: SentinelInferenceRequest):
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Inference is unavailable: INFERENCE_API_KEY is not configured.",
         )
-    url = f"{os.getenv('INFERENCE_URL', 'https://inference-h7bn.onrender.com').rstrip('/')}/v1/agent/assist"
+    inference_base_url = os.getenv("INFERENCE_URL", "").strip().rstrip("/")
+    if not inference_base_url:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Inference is unavailable: INFERENCE_URL is not configured.",
+        )
+    url = f"{inference_base_url}/v1/agent/assist"
     payload = {
         "caller_agent": "sentinel",
         "task_type": req.task_type,

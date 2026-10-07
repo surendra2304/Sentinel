@@ -27,6 +27,7 @@ from sentinel.core.models import (
 from sentinel.core.orchestrator.adapter import ToolAdapter
 from sentinel.core.orchestrator.executor import ExecutionEngine
 from sentinel.core.orchestrator.sandbox import SandboxExecutionError, SubprocessSandbox
+from sentinel.storage.evidence.store import EvidenceStore
 
 
 @pytest.mark.asyncio
@@ -100,7 +101,7 @@ class FlakyTestAdapter(ToolAdapter):
 
 @pytest.mark.asyncio
 async def test_executor_retry_and_backoff():
-    engine = ExecutionEngine()
+    engine = ExecutionEngine(evidence_store_inst=EvidenceStore())
     flaky = FlakyTestAdapter()
     engine.registry.register(flaky)
 

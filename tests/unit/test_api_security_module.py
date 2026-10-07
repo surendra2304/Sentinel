@@ -2,6 +2,7 @@ import json
 import socketserver
 import threading
 from http import server
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -93,11 +94,13 @@ class MockVulnerableAPIServer(server.SimpleHTTPRequestHandler):
 
 @pytest.fixture(scope="module")
 def api_test_server():
-    test_server = socketserver.TCPServer(("127.0.0.1", 18899), MockVulnerableAPIServer)
+    test_server = socketserver.TCPServer(("127.0.0.1", 0), MockVulnerableAPIServer)
     thread = threading.Thread(target=test_server.serve_forever, daemon=True)
     thread.start()
-    yield "http://127.0.0.1:18899"
+    port = test_server.server_address[1]
+    yield f"http://127.0.0.1:{port}"
     test_server.shutdown()
+    test_server.server_close()
 
 
 # ---------------------------------------------------------------------------
@@ -110,7 +113,7 @@ async def test_api_security_adapters_suite(api_test_server):
         id="task-api-unit",
         objective="Perform API security assessment",
         target_set=TargetSet(id="ts", name="TS"),
-        scope=Scope(id="s", name="S", allowed_targets=["127.0.0.1:18899"]),
+        scope=Scope(id="s", name="S", allowed_targets=[urlsplit(api_test_server).netloc]),
         policy=Policy(id="p", name="P", allowed_module_classes=["api_security"], allowed_action_classes=["api.*"]),
         correlation_id="corr-api-unit",
     )

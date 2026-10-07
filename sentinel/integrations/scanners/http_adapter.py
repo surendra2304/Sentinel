@@ -1,8 +1,8 @@
 """HTTP & TLS Observation Adapter for Sentinel.
 
 Uses httpx to perform passive observation:
-- Status codes & response headers (Security headers check)
-- Redirect chain tracing
+- Status codes and response headers (security header checks)
+- Redirect responses are recorded without following unvalidated destinations
 - TLS certificate metadata, cipher suite, and expiry inspection
 """
 
@@ -53,13 +53,14 @@ class HTTPObserverAdapter(ToolAdapter):
         }
 
         try:
-            async with httpx.AsyncClient(verify=False, follow_redirects=True, timeout=10.0) as client:
+            async with httpx.AsyncClient(verify=False, follow_redirects=False, timeout=10.0) as client:
                 res = await client.get(url)
                 data["http"] = {
                     "status_code": res.status_code,
                     "http_version": res.http_version,
                     "redirect_count": len(res.history),
                     "redirect_chain": [str(h.url) for h in res.history],
+                    "redirect_location": res.headers.get("location"),
                     "headers": dict(res.headers),
                 }
 
@@ -76,7 +77,10 @@ class HTTPObserverAdapter(ToolAdapter):
                     data["security_headers"][sh] = res.headers.get(sh, "MISSING")
 
             duration = time.time() - start_time
-            summary = f"HTTP observe on '{url}' returned status {data['http']['status_code']} with {len(res.history)} redirects."
+            summary = (
+                f"HTTP observe on '{url}' returned status {data['http']['status_code']}; "
+                "automatic redirect following is disabled."
+            )
             raw_bytes = json.dumps(data, indent=2).encode("utf-8")
 
             result = ActionResult(

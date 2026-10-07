@@ -1,6 +1,8 @@
 # SENTINEL PLATFORM BLUEPRINT VERIFICATION
 
-This document verifies the Sentinel platform against every architectural and functional blueprint success criterion. Every single claim is proven by a specific, automated test name or concrete repository file path.
+> **Verification boundary:** The status labels below record local code paths and automated test coverage; they do not certify deployment, real external integrations, production scale, or flawless behavior. Review `AUDIT_REPORT.md` for commands actually run, warnings, and current limits. Durable checkpoints, conservative restart recovery, and sequential evidence-backed agent handoffs are implemented with local test coverage. Docker/PostgreSQL/MinIO remain unverified live; distributed multi-agent cooperation and general self-healing are not established. See `GAPS.md`.
+
+This document maps blueprint criteria to repository components and test evidence. A file path is not runtime proof, and an automated test proves only the conditions it executes.
 
 ---
 

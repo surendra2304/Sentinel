@@ -18,6 +18,7 @@ from sentinel.core.scope.resolver import (
     ScopeVerdict,
     TargetResolutionError,
 )
+from sentinel.storage.repositories.in_memory import InMemoryApprovalRepository
 
 # ---------------------------------------------------------------------------
 # 1. Target Normalization & Scope Resolver Tests
@@ -145,6 +146,7 @@ async def test_policy_engine_all_dimensions(tmp_path):
         name="PCI Perimeter",
         allowed_targets=["10.0.0.0/24", "app.example.com"],
         max_intensity=5,
+        maximum_impact=ImpactLevel.HIGH,
         offensive_actions_enabled=False,
     )
     policy = Policy(
@@ -267,7 +269,11 @@ async def test_policy_engine_all_dimensions(tmp_path):
 @pytest.mark.asyncio
 async def test_approval_workflow(tmp_path):
     audit_file = tmp_path / "audit_approval.jsonl"
-    engine = PolicyEngine(audit_logger=AuditLogger(log_path=str(audit_file), signing_key="test-key"))
+    approval_repository = InMemoryApprovalRepository()
+    engine = PolicyEngine(
+        audit_logger=AuditLogger(log_path=str(audit_file), signing_key="test-key"),
+        approval_repository=approval_repository,
+    )
 
     scope = Scope(id="s-appr", name="Scope", allowed_targets=["10.0.0.1"])
     policy = Policy(id="p-appr", name="Policy", allowed_action_classes=["*"])
@@ -277,7 +283,7 @@ async def test_approval_workflow(tmp_path):
         id="act-req-appr",
         task_id=task.id,
         agent="test_agent",
-        action_type="exploit.payload_delivery",
+        action_type="network.port_scan",
         target_refs=["10.0.0.1"],
         requires_approval=True,
     )
@@ -301,11 +307,27 @@ async def test_approval_workflow(tmp_path):
     assert approved_rec.status == "APPROVED"
     assert approved_rec.approved_by == "lead_security_officer"
 
+    restarted_engine = PolicyEngine(
+        audit_logger=AuditLogger(log_path=str(audit_file), signing_key="test-key"),
+        approval_repository=approval_repository,
+    )
+    mismatched_action = action.model_copy(update={"parameters": {"payload": "changed after approval"}})
+    mismatched_decision = await restarted_engine.evaluate_action(mismatched_action, task)
+    assert mismatched_decision.decision == PolicyDecisionType.REQUIRE_APPROVAL
+    assert (await approval_repository.get_approval(approved_rec.approval_id)).status == "APPROVED"
+
+    resumed_decision = await restarted_engine.evaluate_action(action, task)
+    assert resumed_decision.decision == PolicyDecisionType.ALLOW
+    consumed_approval = await approval_repository.get_approval(approved_rec.approval_id)
+    assert consumed_approval is not None
+    assert consumed_approval.status == "CONSUMED"
+
     # Pending list should now be empty
     assert len(engine.get_pending_approvals(task_id=task.id)) == 0
 
     # Expired approval check
-    expired_rec = engine._create_approval_request(action, task, "Expired test")
+    expired_rec = await engine._create_approval_request(action, task, "Expired test")
     expired_rec.expires_at = datetime.now(UTC) - timedelta(minutes=5)
+    await approval_repository.save_approval(expired_rec)
     with pytest.raises(ValueError, match="expired"):
         await engine.decide_approval(expired_rec.approval_id, True, "operator", "Justification")

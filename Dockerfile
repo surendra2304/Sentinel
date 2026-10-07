@@ -1,5 +1,5 @@
 # ── SENTINEL Dashboard Build ─────────────────────────────────────────────────
-FROM node:20-alpine AS dashboard-builder
+FROM node:22-alpine AS dashboard-builder
 
 WORKDIR /dashboard
 COPY apps/dashboard/package.json apps/dashboard/package-lock.json ./

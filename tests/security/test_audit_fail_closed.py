@@ -6,6 +6,29 @@ from sentinel.audit.audit_logger import AuditIntegrityError, AuditLogger
 
 KEY = "super-secure-audit-secret-key-32b-length"
 
+def test_audit_logger_requires_explicit_signing_key(tmp_path, monkeypatch):
+    monkeypatch.delenv("SENTINEL_AUDIT_HMAC_KEY", raising=False)
+    monkeypatch.delenv("SENTINEL_AUDIT_SIGNING_KEY", raising=False)
+    with pytest.raises(ValueError, match="Audit signing key is required"):
+        AuditLogger(str(tmp_path / "audit.jsonl"))
+
+
+def test_audit_signing_key_loads_from_dotenv(tmp_path, monkeypatch):
+    from sentinel.config.settings import get_settings
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("SENTINEL_AUDIT_SIGNING_KEY", raising=False)
+    (tmp_path / ".env").write_text(
+        "SENTINEL_AUDIT_SIGNING_KEY=dotenv-audit-test-key-0123456789abcdef\n",
+        encoding="utf-8",
+    )
+    get_settings.cache_clear()
+    try:
+        assert get_settings().audit.signing_key == "dotenv-audit-test-key-0123456789abcdef"
+    finally:
+        get_settings.cache_clear()
+
+
 def test_audit_chain_valid_and_append(tmp_path):
     log_file = tmp_path / "audit.jsonl"
     logger = AuditLogger(str(log_file), signing_key=KEY)

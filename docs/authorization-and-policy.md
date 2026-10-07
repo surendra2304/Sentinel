@@ -1,100 +1,59 @@
-# Authorization & Policy Model
+# Authorization and Policy Model
 
-## Task Modes and Permissions
+SENTINEL requires an explicit authorization contract for every submitted task. A target appearing in a request is not, by itself, evidence of permission. The owner, written authorization reference, target boundaries, permitted methods, impact ceiling, and active time window are validated before a task is accepted.
 
-SENTINEL enforces a strict mode-based access model. Every task has a mode field that gates which action classes are available.
+## Scope contract
 
-| Mode | Description | Active Testing | Destructive Actions |
-|---|---|---|---|
-| passive_recon | DNS, OSINT, passive fingerprinting only | No | No |
-| ctive_recon | Port scans, HTTP probing, banner grabbing | Limited | No |
-| uthorized_assessment | Full pentest scope including validation | Yes | No |
-| incident_response | Forensics and IR — read-only on live systems | IR only | No |
+A task request includes a `scope` object similar to:
 
----
-
-## PolicyEngine Evaluation (6 Dimensions)
-
-Every ActionRequest is evaluated against all six dimensions before execution:
-
-1. **Scope validation** — ScopeResolver confirms the target is in the authorized target set (CIDR match, domain wildcard, URL path prefix)
-2. **Mode check** — the action class must be permitted in the current task mode
-3. **Action class authorization** — maps action types to required action classes (e.g., 
-etwork.port_scan → ACTIVE_SCAN)
-4. **Rate limiting** — per-target and per-module action rate limits enforced
-5. **Credential verification** — actions requiring credentials (cloud, authenticated web) verify they are present
-6. **Impact gate** — actions with ImpactLevel >= HIGH require an approval record before execution
-
-**Default-deny principle:** any dimension failure results in immediate denial with an audit entry.
-
----
-
-## Approval Workflow
-
-For elevated-impact actions (ImpactLevel.HIGH or VERY_HIGH):
-
-1. ExecutionEngine creates an ApprovalRecord with status PENDING_APPROVAL
-2. SSE stream (GET /api/v1/tasks/{id}/stream) emits pproval_required event to the dashboard
-3. Operator reviews and either approves or denies via POST /api/v1/approvals/{id}/approve|deny
-4. AuditLogger records the decision with operator identity and timestamp
-5. If approved, ExecutionEngine resumes execution; if denied, the action is recorded as SKIPPED
-
----
-
-## Scope Model
-
-json
+```json
 {
-  "targets": [
-    {"type": "url", "value": "https://example.com"},
-    {"type": "cidr", "value": "192.168.1.0/24"},
-    {"type": "domain", "value": "*.example.com"},
-    {"type": "ip", "value": "10.0.0.1"}
-  ],
-  "excluded_targets": ["10.0.0.50"],
-  "wildcard_allowed": false
+  "owner": "security-operator@example.org",
+  "written_authorization_reference": "CHG-2026-1234",
+  "allowed_targets": ["app.example.org", "192.0.2.10/32"],
+  "excluded_targets": ["admin.example.org"],
+  "allowed_methods": ["passive_recon"],
+  "time_window": {
+    "start_time": "2026-10-05T09:00:00Z",
+    "end_time": "2026-10-05T17:00:00Z"
+  },
+  "rate_limit": 20,
+  "maximum_impact": "low",
+  "offensive_actions_enabled": false,
+  "authorization": {
+    "allow_third_party_enrichment": false
+  }
 }
+```
 
+The API validates the submitted targets against the scope. The policy engine repeats target and method checks for every planned action, so a task-level scope does not authorize an out-of-scope action or target.
 
-ScopeResolver rejects:
-- IP addresses outside authorized CIDR ranges
-- Domains not matching authorized domain patterns
-- Any target that matches an exclusion entry
-- Requests with IP smuggling (e.g., URL http://internal-host@external.com)
+## Third-party enrichment consent
 
----
+Some optional passive enrichment sources receive target metadata. SENTINEL therefore defaults `authorization.allow_third_party_enrichment` to `false`:
 
-## Audit Model
+- Certificate Transparency queries to `crt.sh` are not made unless the scope explicitly allows third-party enrichment.
+- GeoIP requests to IP-API are not made unless the scope allows enrichment and the target is a globally routable IP address. Hostnames, private addresses, loopback, link-local, and other non-global addresses are not sent to that service.
+- The CLI flag `--allow-third-party-enrichment` sets this explicit authorization field. Use it only when the engagement permits sharing target metadata with external services.
 
-All audit entries are stored in logs/audit.jsonl (configurable). Each entry contains:
+A policy decision denies an action that requests third-party enrichment when the task scope does not grant it. The adapter also defaults to skipping the external request, providing a second guard at the egress point.
 
-| Field | Description |
-|---|---|
-| entry_id | UUID for the audit entry |
-| event_type | ACTION_REQUESTED, ACTION_APPROVED, ACTION_DENIED, FINDING_CREATED, etc. |
-| ctor | The agent or operator that initiated the action |
-| 	arget | The target resource |
-| ction_type | The specific action class |
-| scope_policy | The task ID (links to scope + policy) |
-| decision | APPROVED, DENIED, EXECUTED, SKIPPED, RECORDED |
-| details | Structured dict with action-specific context |
-| 	imestamp | ISO 8601 UTC |
-| prev_hash | SHA-256 hash of the previous audit entry (HMAC chain) |
+## Action policy checks
 
-The HMAC chain allows independent verification: any tampering of historical entries breaks the chain.
+Before an action executes, the policy engine evaluates the kill switch, time window, impact ceiling, passive-mode restrictions, target containment, policy action/module allowlists, scope-allowed methods, intensity and rate limits, credential rules, and approval requirements. A denied action is recorded in the audit trail and is not executed.
 
----
+Passive reconnaissance is deliberately limited to the action allowlist in the policy engine. Mixed-mode adapters receive an explicit `passive_only` parameter; passive mode does not authorize active HTTP or port probing. Higher-impact or offensive actions remain subject to the explicit scope settings and configured human-approval gates.
 
-## Authorization Requirements by Task Mode
+## Audit trail
 
-| Action Class | passive_recon | active_recon | authorized_assessment | incident_response |
-|---|---|---|---|---|
-| DNS enumeration | ✅ | ✅ | ✅ | ✅ |
-| OSINT | ✅ | ✅ | ✅ | ✅ |
-| HTTP observation | ✅ | ✅ | ✅ | - |
-| Port scanning | ❌ | ✅ | ✅ | - |
-| Vulnerability probing | ❌ | ❌ | ✅ | - |
-| Validation (proof-of-concept) | ❌ | ❌ | ✅ + approval | - |
-| Cloud resource enumeration | ❌ | ✅ | ✅ | ✅ |
-| Log/artifact collection | ❌ | ❌ | - | ✅ |
-| Forensic timeline | ❌ | ❌ | - | ✅ |
+Task and action decisions are recorded by `AuditLogger`. Production requires a deployment-specific `SENTINEL_AUDIT_SIGNING_KEY`; there is no source-controlled signing-key fallback. Verify the local chain with:
+
+```bash
+sentinel verify-audit
+```
+
+Audit durability depends on the configured storage and mounted volume. Production readiness reports an in-memory backend as non-durable rather than claiming persistent protection.
+
+## Authorization is not a blanket guarantee
+
+Third-party services, network access, scanner binaries, and external credentials are deployment-dependent. Review [GAPS.md](../GAPS.md) and the deployment configuration before using Sentinel on any environment. Only assess assets covered by current written authorization.

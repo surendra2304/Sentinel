@@ -1,4 +1,4 @@
-import { Task, Finding, ApprovalRecord, Alert, AuditEntry, PolicyRule, Schedule, BaselineDiff, AttackPath } from '../types';
+import { Task, TaskStatus, Finding, ApprovalRecord, Alert, AuditEntry, PolicyRule, Schedule, BaselineDiff, AttackPath } from '../types';
 
 const API_ORIGIN = import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace(/\/+$/, '') : '';
 const API_BASE_PREFIX = `${API_ORIGIN}/api/v1`;
@@ -162,15 +162,50 @@ export function createTaskEventStream(taskId: string, onEvent: (event: { name: s
   return () => controller.abort();
 }
 
+type JsonRecord = Record<string, unknown>;
+
+function isJsonRecord(value: unknown): value is JsonRecord {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isTaskStatus(value: string | undefined): value is TaskStatus {
+  return [
+    'submitted', 'planning', 'executing', 'awaiting_approval', 'reporting',
+    'complete', 'completed', 'blocked', 'partially_completed', 'failed', 'cancelled',
+  ].includes(value || '');
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
 export async function fetchTasks(): Promise<Task[]> {
   try {
     const res = await apiFetch(`${API_BASE}/tasks`);
     if (!res.ok) return [];
-    const data = await res.json();
-    return data.map((t: any) => ({
-      ...t,
-      id: t.task_id || t.id,
-    }));
+    const data: unknown = await res.json();
+    if (!Array.isArray(data)) return [];
+
+    return data.flatMap((value): Task[] => {
+      if (!isJsonRecord(value)) return [];
+      const id = asString(value.task_id) || asString(value.id);
+      if (!id) return [];
+      const targetSet = isJsonRecord(value.target_set) ? value.target_set : undefined;
+      const targetRows = targetSet && Array.isArray(targetSet.targets) ? targetSet.targets : [];
+      const status = asString(value.status)?.toLowerCase();
+
+      return [{
+        id,
+        objective: asString(value.objective) || '',
+        mode: asString(value.mode) || 'assessment',
+        status: isTaskStatus(status) ? status : 'submitted',
+        progress_percentage: typeof value.progress_percentage === 'number' ? value.progress_percentage : 0,
+        correlation_id: asString(value.correlation_id) || '',
+        created_at: asString(value.created_at) || '',
+        updated_at: asString(value.updated_at),
+        target_count: typeof value.target_count === 'number' ? value.target_count : targetRows.length,
+      }];
+    });
   } catch {
     return [];
   }
@@ -181,7 +216,7 @@ export async function submitTask(payload: {
   targets: Array<{ type: string; value: string }>;
   mode: string;
   requested_output?: string;
-}): Promise<any> {
+}): Promise<unknown> {
   try {
     const res = await apiFetch(`${API_BASE}/tasks`, {
       method: 'POST',

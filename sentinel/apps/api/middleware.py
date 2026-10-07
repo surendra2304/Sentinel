@@ -2,11 +2,16 @@ import hmac
 import os
 import time
 from collections import defaultdict
+from threading import Lock
 from typing import ClassVar
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
+from starlette.types import ASGIApp, Receive, Send
+from starlette.types import Scope as ASGIScope
+
+from sentinel.config.settings import get_settings
 
 
 class ReplayProtector:
@@ -102,15 +107,20 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
         if path in self.EXEMPT_PATHS or path.startswith("/assets/"):
             return await call_next(request)
 
-        # Render-facing APIs must reject requests unless a strong owner-provided key
-        # is configured. Loopback/local tests remain usable without cloud credentials.
+        # Deployed APIs must opt into authentication explicitly; Render remains a
+        # supported deployment signal for existing installs. Local development can
+        # remain credential-free unless this setting is enabled.
         api_key = request.headers.get("X-API-Key") or request.headers.get("Authorization")
         if api_key and api_key.startswith("Bearer "):
             api_key = api_key[7:]
 
         is_render = os.getenv("RENDER", "").strip().lower() in {"1", "true", "yes"}
-        configured_key = os.getenv("SENTINEL_API_KEY", "").strip()
-        if is_render:
+        settings = get_settings()
+        auth_required = is_render or settings.api_auth_required
+        configured_key = (
+            os.getenv("SENTINEL_API_KEY") or settings.api_key.get_secret_value()
+        ).strip()
+        if is_render or auth_required:
             if len(configured_key) < 32 or configured_key.lower() in {
                 "sentinel_api", "change-me", "changeme", "password", "secret",
             }:
@@ -191,3 +201,61 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
                 )
 
         return await call_next(request)
+
+
+class RequestCapacityMiddleware:
+    """Bound concurrent ASGI work and reserve a small independent health-check budget."""
+
+    HEALTH_PATHS: ClassVar[frozenset[str]] = frozenset({"/health", "/ready"})
+
+    def __init__(
+        self,
+        app: ASGIApp,
+        max_concurrent_requests: int = 256,
+        max_health_requests: int = 16,
+    ) -> None:
+        if max_concurrent_requests < 1 or max_health_requests < 1:
+            raise ValueError("Request concurrency limits must be positive integers.")
+        self.app = app
+        self.max_concurrent_requests = max_concurrent_requests
+        self.max_health_requests = max_health_requests
+        self._active_requests = 0
+        self._active_health_requests = 0
+        self._state_lock = Lock()
+
+    async def __call__(self, scope: ASGIScope, receive: Receive, send: Send) -> None:
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+
+        is_health_request = scope.get("path") in self.HEALTH_PATHS
+        with self._state_lock:
+            if is_health_request:
+                overloaded = self._active_health_requests >= self.max_health_requests
+                if not overloaded:
+                    self._active_health_requests += 1
+            else:
+                overloaded = self._active_requests >= self.max_concurrent_requests
+                if not overloaded:
+                    self._active_requests += 1
+
+        if overloaded:
+            response = JSONResponse(
+                status_code=503,
+                headers={"Retry-After": "1"},
+                content={
+                    "error": "service_overloaded",
+                    "detail": "The request concurrency limit is reached; retry shortly.",
+                },
+            )
+            await response(scope, receive, send)
+            return
+
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            with self._state_lock:
+                if is_health_request:
+                    self._active_health_requests -= 1
+                else:
+                    self._active_requests -= 1

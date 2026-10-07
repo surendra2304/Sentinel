@@ -212,11 +212,12 @@ class TargetSet(BaseModel):
 # ---------------------------------------------------------------------------
 
 class AuthorizationMetadata(BaseModel):
-    """Authorization context and legal boundaries."""
+    """Authorization context, legal boundaries, and explicit data-sharing consent."""
     authorization_type: AuthorizationType = AuthorizationType.OWNED
     reference_ticket_id: str | None = None
     authorized_by: str | None = None
     expiry: datetime | None = None
+    allow_third_party_enrichment: bool = False
 
 
 class TimeWindow(BaseModel):
@@ -392,6 +393,27 @@ class ActionRequest(BaseModel):
         if not re.match(r"^[a-zA-Z0-9_\-\.:]+$", v):
             raise ValueError(f"Action type contains invalid characters: {v}")
         return v
+
+
+class AgentHandoff(BaseModel):
+    """Evidence-backed, bounded action proposal routed to a specialist agent."""
+    id: str
+    task_id: str
+    source_agent: str
+    target_agent: str
+    action_request: ActionRequest
+    evidence_refs: list[str] = Field(min_length=1)
+    justification: str = Field(min_length=1, max_length=512)
+    created_iteration: int = Field(ge=1)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    @model_validator(mode="after")
+    def validate_handoff_consistency(self) -> "AgentHandoff":
+        if self.action_request.task_id != self.task_id:
+            raise ValueError("Handoff action must belong to the same task.")
+        if self.action_request.agent != self.target_agent:
+            raise ValueError("Handoff target agent must match the action owner.")
+        return self
 
 
 class ActionResult(BaseModel):

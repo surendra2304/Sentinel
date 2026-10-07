@@ -16,9 +16,7 @@ class MemoraClient:
     """HTTP adapter for agent containers; it never writes to an agent-local DB."""
 
     def __init__(self, base_url: str | None = None, api_key: str | None = None, timeout: float = 5.0):
-        self.base_url = (
-            base_url or os.getenv("MEMORA_URL") or "https://memora-cavc.onrender.com"
-        ).rstrip("/")
+        self.base_url = (base_url or os.getenv("MEMORA_URL") or "").strip().rstrip("/")
         self.api_key = api_key
         self.timeout = timeout
         self.last_error: str | None = None
@@ -28,6 +26,9 @@ class MemoraClient:
         key = self.api_key or os.getenv(f"{agent.upper()}_API_KEY")
         if not key:
             self.last_error = f"{agent.upper()}_API_KEY is not configured"
+            return {"status": "error", "cloud": False, "error": self.last_error}
+        if not self.base_url:
+            self.last_error = "MEMORA_URL is not configured"
             return {"status": "error", "cloud": False, "error": self.last_error}
         headers = {
             "X-Agent-Name": agent,

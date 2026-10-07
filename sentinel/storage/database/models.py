@@ -9,6 +9,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Integer,
     String,
     Table,
     Text,
@@ -73,6 +74,9 @@ class ScopeModel(Base):
     expiry = Column(DateTime(timezone=True), nullable=True)
     max_intensity = Column(Float, default=5.0, nullable=False)
     offensive_actions_enabled = Column(Boolean, default=False, nullable=False)
+    # Preserve the complete current authorization contract, including fields that
+    # are not represented by the legacy relational columns above.
+    scope_contract = Column(JSON, default=dict, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
 
 
@@ -88,6 +92,7 @@ class PolicyModel(Base):
     credential_handling_rules = Column(JSON, default=dict, nullable=False)
     require_approval_for_offensive = Column(Boolean, default=True, nullable=False)
     kill_switch_active = Column(Boolean, default=False, nullable=False)
+    policy_contract = Column(JSON, default=dict, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
 
 
@@ -113,6 +118,21 @@ class TaskModel(Base):
     policy = relationship("PolicyModel", backref="tasks", lazy="selectin")
 
 
+class TaskCheckpointModel(Base):
+    """Versioned, durable planner and working-memory checkpoint per task."""
+
+    __tablename__ = "sentinel_task_checkpoints"
+
+    task_id = Column(
+        String(64),
+        ForeignKey("sentinel_tasks.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    version = Column(Integer, default=1, nullable=False)
+    payload = Column(JSON, default=dict, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
+
+
 class ActionRequestModel(Base):
     __tablename__ = "sentinel_action_requests"
 
@@ -126,6 +146,28 @@ class ActionRequestModel(Base):
     requires_approval = Column(Boolean, default=False, nullable=False)
     status = Column(String(32), default="pending_approval", index=True, nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
+
+
+class ApprovalModel(Base):
+    """Durable operator decision record bound to a single task action."""
+
+    __tablename__ = "sentinel_approvals"
+
+    approval_id = Column(String(64), primary_key=True, index=True)
+    task_id = Column(String(64), ForeignKey("sentinel_tasks.id", ondelete="CASCADE"), index=True, nullable=False)
+    action_id = Column(String(64), index=True, nullable=False)
+    action_type = Column(String(128), nullable=False)
+    target_refs = Column(JSON, default=list, nullable=False)
+    requested_by = Column(String(128), nullable=False)
+    action_fingerprint = Column(String(64), nullable=True)
+    status = Column(String(32), default="PENDING", index=True, nullable=False)
+    justification_needed = Column(Text, nullable=False)
+    justification_provided = Column(Text, nullable=True)
+    approved_by = Column(String(128), nullable=True)
+    authorization_reference = Column(String(256), nullable=True)
+    requested_at = Column(DateTime(timezone=True), nullable=False)
+    decided_at = Column(DateTime(timezone=True), nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
 
 
 class ActionResultModel(Base):

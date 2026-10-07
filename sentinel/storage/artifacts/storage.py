@@ -123,13 +123,16 @@ class MinIOObjectStorage(ArtifactStorage):
     ) -> tuple[str, str]:
         sha256 = hashlib.sha256(data).hexdigest()
         stream = self._io.BytesIO(data)
+        minio_metadata: dict[str, str | list[str] | tuple[str]] = {}
+        for metadata_key, metadata_value in (metadata or {}).items():
+            minio_metadata[metadata_key] = metadata_value
         self.client.put_object(
             bucket_name=self.bucket,
             object_name=key,
             data=stream,
             length=len(data),
             content_type=content_type,
-            metadata=metadata or {},
+            metadata=minio_metadata,
         )
         storage_uri = f"s3://{self.bucket}/{key}"
         return storage_uri, sha256

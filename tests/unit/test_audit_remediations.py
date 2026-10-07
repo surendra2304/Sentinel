@@ -31,7 +31,12 @@ from sentinel.storage.evidence.store import evidence_store
 def test_task_with_findings():
     target = Target(id="t-audit-01", type="host", value="target.local")
     target_set = TargetSet(id="ts-audit-01", name="Audit TargetSet", targets=[target])
-    scope = Scope(id="scope-audit-01", name="Audit Scope", allowed_targets=["target.local"])
+    scope = Scope(
+        id="scope-audit-01",
+        name="Audit Scope",
+        allowed_targets=["target.local"],
+        maximum_impact=ImpactLevel.CRITICAL,
+    )
     policy = Policy(id="policy-audit-01", name="Audit Policy")
 
     task = Task(
@@ -314,7 +319,13 @@ async def test_kill_switch_subprocess_abort_preserves_evidence(tmp_path):
 async def test_highest_impact_level_always_requires_human_approval():
     target = Target(id="t-inv-01", type="host", value="prod.internal")
     target_set = TargetSet(id="ts-inv-01", name="Invariant TargetSet", targets=[target])
-    scope = Scope(id="scope-inv-01", name="Invariant Scope", allowed_targets=["prod.internal"], offensive_actions_enabled=True)
+    scope = Scope(
+        id="scope-inv-01",
+        name="Invariant Scope",
+        allowed_targets=["prod.internal"],
+        maximum_impact=ImpactLevel.CRITICAL,
+        offensive_actions_enabled=True,
+    )
 
     # Even with a policy trying to auto-allow everything with no approval
     permissive_policy = Policy(
@@ -406,7 +417,13 @@ async def test_lab_target_e2e_and_unconditional_secret_redaction(tmp_path):
         # 5. FRIDAY approval relay with operator attribution
         target = Target(id="t-lab-01", type="url", value="http://lab.local")
         target_set = TargetSet(id="ts-lab-01", name="Lab Set", targets=[target])
-        scope = Scope(id="scope-lab-01", name="Lab Scope", allowed_targets=["http://lab.local"], offensive_actions_enabled=True)
+        scope = Scope(
+            id="scope-lab-01",
+            name="Lab Scope",
+            allowed_targets=["http://lab.local"],
+            maximum_impact=ImpactLevel.HIGH,
+            offensive_actions_enabled=True,
+        )
         policy = Policy(id="policy-lab-01", name="Lab Policy")
         task = Task(
             id="task-lab-01",

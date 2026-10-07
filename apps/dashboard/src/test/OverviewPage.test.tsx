@@ -35,9 +35,10 @@ describe('Sentinel control room', () => {
       evidence_refs: ['evidence-1'], status: 'open', first_seen: '2026-09-28T09:00:00Z',
     }]);
     vi.mocked(fetchConsoleApprovals).mockResolvedValue([{
-      approval_id: 'approval-3', task_id: 'task-42', action_type: 'web.assessment',
-      target: 'app.example.test', requested_by: 'operator', reason: 'Review',
-      status: 'pending', expires_at: '2026-09-29T00:00:00Z',
+      approval_id: 'approval-3', task_id: 'task-42', action_id: 'action-3',
+      action_type: 'web.assessment', target_refs: ['app.example.test'], requested_by: 'operator',
+      justification_needed: 'Review', status: 'PENDING',
+      requested_at: '2026-09-28T10:00:00Z', expires_at: '2026-09-29T00:00:00Z',
     }]);
     vi.mocked(fetchConsoleRiskSummary).mockResolvedValue({
       task_id: 'task-42', total_findings: 1, overall_risk_score: 88,
@@ -56,7 +57,7 @@ describe('Sentinel control room', () => {
     render(<BrowserRouter><OverviewPage /></BrowserRouter>);
 
     expect(await screen.findByText('Exposed admin endpoint')).toBeInTheDocument();
-    expect(screen.getByText('Risk update: high tier · score 88 · finding finding-7')).toBeInTheDocument();
+    expect(await screen.findByText('Risk update: high tier · score 88 · finding finding-7')).toBeInTheDocument();
     expect(await screen.findByText('88')).toBeInTheDocument();
     expect(screen.getByText('Streaming')).toBeInTheDocument();
     expect(fetchConsoleRiskSummary).toHaveBeenCalledWith('task-42');

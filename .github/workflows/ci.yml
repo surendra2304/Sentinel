@@ -8,7 +8,7 @@ on:
 
 env:
   PYTHON_VERSION: "3.11"
-  NODE_VERSION: "20"
+  NODE_VERSION: "22"
 
 jobs:
   # ── Job 1: Lint & Type Check ──────────────────────────────────────────────
@@ -90,6 +90,8 @@ jobs:
           cache-dependency-path: apps/dashboard/package-lock.json
       - name: Install npm deps
         run: npm ci
+      - name: Dashboard lint
+        run: npm run lint
       - name: Run Vitest
         run: npm test -- --run
       - name: Build production bundle
@@ -110,15 +112,14 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
+      - name: Upgrade Python bootstrap tools
+        run: python -m pip install --upgrade pip setuptools
       - name: Install pip-audit
         run: pip install pip-audit
-      - name: Run pip-audit
-        run: pip-audit --requirement <(pip install -e ".[dev]" --dry-run 2>/dev/null | grep -v "^Would" || true)
-        continue-on-error: true
       - name: Install project for audit
         run: pip install -e ".[dev]"
       - name: Audit installed packages
-        run: pip-audit --skip-editable || true
+        run: pip-audit --skip-editable
 
   # ── Job 6: Secret Scanning ────────────────────────────────────────────────
   secret-scan:
@@ -144,7 +145,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: apps/dashboard/package-lock.json
       - name: Install dependencies

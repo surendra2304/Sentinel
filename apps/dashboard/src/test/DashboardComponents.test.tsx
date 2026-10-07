@@ -82,11 +82,13 @@ describe('Dashboard Component Test Suite', () => {
       {
         approval_id: 'appr-999',
         task_id: 'task-e2e-01',
+        action_id: 'action-approval-999',
         action_type: 'web.admin_database_flush',
-        target: 'http://lab.local/api/admin',
+        target_refs: ['http://lab.local/api/admin'],
         requested_by: 'exploit_agent',
-        reason: 'Authorized destructive database verification test',
-        status: 'pending',
+        justification_needed: 'Authorized destructive database verification test',
+        status: 'PENDING',
+        requested_at: '2026-08-28T12:00:00Z',
         expires_at: '2026-08-28T18:00:00Z',
       },
     ]);

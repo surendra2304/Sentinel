@@ -49,4 +49,24 @@ This document is the explicit **contract of honesty** for the Sentinel codebase.
 ## 7. Distributed Rate Limiting & Sliding Windows
 - **Local Sliding-Window Tracker**:
   - `PolicyEngine` enforces sliding-window requests-per-second (`rate_limit_rps`) using in-process millisecond timestamps.
-  - In a horizontally scaled multi-container deployment, global rate limiting across all API replicas requires a shared Redis key-value store (e.g., Redis Token Bucket / Leaky Bucket).
+  - API request admission has configurable per-process limits (`SENTINEL_MAX_HTTP_CONCURRENCY`, default 256, plus a separate health budget); the Uvicorn entrypoint applies the same normal-request cap and overload responses use HTTP 503. These controls are local to each process and do not form a shared global quota. A horizontally scaled deployment still needs a shared rate-limit/admission design (e.g., Redis token bucket) and real multi-worker testing.
+- The existing `PolicyEngine` sliding-window rate limit is also in-process. In a horizontally scaled multi-container deployment, a global policy limit requires a shared Redis key-value store.
+
+---
+
+## 8. Supervised Multi-Agent Collaboration (Local and Sequential)
+- `HeuristicPlanner` routes its web and network phases to the registered specialists. `AgentCoordinator` accepts only task-matched, capability-matched, in-scope proposals with task evidence, and suppresses duplicates/conflicting parameter variants under configured per-task budgets.
+- Accepted follow-ups re-enter the normal policy/approval/executor path. Local tests exercise a recon-to-network handoff; this is not autonomous negotiation, peer-review/consensus, cross-process coordination, or a multi-node fleet. Behavior against live targets remains unverified.
+
+---
+
+## 9. Durable Memory and Conservative Recovery
+- Versioned working-memory checkpoints and approval decisions persist through the task repository, with Alembic migrations `0003` and `0004`. Recovery resumes only valid checkpoint-safe tasks, leaves pending approvals paused, resumes finalized approval decisions only when the queued action matches, and fails closed on missing/corrupt checkpoints or ambiguous in-flight actions.
+- SQLite/in-memory fixtures cover checkpoint rehydration and safe restart paths. Live PostgreSQL crash/restart, concurrent recovery, database/object-store outage, and multi-process lease behavior remain unverified. The configured Compose entrypoint currently uses one API worker.
+- Executor retries and the heuristic intelligence fallback are bounded local resilience measures, not general self-healing or self-improving systems. Autonomous code modification is intentionally not enabled; future repair actions must remain narrowly scoped, reviewed, and auditable, with human approval where impact is ambiguous or destructive.
+
+---
+
+## 10. Production Validation Boundary
+- Local tests, synthetic load, and loopback fixtures do not establish production readiness. The current workspace did not have Docker/Compose, Nginx, PostgreSQL, or MinIO executables, so the newly documented container topology remains **CONFIGURED-BUT-UNVERIFIED**.
+- Live validation against a non-local security target requires explicit authorization and a controlled environment; no arbitrary external target should be scanned.

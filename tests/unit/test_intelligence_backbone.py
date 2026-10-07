@@ -60,6 +60,19 @@ async def test_evidence_store_integrity_and_chain_of_custody(tmp_path):
 async def test_finding_engine_deduplication_and_lifecycle(tmp_path):
     audit = AuditLogger(log_path=str(tmp_path / "audit.jsonl"), signing_key="test-key")
     engine = FindingEngine(audit_logger=audit)
+    evidence_store_for_findings = EvidenceStore(
+        storage=LocalFileSystemStorage(base_dir=str(tmp_path / "finding-artifacts")),
+        audit_logger=audit,
+    )
+    evidence1 = await evidence_store_for_findings.record_evidence(
+        task_id="task-find-01",
+        target_ref="10.0.0.15",
+        source_agent="network_agent",
+        source_module="network",
+        source_tool="nmap",
+        raw_data=b"nmap telnet observation",
+        content_type="text/plain",
+    )
 
     # Observation from Tool 1 (Nmap)
     obs1 = Observation(
@@ -70,12 +83,22 @@ async def test_finding_engine_deduplication_and_lifecycle(tmp_path):
         description="Telnet daemon running with plaintext transport.",
         severity=SeverityLevel.HIGH,
         confidence=0.9,
-        evidence_refs=["evi-tool1-001"],
+        evidence_refs=[evidence1.id],
         related_cves=["CVE-1999-0513"],
     )
     finding1 = await engine.ingest_observation(obs1)
     assert finding1.status == FindingStatus.OPEN
-    assert finding1.evidence_refs == ["evi-tool1-001"]
+    assert finding1.evidence_refs == [evidence1.id]
+
+    evidence2 = await evidence_store_for_findings.record_evidence(
+        task_id="task-find-01",
+        target_ref="10.0.0.15",
+        source_agent="vulnerability_agent",
+        source_module="vulnerability",
+        source_tool="nuclei",
+        raw_data=b"nuclei telnet confirmation",
+        content_type="text/plain",
+    )
 
     # Observation from Tool 2 (Nuclei) on same asset and issue -> MUST DEDUPLICATE & MERGE
     obs2 = Observation(
@@ -86,13 +109,13 @@ async def test_finding_engine_deduplication_and_lifecycle(tmp_path):
         description="Nuclei telnet banner confirmed open unauthenticated access.",
         severity=SeverityLevel.HIGH,
         confidence=1.0,
-        evidence_refs=["evi-tool2-002"],
+        evidence_refs=[evidence2.id],
         related_cves=["CVE-1999-0513", "CVE-2020-0001"],
     )
     merged_finding = await engine.ingest_observation(obs2)
     assert merged_finding.id == finding1.id
-    assert "evi-tool1-001" in merged_finding.evidence_refs
-    assert "evi-tool2-002" in merged_finding.evidence_refs
+    assert evidence1.id in merged_finding.evidence_refs
+    assert evidence2.id in merged_finding.evidence_refs
     assert "CVE-2020-0001" in merged_finding.related_cves
     assert merged_finding.confidence == 0.95
 
@@ -113,6 +136,19 @@ async def test_risk_engine_contextual_scoring(tmp_path):
     audit = AuditLogger(log_path=str(tmp_path / "audit.jsonl"), signing_key="test-key")
     finding_eng = FindingEngine(audit_logger=audit)
     risk_eng = RiskEngine()
+    evidence_store_for_risk = EvidenceStore(
+        storage=LocalFileSystemStorage(base_dir=str(tmp_path / "risk-artifacts")),
+        audit_logger=audit,
+    )
+    critical_evidence = await evidence_store_for_risk.record_evidence(
+        task_id="task-risk-01",
+        target_ref="api.gateway.corp",
+        source_agent="web_agent",
+        source_module="web",
+        source_tool="fixture",
+        raw_data=b"critical finding evidence",
+        content_type="text/plain",
+    )
 
     obs_critical = Observation(
         task_id="task-risk-01",
@@ -122,7 +158,7 @@ async def test_risk_engine_contextual_scoring(tmp_path):
         description="RCE vulnerability via log4j deserialization.",
         severity=SeverityLevel.CRITICAL,
         confidence=1.0,
-        evidence_refs=["evi-rce-001"],
+        evidence_refs=[critical_evidence.id],
     )
     find_crit = await finding_eng.ingest_observation(obs_critical)
 
@@ -137,6 +173,15 @@ async def test_risk_engine_contextual_scoring(tmp_path):
     assert risk_crit.risk_tier == RiskTier.CRITICAL
 
     # 2. Low-risk scenario: Info severity + Low Asset + Internal Only
+    info_evidence = await evidence_store_for_risk.record_evidence(
+        task_id="task-risk-01",
+        target_ref="internal-printer.corp",
+        source_agent="recon_agent",
+        source_module="recon",
+        source_tool="fixture",
+        raw_data=b"informational server banner",
+        content_type="text/plain",
+    )
     obs_info = Observation(
         task_id="task-risk-01",
         target_ref="internal-printer.corp",
@@ -145,7 +190,7 @@ async def test_risk_engine_contextual_scoring(tmp_path):
         description="Server banner returned nginx version.",
         severity=SeverityLevel.INFO,
         confidence=0.8,
-        evidence_refs=["evi-info-001"],
+        evidence_refs=[info_evidence.id],
     )
     find_info = await finding_eng.ingest_observation(obs_info)
 

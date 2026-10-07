@@ -4,6 +4,9 @@ Provides uniform operator control matching the Task Gateway REST API.
 """
 
 import asyncio
+import os
+from datetime import UTC, datetime, timedelta
+from urllib.parse import quote, urlparse
 
 import httpx
 import typer
@@ -13,9 +16,9 @@ from rich.table import Table
 
 from sentinel.audit.audit_logger import AuditLogger
 from sentinel.config.settings import get_settings
-from sentinel.core.models import TaskMode
+from sentinel.core.models import ImpactLevel, TaskMode
 from sentinel.core.orchestrator.lifecycle import lifecycle_manager
-from sentinel.core.policy.engine import policy_engine
+from sentinel.core.policy.engine import ApprovalRecord, policy_engine
 from sentinel.intelligence.attack_paths.analyzer import attack_path_analyzer
 from sentinel.intelligence.recommendations.engine import recommendation_engine
 from sentinel.intelligence.reporting.generator import ReportType, report_generator
@@ -45,6 +48,48 @@ recon_app = typer.Typer(help="Reconnaissance and Attack Surface intelligence")
 app.add_typer(recon_app, name="recon")
 
 console = Console(legacy_windows=False)
+
+
+def _configured_remote_api_request(
+    method: str,
+    path: str,
+    *,
+    params: dict[str, str] | None = None,
+    timeout: float = 10.0,
+) -> httpx.Response | None:
+    """Call the operator-configured API; return None when remote mode is disabled."""
+    settings = get_settings()
+    api_url = (os.getenv("SENTINEL_API_URL") or settings.api_url).strip().rstrip("/")
+    api_key = (os.getenv("SENTINEL_API_KEY") or settings.api_key.get_secret_value()).strip()
+    if not api_url and not api_key:
+        return None
+    if not api_url or not api_key:
+        console.print("[bold red]Set both SENTINEL_API_URL and SENTINEL_API_KEY for remote API access.[/bold red]")
+        raise typer.Exit(code=1)
+
+    parsed_url = urlparse(api_url)
+    if parsed_url.scheme not in {"http", "https"} or not parsed_url.hostname:
+        console.print("[bold red]SENTINEL_API_URL must be an absolute HTTP(S) URL.[/bold red]")
+        raise typer.Exit(code=1)
+    if parsed_url.scheme != "https" and parsed_url.hostname not in {"localhost", "127.0.0.1", "::1"}:
+        console.print("[bold red]Remote API URLs must use HTTPS (HTTP is allowed only for loopback).[/bold red]")
+        raise typer.Exit(code=1)
+
+    try:
+        with httpx.Client(
+            base_url=api_url,
+            headers={"X-API-Key": api_key},
+            timeout=timeout,
+        ) as client:
+            return client.request(method, path, params=params)
+    except (httpx.HTTPError, ValueError) as err:
+        console.print(f"[bold red]Configured remote API request failed: {err}[/bold red]")
+        raise typer.Exit(code=1) from err
+
+
+def _remote_api_error(response: httpx.Response) -> None:
+    console.print(f"[bold red]Configured remote API rejected the request (HTTP {response.status_code}).[/bold red]")
+    raise typer.Exit(code=1)
 
 
 # ---------------------------------------------------------------------------
@@ -93,7 +138,7 @@ def report(task_id: str):
         console.print(f"[bold red]Task {task_id} not found.[/bold red]")
         raise typer.Exit(code=1)
 
-    findings = finding_engine.list_findings(task_id=task_id)
+    findings = asyncio.run(finding_engine.list_findings_async(task_id=task_id))
     risk_summary = risk_engine.get_task_risk_summary(task_id, findings)
     attack_surface = asset_graph_store.get_task_attack_surface(task_id)
 
@@ -140,8 +185,17 @@ def task_submit(
     target: list[str] = typer.Option(..., "--target", "-t", help="Target value (e.g. domain, IP, CIDR, URL)"),  # noqa: B008
     mode: str = typer.Option("assessment", "--mode", "-m", help="Task mode"),  # noqa: B008
     output_type: str = typer.Option("comprehensive_report", "--output", help="Requested output type"),  # noqa: B008
+    authorization_reference: str = typer.Option(..., "--authorization-reference", help="Written authorization or change-ticket reference"),  # noqa: B008
+    authorized_by: str = typer.Option(..., "--authorized-by", help="Owner/operator who authorized this assessment"),  # noqa: B008
+    window_hours: int = typer.Option(8, "--window-hours", min=1, max=168, help="Authorization window duration in hours"),  # noqa: B008
+    maximum_impact: str = typer.Option("low", "--maximum-impact", help="Maximum authorized impact: low, medium, high, critical"),  # noqa: B008
+    allow_third_party_enrichment: bool = typer.Option(
+        False,
+        "--allow-third-party-enrichment",
+        help="Allow target metadata to be sent to third-party OSINT enrichment services.",
+    ),  # noqa: B008
 ):
-    """Submit a security task into the Sentinel execution engine."""
+    """Submit a task with explicit written authorization and bounded scope."""
     targets_payload = [{"type": _detect_target_type(t), "value": t.strip()} for t in target]
 
     try:
@@ -150,29 +204,81 @@ def task_submit(
         console.print(f"[bold red]Invalid mode: {mode}. Must be one of {[m.value for m in TaskMode]}[/bold red]")
         raise typer.Exit(code=1) from err
 
-    # Check if live Sentinel API server is running on port 8003
     try:
-        with httpx.Client(base_url="https://sentinel-a861.onrender.com", timeout=1.5) as client:
-            resp = client.post("/api/v1/tasks", json={
-                "objective": objective,
-                "targets": targets_payload,
-                "mode": task_mode.value,
-                "requested_output": output_type,
-            })
-            if resp.status_code in (200, 201):
-                data = resp.json()
-                console.print("[bold green][OK] Task submitted to live Sentinel server![/bold green]")
-                console.print(f"[bold]Task ID:[/bold] {data.get('task_id')}")
-                console.print(f"[bold]Status:[/bold] {data.get('status', 'submitted')}")
-                console.print(f"[bold]Correlation ID:[/bold] {data.get('correlation_id', 'N/A')}")
-                return
-    except Exception:
-        pass
+        impact_ceiling = ImpactLevel(maximum_impact.strip().lower())
+    except ValueError as err:
+        choices = ", ".join(level.value for level in ImpactLevel)
+        console.print(f"[bold red]Invalid maximum impact: {maximum_impact}. Choose one of {choices}.[/bold red]")
+        raise typer.Exit(code=1) from err
+
+    now = datetime.now(UTC)
+    scope_data = {
+        "owner": authorized_by.strip(),
+        "written_authorization_reference": authorization_reference.strip(),
+        "allowed_targets": [item["value"] for item in targets_payload],
+        "allowed_methods": ["passive_recon", "discovery", "validation"],
+        "time_window": {
+            "start_time": now.isoformat(),
+            "end_time": (now + timedelta(hours=window_hours)).isoformat(),
+        },
+        "rate_limit": 50,
+        "maximum_impact": impact_ceiling.value,
+        "offensive_actions_enabled": False,
+        "authorization": {
+            "allow_third_party_enrichment": allow_third_party_enrichment,
+        },
+    }
+    if not scope_data["owner"] or not scope_data["written_authorization_reference"]:
+        console.print("[bold red]Owner and written authorization reference must not be empty.[/bold red]")
+        raise typer.Exit(code=1)
+
+    request_payload = {
+        "objective": objective,
+        "targets": targets_payload,
+        "scope": scope_data,
+        "mode": task_mode.value,
+        "requested_output": output_type,
+    }
+
+    # Remote submission is opt-in and uses only an operator-configured endpoint/key.
+    settings = get_settings()
+    api_url = (os.getenv("SENTINEL_API_URL") or settings.api_url).strip().rstrip("/")
+    api_key = (os.getenv("SENTINEL_API_KEY") or settings.api_key.get_secret_value()).strip()
+    if bool(api_url) != bool(api_key):
+        console.print("[bold red]Set both SENTINEL_API_URL and SENTINEL_API_KEY for remote submission.[/bold red]")
+        raise typer.Exit(code=1)
+
+    if api_url and api_key:
+        parsed_url = urlparse(api_url)
+        if parsed_url.scheme != "https" and parsed_url.hostname not in {"localhost", "127.0.0.1", "::1"}:
+            console.print("[bold red]Remote API URLs must use HTTPS (HTTP is allowed only for loopback).[/bold red]")
+            raise typer.Exit(code=1)
+        try:
+            with httpx.Client(
+                base_url=api_url,
+                headers={"X-API-Key": api_key},
+                timeout=10.0,
+            ) as client:
+                response = client.post(f"{settings.api_prefix.rstrip('/')}/tasks", json=request_payload)
+        except (httpx.HTTPError, ValueError) as err:
+            console.print(f"[bold red]Remote task submission failed: {err}[/bold red]")
+            raise typer.Exit(code=1) from err
+
+        if response.status_code not in (200, 201):
+            console.print(f"[bold red]Remote task submission rejected (HTTP {response.status_code}).[/bold red]")
+            raise typer.Exit(code=1)
+        data = response.json()
+        console.print("[bold green][OK] Task submitted to configured Sentinel API.[/bold green]")
+        console.print(f"[bold]Task ID:[/bold] {data.get('task_id')}")
+        console.print(f"[bold]Status:[/bold] {data.get('status', 'submitted')}")
+        console.print(f"[bold]Correlation ID:[/bold] {data.get('correlation_id', 'N/A')}")
+        return
 
     task = asyncio.run(
         lifecycle_manager.create_and_submit_task(
             objective=objective,
             targets=targets_payload,
+            scope_data=scope_data,
             mode=task_mode,
             requested_output_type=output_type,
         )
@@ -184,28 +290,56 @@ def task_submit(
     console.print(f"[bold]Correlation ID:[/bold] {task.correlation_id}")
 
 
+@task_app.command("list")
+def task_list():
+    """List locally or durably stored assessment tasks."""
+    tasks = asyncio.run(lifecycle_manager.list_tasks())
+    if not tasks:
+        console.print("No tasks found.")
+        return
+
+    table = Table(title="Sentinel Tasks")
+    table.add_column("Task ID", style="cyan")
+    table.add_column("Status", style="green")
+    table.add_column("Mode")
+    table.add_column("Progress", justify="right")
+    table.add_column("Objective")
+    for task in tasks:
+        table.add_row(
+            task.id,
+            task.status.value,
+            task.mode.value,
+            f"{task.progress_percentage:.1f}%",
+            task.objective,
+        )
+    console.print(table)
+
+
 @task_app.command("status")
 def task_status(task_id: str):
-    """Check live status and progress of a task."""
-    try:
-        with httpx.Client(base_url="https://sentinel-a861.onrender.com", timeout=1.5) as client:
-            resp = client.get(f"/api/v1/tasks/{task_id}")
-            if resp.status_code == 200:
-                t = resp.json()
-                table = Table(title=f"Live Task Status: {t.get('id')}")
-                table.add_column("Property", style="cyan")
-                table.add_column("Value", style="green")
-                table.add_row("Objective", t.get("objective", ""))
-                table.add_row("Status", str(t.get("status", "")).upper())
-                table.add_row("Progress", f"{t.get('progress_percentage', 0)}%")
-                table.add_row("Mode", str(t.get("mode", "")))
-                table.add_row("Targets", str(len(t.get("target_set", {}).get("targets", []))))
-                table.add_row("Correlation ID", t.get("correlation_id", ""))
-                table.add_row("Created At", str(t.get("created_at", "")))
-                console.print(table)
-                return
-    except Exception:
-        pass
+    """Check status and progress from the configured API or local store."""
+    api_prefix = get_settings().api_prefix.rstrip("/")
+    response = _configured_remote_api_request("GET", f"{api_prefix}/tasks/{quote(task_id, safe='')}")
+    if response is not None:
+        if response.status_code != 200:
+            _remote_api_error(response)
+        try:
+            task_data = response.json()
+        except ValueError as err:
+            console.print("[bold red]Configured remote API returned invalid JSON.[/bold red]")
+            raise typer.Exit(code=1) from err
+        table = Table(title=f"Remote Task Status: {task_data.get('id', task_id)}")
+        table.add_column("Property", style="cyan")
+        table.add_column("Value", style="green")
+        table.add_row("Objective", task_data.get("objective", ""))
+        table.add_row("Status", str(task_data.get("status", "")).upper())
+        table.add_row("Progress", f"{task_data.get('progress_percentage', 0)}%")
+        table.add_row("Mode", str(task_data.get("mode", "")))
+        table.add_row("Targets", str(len(task_data.get("target_set", {}).get("targets", []))))
+        table.add_row("Correlation ID", task_data.get("correlation_id", ""))
+        table.add_row("Created At", str(task_data.get("created_at", "")))
+        console.print(table)
+        return
 
     task = asyncio.run(lifecycle_manager.get_task(task_id))
     if not task:
@@ -232,17 +366,25 @@ def task_cancel(
     task_id: str,
     reason: str = typer.Option("Operator Kill Switch", "--reason", "-r", help="Cancellation rationale"),  # noqa: B008
 ):
-    """Immediately halt/kill a running security task."""
-    try:
-        with httpx.Client(base_url="https://sentinel-a861.onrender.com", timeout=1.5) as client:
-            resp = client.post(f"/api/v1/tasks/{task_id}/cancel?reason={reason}")
-            if resp.status_code == 200:
-                t = resp.json()
-                console.print(f"[bold yellow][HALTED] Task {t.get('id')} execution halted on live server.[/bold yellow]")
-                console.print(f"[bold]Final Status:[/bold] {t.get('status')}")
-                return
-    except Exception:
-        pass
+    """Immediately halt a running task through the configured API or local store."""
+    api_prefix = get_settings().api_prefix.rstrip("/")
+    response = _configured_remote_api_request(
+        "POST",
+        f"{api_prefix}/tasks/{quote(task_id, safe='')}/cancel",
+        params={"reason": reason},
+    )
+    if response is not None:
+        if response.status_code != 200:
+            _remote_api_error(response)
+        try:
+            task_data = response.json()
+        except ValueError as err:
+            console.print("[bold red]Configured remote API returned invalid JSON.[/bold red]")
+            raise typer.Exit(code=1) from err
+        remote_task_id = task_data.get("task_id", task_data.get("id", task_id))
+        console.print(f"[bold yellow][HALTED] Task {remote_task_id} execution halted on configured server.[/bold yellow]")
+        console.print(f"[bold]Final Status:[/bold] {task_data.get('status')}")
+        return
 
     try:
         task = asyncio.run(lifecycle_manager.cancel_task(task_id, reason=reason))
@@ -255,28 +397,40 @@ def task_cancel(
 
 @task_app.command("findings")
 def task_findings(task_id: str):
-    """View findings registered for a task."""
-    try:
-        with httpx.Client(base_url="https://sentinel-a861.onrender.com", timeout=1.5) as client:
-            resp = client.get(f"/api/v1/tasks/{task_id}/findings")
-            if resp.status_code == 200:
-                findings = resp.json().get("findings", [])
-                if not findings:
-                    console.print(f"[bold green]No open vulnerabilities identified for task {task_id}.[/bold green]")
-                    return
-                table = Table(title=f"Findings for Task {task_id}")
-                table.add_column("Finding ID", style="cyan")
-                table.add_column("Severity", style="red")
-                table.add_column("Title", style="yellow")
-                table.add_column("Target", style="magenta")
-                for f in findings:
-                    table.add_row(f.get("id"), str(f.get("severity", "")).upper(), f.get("title", ""), f.get("target_ref", ""))
-                console.print(table)
-                return
-    except Exception:
-        pass
+    """View task findings from the configured API or local store."""
+    api_prefix = get_settings().api_prefix.rstrip("/")
+    response = _configured_remote_api_request(
+        "GET",
+        f"{api_prefix}/tasks/{quote(task_id, safe='')}/findings",
+    )
+    if response is not None:
+        if response.status_code != 200:
+            _remote_api_error(response)
+        try:
+            response_data = response.json()
+            findings = response_data.get("findings", [])
+        except (AttributeError, ValueError) as err:
+            console.print("[bold red]Configured remote API returned an invalid findings response.[/bold red]")
+            raise typer.Exit(code=1) from err
+        if not findings:
+            console.print(f"[bold green]No open vulnerabilities identified for task {task_id}.[/bold green]")
+            return
+        table = Table(title=f"Findings for Task {task_id}")
+        table.add_column("Finding ID", style="cyan")
+        table.add_column("Severity", style="red")
+        table.add_column("Title", style="yellow")
+        table.add_column("Target", style="magenta")
+        for finding in findings:
+            table.add_row(
+                str(finding.get("id", "")),
+                str(finding.get("severity", "")).upper(),
+                str(finding.get("title", "")),
+                str(finding.get("target_ref", "")),
+            )
+        console.print(table)
+        return
 
-    findings = finding_engine.list_findings(task_id=task_id)
+    findings = asyncio.run(finding_engine.list_findings_async(task_id=task_id))
     if not findings:
         console.print(f"[bold green]No open vulnerabilities identified for task {task_id}.[/bold green]")
         return
@@ -300,7 +454,7 @@ def task_findings(task_id: str):
 @findings_app.command("list")
 def findings_list(task_id: str | None = typer.Option(None, "--task", "-t", help="Filter by Task ID")):  # noqa: B008
     """List security findings."""
-    findings = finding_engine.list_findings(task_id=task_id)
+    findings = asyncio.run(finding_engine.list_findings_async(task_id=task_id))
     if not findings:
         console.print("[bold green]No findings recorded for this query.[/bold green]")
         return
@@ -353,7 +507,7 @@ def evidence_export(
     output_file: str | None = typer.Option(None, "--output", "-o", help="Optional output zip file path"),
 ):
     """Export self-contained, hash-verified evidence zip bundle."""
-    findings = finding_engine.list_findings(task_id=task_id)
+    findings = asyncio.run(finding_engine.list_findings_async(task_id=task_id))
     finding_map = {f.id: f.evidence_refs for f in findings}
     zip_bytes = asyncio.run(evidence_store.create_evidence_zip_bundle(task_id=task_id, finding_links=finding_map))
     out_path = output_file or f"evidence-bundle-{task_id}.zip"
@@ -386,7 +540,7 @@ def evidence_verify(
 @approval_app.command("list")
 def approval_list(task_id: str | None = typer.Option(None, "--task", "-t", help="Filter by Task ID")):  # noqa: B008
     """List pending approvals requiring operator intervention."""
-    pending = policy_engine.get_pending_approvals(task_id=task_id)
+    pending = asyncio.run(policy_engine.list_pending_approvals(task_id=task_id))
     if not pending:
         console.print("[bold green]No pending approvals requiring authorization.[/bold green]")
         return
@@ -413,14 +567,17 @@ def approval_decide(
 ):
     """Approve or deny an action approval request."""
     try:
-        record = asyncio.run(
-            policy_engine.decide_approval(
+        async def decide_and_resume() -> ApprovalRecord:
+            decided = await policy_engine.decide_approval(
                 approval_id=approval_id,
                 approve=approve,
                 operator=operator,
                 justification=justification,
             )
-        )
+            await lifecycle_manager.resolve_approval(decided)
+            return decided
+
+        record = asyncio.run(decide_and_resume())
         status_label = "[bold green]APPROVED[/bold green]" if approve else "[bold red]DENIED[/bold red]"
         console.print(f"\nApproval {record.approval_id} has been {status_label}.")
         console.print(f"[bold]Operator:[/bold] {record.approved_by}")
@@ -446,7 +603,7 @@ def generate_report(
         console.print(f"[bold red]Task {task_id} not found.[/bold red]")
         raise typer.Exit(code=1)
 
-    findings = finding_engine.list_findings(task_id=task_id)
+    findings = asyncio.run(finding_engine.list_findings_async(task_id=task_id))
     attack_paths = attack_path_analyzer.analyze_paths(asset_graph_store, findings)
     recommendations = recommendation_engine.generate_recommendations(findings, attack_paths)
 

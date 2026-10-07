@@ -5,6 +5,13 @@ import sys
 
 import pytest
 
+# Runtime components fail closed without an audit HMAC key; this deterministic,
+# test-only value is never used by deployment configuration.
+os.environ.setdefault(
+    "SENTINEL_AUDIT_SIGNING_KEY",
+    "sentinel-pytest-audit-key-not-for-deployment",
+)
+
 if sys.platform == "win32":
     with contextlib.suppress(Exception):
         asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())

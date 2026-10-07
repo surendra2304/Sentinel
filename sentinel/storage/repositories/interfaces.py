@@ -1,6 +1,7 @@
 """Abstract Repository Interfaces for Sentinel Durable Entities."""
 
 from abc import ABC, abstractmethod
+from typing import Any
 
 from sentinel.core.models import (
     Evidence,
@@ -35,6 +36,12 @@ class TaskRepository(ABC):
 
     @abstractmethod
     async def get_active_non_terminal_tasks(self) -> list[Task]: ...
+
+    @abstractmethod
+    async def save_checkpoint(self, task_id: str, payload: dict[str, Any]) -> int: ...
+
+    @abstractmethod
+    async def get_checkpoint(self, task_id: str) -> dict[str, Any] | None: ...
 
 
 class FindingRepository(ABC):

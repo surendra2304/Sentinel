@@ -21,6 +21,7 @@ from httpx import ASGITransport, AsyncClient
 from sentinel.apps.api.main import app
 from sentinel.core.models import SeverityLevel
 from sentinel.intelligence.risk.finding_engine import finding_engine
+from sentinel.storage.evidence.store import evidence_store
 
 
 @pytest.mark.asyncio
@@ -91,9 +92,18 @@ async def test_enhanced_friday_delegation_request_and_blocked_targets():
 async def test_friday_security_posture_and_asset_inventory():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        # Seed test findings
+        # Seed real evidence records and their linked findings.
         from sentinel.intelligence.risk.finding_engine import Observation
 
+        evidence1 = await evidence_store.record_evidence(
+            task_id="task-pos-1",
+            target_ref="git.tradingbot.internal",
+            source_agent="test_agent",
+            source_module="cloud_security",
+            source_tool="fixture",
+            raw_data=b"cloud credential exposure fixture",
+            content_type="text/plain",
+        )
         obs1 = Observation(
             task_id="task-pos-1",
             title="Exposed AWS Root Credential in Git Repository",
@@ -101,10 +111,19 @@ async def test_friday_security_posture_and_asset_inventory():
             severity=SeverityLevel.CRITICAL,
             target_ref="git.tradingbot.internal",
             source_module="cloud_security",
-            evidence_refs=["evi-pos-1"],
+            evidence_refs=[evidence1.id],
         )
         await finding_engine.ingest_observation(obs1)
 
+        evidence2 = await evidence_store.record_evidence(
+            task_id="task-pos-1",
+            target_ref="web.tradingbot.internal",
+            source_agent="test_agent",
+            source_module="web_security",
+            source_tool="fixture",
+            raw_data=b"missing HSTS fixture",
+            content_type="text/plain",
+        )
         obs2 = Observation(
             task_id="task-pos-1",
             title="Missing HSTS Header",
@@ -112,7 +131,7 @@ async def test_friday_security_posture_and_asset_inventory():
             severity=SeverityLevel.MEDIUM,
             target_ref="web.tradingbot.internal",
             source_module="web_security",
-            evidence_refs=["evi-pos-2"],
+            evidence_refs=[evidence2.id],
         )
         await finding_engine.ingest_observation(obs2)
 

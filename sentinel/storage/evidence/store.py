@@ -130,8 +130,9 @@ class EvidenceStore:
             evidence = await self.repo.get_evidence_record(evidence_id)
         if not evidence:
             raise KeyError(f"Evidence '{evidence_id}' not found.")
+        self._evidence_records[evidence_id] = evidence
 
-        raw_bytes = await self.storage.get_artifact(f"{evidence.task_id}/{evidence_id}")
+        raw_bytes = await self.storage.get_artifact(evidence.artifact_storage_key)
         calc_hash = hashlib.sha256(raw_bytes).hexdigest()
         if calc_hash != evidence.sha256_hash:
             raise ValueError(f"Evidence '{evidence_id}' integrity violation: hash mismatch!")
@@ -162,9 +163,27 @@ class EvidenceStore:
             results.append(evi)
         return results
 
+    async def query_evidence_async(
+        self,
+        task_id: str | None = None,
+        target_ref: str | None = None,
+        source_module: str | None = None,
+        source_tool: str | None = None,
+    ) -> list[Evidence]:
+        """Query persistent evidence metadata and hydrate the local cache."""
+        records = await self.repo.list_evidence(task_id=task_id, target_ref=target_ref)
+        filtered = [
+            evidence
+            for evidence in records
+            if (source_module is None or evidence.source_module == source_module)
+            and (source_tool is None or evidence.source_tool == source_tool)
+        ]
+        self._evidence_records.update({evidence.id: evidence for evidence in filtered})
+        return filtered
+
     async def export_evidence_bundle(self, task_id: str, exported_by: str = "operator") -> dict[str, Any]:
         """Produce a self-contained, hash-verified bundle (manifest + artifacts) for auditors."""
-        task_evidence = self.query_evidence(task_id=task_id)
+        task_evidence = await self.query_evidence_async(task_id=task_id)
         manifest_items: list[dict[str, Any]] = []
 
         for evi in task_evidence:
@@ -204,7 +223,7 @@ class EvidenceStore:
 
     async def create_evidence_zip_bundle(self, task_id: str, finding_links: dict[str, list[str]] | None = None) -> bytes:
         """Generate standalone evidence zip containing manifest.json, raw artifacts, and finding link map."""
-        task_evidence = self.query_evidence(task_id=task_id)
+        task_evidence = await self.query_evidence_async(task_id=task_id)
         manifest_items: list[dict[str, Any]] = []
         artifact_files: dict[str, bytes] = {}
 

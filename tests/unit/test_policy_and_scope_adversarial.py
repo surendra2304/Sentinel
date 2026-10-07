@@ -176,7 +176,13 @@ async def test_policy_engine_deny_unknown_action_and_rate_limit_burst():
 async def test_policy_approval_expiration_and_cancellation():
     target = Target(id="t-exp-01", type="host", value="app.corp.local")
     target_set = TargetSet(id="ts-exp-01", name="TS", targets=[target])
-    scope = Scope(id="s-exp-01", name="S", allowed_targets=["app.corp.local"], offensive_actions_enabled=True)
+    scope = Scope(
+        id="s-exp-01",
+        name="S",
+        allowed_targets=["app.corp.local"],
+        maximum_impact=ImpactLevel.HIGH,
+        offensive_actions_enabled=True,
+    )
     policy = Policy(id="p-exp-01", name="P")
 
     task = Task(
@@ -204,6 +210,7 @@ async def test_policy_approval_expiration_and_cancellation():
     # Manually expire the approval
     record = policy_engine._approvals[dec.approval_id]
     record.expires_at = datetime.now(UTC) - timedelta(seconds=10)
+    await policy_engine.approval_repository.save_approval(record)
 
     # Attempting to decide an expired approval must raise ValueError
     with pytest.raises(ValueError, match="expired"):
@@ -295,7 +302,13 @@ async def test_policy_engine_full_branch_coverage():
     assert "rate limit" in d2.reason.lower()
 
     # 3. Deny decide_approval
-    scope_mod = Scope(id="s-m1", name="S Mod", allowed_targets=["target.local"], offensive_actions_enabled=False)
+    scope_mod = Scope(
+        id="s-m1",
+        name="S Mod",
+        allowed_targets=["target.local"],
+        maximum_impact=ImpactLevel.HIGH,
+        offensive_actions_enabled=False,
+    )
     task_mod = Task(id="task-mod", objective="Test", target_set=target_set, scope=scope_mod, policy=policy_allowed_mod, correlation_id="c1")
     appr_act = ActionRequest(id="act-d1", task_id="task-mod", agent="exploit_agent", action_type="web.vuln", target_refs=["target.local"], expected_impact_level=ImpactLevel.HIGH, requires_approval=True)
     d_appr = await policy_engine.evaluate_action(appr_act, task_mod)

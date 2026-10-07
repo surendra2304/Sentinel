@@ -14,7 +14,9 @@ import asyncio
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from sentinel.apps.api import main as api_main
 from sentinel.apps.api.main import app
+from sentinel.config.settings import EnvironmentType
 from sentinel.core.tenancy import tenant_manager
 from sentinel.integrations.intelx_client import intelx_research_client
 from sentinel.intelligence.reporting.compliance import compliance_reporting_service
@@ -73,7 +75,8 @@ def test_compliance_reporting_frameworks():
 
 
 @pytest.mark.asyncio
-async def test_health_readiness_and_prometheus_metrics():
+async def test_health_readiness_and_prometheus_metrics(monkeypatch):
+    monkeypatch.setattr(api_main.settings, "environment", EnvironmentType.PRODUCTION)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         # 1. Liveness
@@ -88,9 +91,9 @@ async def test_health_readiness_and_prometheus_metrics():
         res_ready = await client.get("/ready")
         assert res_ready.status_code == 200
         ready_data = res_ready.json()
-# Readiness must agree with its own reported checks. The suite runs with
-        # SENTINEL_ENVIRONMENT=production and the in-memory backend, so the
-        # durable-audit check genuinely fails: DEGRADED is the truthful answer and
+        # Readiness must agree with its own reported checks. This test explicitly
+        # exercises production posture with the in-memory backend, so the durable-
+        # audit check genuinely fails: DEGRADED is the truthful answer and
         # READY must not be hard-coded past it.
         _checks = ready_data["checks"]
         assert ready_data["status"] == ("READY" if all(_checks.values()) else "DEGRADED")

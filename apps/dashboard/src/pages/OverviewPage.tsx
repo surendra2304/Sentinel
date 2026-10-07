@@ -81,7 +81,7 @@ export const OverviewPage: React.FC = () => {
   }, [loadData, apiKey]);
 
   const tasks = tasksState.data || [];
-  const findings = findingsState.data || [];
+  const findings = useMemo(() => findingsState.data || [], [findingsState.data]);
   const approvals = approvalsState.data || [];
   const protectedStates = [tasksState, findingsState, approvalsState];
   const apiAuthorizationError = protectedStates.some((state) => /returned (401|403)/.test(state.error || ''));
@@ -102,23 +102,24 @@ export const OverviewPage: React.FC = () => {
   const criticalFindings = findings.filter((finding) => finding.severity === 'critical');
   const highFindings = findings.filter((finding) => finding.severity === 'high');
   const selectedTask = tasks.find((task) => task.id === selectedTaskId) || activeTasks[0] || tasks[0];
+  const currentTaskId = selectedTask?.id;
   const riskScoreValue = riskState.data && riskState.data.top_risks.length === 0 && riskState.data.total_findings > 0
     ? 'Not scored'
     : riskState.data?.overall_risk_score ?? '—';
 
   useEffect(() => {
-    if (!selectedTask) {
+    if (!currentTaskId) {
       setRiskState({ data: null, error: null, loading: false });
       return;
     }
     let current = true;
     setRiskState((previous) => ({ ...previous, loading: true, error: null }));
-    fetchConsoleRiskSummary(selectedTask.id).then(
+    fetchConsoleRiskSummary(currentTaskId).then(
       (data) => { if (current) setRiskState({ data, error: null, loading: false }); },
       (error: unknown) => { if (current) setRiskState({ data: null, error: error instanceof Error ? error.message : 'Risk summary is unavailable.', loading: false }); },
     );
     return () => { current = false; };
-  }, [selectedTask?.id, apiKey]);
+  }, [currentTaskId, apiKey]);
   const severityCounts = useMemo(() => [
     { name: 'Critical', color: 'bg-rose-400', count: criticalFindings.length },
     { name: 'High', color: 'bg-orange-300', count: highFindings.length },
@@ -128,20 +129,20 @@ export const OverviewPage: React.FC = () => {
   const maxSeverity = Math.max(1, ...severityCounts.map((item) => item.count));
 
   useEffect(() => {
-    if (!selectedTask) {
+    if (!currentTaskId) {
       setStreamStatus('idle');
       setEvents([]);
       return;
     }
     setEvents([]);
-    const close = createTaskEventStream(selectedTask.id, (event) => {
+    const close = createTaskEventStream(currentTaskId, (event) => {
       setEvents((previous) => [
         { id: `${Date.now()}-${Math.random()}`, name: event.name, detail: getEventText(event.data), timestamp: new Date().toISOString() },
         ...previous,
       ].slice(0, 8));
     }, setStreamStatus);
     return close;
-  }, [selectedTask?.id, apiKey]);
+  }, [currentTaskId, apiKey]);
 
   const saveApiKey = (event: React.FormEvent) => {
     event.preventDefault();
