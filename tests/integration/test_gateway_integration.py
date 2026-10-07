@@ -9,6 +9,7 @@ from sentinel.apps.api import main as api_main
 from sentinel.apps.api.main import app
 from sentinel.apps.cli import main as cli_main
 from sentinel.apps.cli.main import app as cli_app
+from sentinel.config.settings import EnvironmentType
 from sentinel.core.events.bus import InMemoryEventBus
 from sentinel.core.models import (
     Event,
@@ -30,7 +31,8 @@ from sentinel.core.orchestrator.lifecycle import TaskLifecycleManager
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_api_task_gateway_lifecycle():
+async def test_api_task_gateway_lifecycle(monkeypatch):
+    monkeypatch.setattr(api_main.settings, "environment", EnvironmentType.PRODUCTION)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         # 1. Health and Readiness checks
