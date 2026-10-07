@@ -112,6 +112,8 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
+      - name: Upgrade Python bootstrap tools
+        run: python -m pip install --upgrade pip setuptools
       - name: Install pip-audit
         run: pip install pip-audit
       - name: Install project for audit
