@@ -9,7 +9,7 @@
 The complete pytest suite passed with unhandled-thread warnings promoted to errors. The warning-strict coverage run reported:
 
 ```text
-TOTAL                                                      10322   1765    83%
+TOTAL                                                      10322   1747    83%
 ```
 
 FastAPI's test client emitted a Starlette deprecation warning for using `httpx` with `starlette.testclient`. A separate older coverage-instrumented run intermittently emitted a `PytestUnhandledThreadExceptionWarning` from an `aiosqlite` worker (`RuntimeError: Event loop is closed`), attributed by pytest to `test_approval_double_consumption_prevented`. It did not reproduce in the 2026-10-07 warning-strict coverage run. Its source remains unknown; do not declare it fixed.
@@ -26,16 +26,17 @@ FastAPI's test client emitted a Starlette deprecation warning for using `httpx` 
 | `sentinel/core/agents/dfir_agents.py` | 86% |
 | `sentinel/core/agents/endpoint_agent.py` | 83% |
 | `sentinel/core/agents/intel_agents.py` | 93% |
-| `sentinel/core/agents/network_agent.py` | 79% |
+| `sentinel/core/agents/network_agent.py` | 82% |
 | `sentinel/core/agents/recon_agent.py` | 97% |
 | `sentinel/core/agents/security_intelligence_agent.py` | 76% |
 | `sentinel/core/agents/web_agent.py` | 73% |
 | `sentinel/core/orchestrator/coordination.py` | 88% |
 | `sentinel/core/orchestrator/orchestrator.py` | 76% |
-| `sentinel/core/orchestrator/lifecycle.py` | 82% |
+| `sentinel/core/orchestrator/lifecycle.py` | 83% |
 | `sentinel/core/planner/heuristic.py` | 93% |
 | `sentinel/core/memory/working_memory.py` | 90% |
 | `sentinel/core/policy/engine.py` | 90% |
+| `sentinel/core/scope/resolver.py` | 91% |
 | `sentinel/storage/repositories/postgres.py` | 81% |
 
 ## Interpretation and limits
