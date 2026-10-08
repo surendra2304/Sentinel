@@ -3,7 +3,8 @@
 **Updated:** 2026-10-08 (Asia/Calcutta)<br>
 **Branch:** `arena/f082f82e-sentinel`<br>
 **Baseline commit:** `d991a5acbee890211e66539c547fd9e32c328143`<br>
-**State:** Active; verified work is still uncommitted until this checkpoint is committed. Not a completion claim.
+**Latest checkpoint:** `1809ca4` is committed and pushed on this branch.<br>
+**State:** Active; step 6 is in progress. This is not a completion claim.
 
 ## Current step
 
@@ -18,7 +19,7 @@
 5. **[x] Bound scanner port inputs and Python-fallback sockets.** Rejects malformed/empty/out-of-range lists and more than 256 ports, deduplicates repeats, and caps shared Python socket checks at 32 per adapter instance. Red-first tests exposed 9 failures including a 32-vs-3 concurrency breach; targeted suite passed 11 including the loopback adapter test. Full Python suite now passes **352 in 11.66 s**, security suite **123 in 3.14 s**, Ruff, Mypy (165 source files), and all diary checks pass.
 6. **[~] Test/fix another concrete runtime boundary.** Investigate subprocess output buffering/capping (documented in Phase 7/9) using source inspection and local-process-only tests; choose an alternative if the current behavior is already bounded.
 7. **[ ] Final verification/evidence update.** Rerun full pytest, security tests, lint/type/diary checks, report link/line audit, whitespace and `git diff --check`; remove only verified generated outputs; record exact results.
-8. **[ ] Commit and push verified work on this fixed branch only.** Keep all commits on `arena/f082f82e-sentinel`; push only to `origin arena/f082f82e-sentinel` if the configured remote accepts it. Never switch branches. Do not claim production readiness or zero defects.
+8. **[~] Commit and push each verified checkpoint on this fixed branch only.** The initial verified changes are committed as `1809ca4` and pushed; the next verified item will be committed/pushed to `arena/f082f82e-sentinel`. Never switch branches. Do not claim production readiness or zero defects.
 
 ## Latest verification before step 6
 
