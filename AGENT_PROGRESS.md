@@ -3,12 +3,12 @@
 **Updated:** 2026-10-08 (Asia/Calcutta)<br>
 **Branch:** `arena/f082f82e-sentinel`<br>
 **Baseline commit:** `d991a5acbee890211e66539c547fd9e32c328143`<br>
-**Latest checkpoint:** `19002f7` is committed and pushed on this branch.<br>
-**State:** Active; steps 6 and 7 are verified complete, step 8 commit/push is in progress. This is not a completion claim.
+**Latest checkpoint:** `674d270` is committed and pushed on this branch.<br>
+**State:** Steps 6–8 are complete; step 9 is in progress. This is not a completion claim.
 
 ## Current step
 
-**[~] 8 — Commit and push the verified subprocess-boundary item.** Final tests, static checks, Markdown link/line audit, whitespace/diff checks, and generated-output cleanup are complete. Commit only the staged, reviewed changes on `arena/f082f82e-sentinel`, push only to `origin`, then record the resulting checkpoint. No public or unrelated target was used.
+**[~] 9 — Investigate the next concrete resource boundary.** Phase 8 records unbounded EventBus/SSE subscriber queues. Inspect the publisher, API stream and subscriber lifecycle before choosing an overflow policy; do not silently drop terminal task events. If a safe bounded policy cannot be established, select another specific risk from the evidence notes. Use local tests only; no external targets.
 
 ## Checklist
 
@@ -19,7 +19,8 @@
 5. **[x] Bound scanner port inputs and Python-fallback sockets.** Rejects malformed/empty/out-of-range lists and more than 256 ports, deduplicates repeats, and caps shared Python socket checks at 32 per adapter instance. Red-first tests exposed 9 failures including a 32-vs-3 concurrency breach; targeted suite passed 11 including the loopback adapter test. Full Python suite now passes **352 in 11.66 s**, security suite **123 in 3.14 s**, Ruff, Mypy (165 source files), and all diary checks pass.
 6. **[x] Bound output in both subprocess runners.** Replaced unbounded `communicate()` capture with one shared asynchronous reader that retains at most each configured stdout/stderr prefix while draining both pipes. Preserved per-stream markers, return shapes, timeout messages, and the standalone truncation flag; cancellation/timeout now reap the local child and signal a dedicated process group on POSIX. Preserved `SafeProcessRunner`’s 1-second POSIX SIGTERM grace before SIGKILL, verified with a SIGTERM-ignoring local child. The 8 MiB-per-stream regression held traced parent allocations to **492,157 bytes**; equivalent old `communicate()` capture peaked at **33,599,049 bytes**. Targeted suite: **13 passed**.
 7. **[x] Final verification/evidence update.** Full pytest **356 passed in 11.86 s**; security suite **125 passed in 3.81 s**; Ruff, Mypy (166 source files), and all 11 diary checks passed. Final report audit checked **191 links / 170 line anchors across 17 files**, with no invalid targets and zero Markdown trailing whitespace; staged `git diff --check` passed. Removed only verified untracked `data/artifacts/` test fixtures; `sentinel.egg-info/` and `logs/audit.jsonl` were absent.
-8. **[~] Commit and push each verified checkpoint on this fixed branch only.** Earlier audit changes are committed/pushed (`1809ca4`, progress checkpoint `19002f7`). This subprocess-boundary item is staged and will be committed/pushed to `arena/f082f82e-sentinel` next. Never switch branches. Do not claim production readiness or zero defects.
+8. **[x] Commit and push the verified subprocess-boundary item.** Commit `674d270` is on `arena/f082f82e-sentinel` and was pushed to `origin`; no other branch was used. Continue recording future verified items with the same fixed-branch rule.
+9. **[~] Investigate unbounded EventBus/SSE queues.** Phase 8 identifies per-subscriber queues without a retention cap. Confirm whether a bounded overflow behavior can preserve terminal task events and client semantics; otherwise select another narrowly evidenced resource risk. Test only locally.
 
 ## Latest verification after step 6 (2026-10-08)
 
