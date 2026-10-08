@@ -1,6 +1,9 @@
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from sentinel.apps.api import main as api_main
 from sentinel.apps.api.main import app
 from sentinel.core.models import (
     Finding,
@@ -18,8 +21,26 @@ from sentinel.integrations.friday.models import (
 )
 
 
+def _explicit_friday_scope(targets: list[str]) -> dict:
+    now = datetime.now(UTC)
+    return {
+        "owner": "test-authorized-owner",
+        "written_authorization_reference": "TEST-CHANGE-REFERENCE",
+        "targets": targets,
+        "allowed_methods": ["discovery", "validation"],
+        "time_window": {
+            "start_time": (now - timedelta(minutes=1)).isoformat(),
+            "end_time": (now + timedelta(hours=1)).isoformat(),
+        },
+        "maximum_impact": "low",
+        "rate_limit": 25,
+        "authorization": {"allow_third_party_enrichment": False},
+    }
+
+
 @pytest.mark.asyncio
-async def test_friday_delegation_lifecycle_end_to_end():
+async def test_friday_delegation_lifecycle_end_to_end(monkeypatch):
+    monkeypatch.setattr(api_main.lifecycle_manager, "_start_task_job", lambda _task_id: None)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         # 1. Delegate Task from FRIDAY
@@ -29,6 +50,7 @@ async def test_friday_delegation_lifecycle_end_to_end():
             "targets": [{"type": "domain", "value": "staging.example.com"}],
             "mode": "authorized_assessment",
             "requested_output": "technical_and_executive",
+            "scope": _explicit_friday_scope(["staging.example.com"]),
             "policy_context": {
                 "environment": "staging",
                 "authorization_reference": "FRIDAY-TEST-001",
@@ -102,7 +124,8 @@ def test_friday_deterministic_summarizer():
 
 
 @pytest.mark.asyncio
-async def test_friday_delegation_blocked_out_of_scope_target():
+async def test_friday_delegation_blocked_out_of_scope_target(monkeypatch):
+    monkeypatch.setattr(api_main.lifecycle_manager, "_start_task_job", lambda _task_id: None)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         # Submit delegation with allowed and out-of-scope targets
@@ -115,6 +138,7 @@ async def test_friday_delegation_blocked_out_of_scope_target():
             ],
             "mode": "authorized_assessment",
             "requested_output": "summary",
+            "scope": _explicit_friday_scope(["allowed.sentinel.security"]),
             "policy_context": {
                 "environment": "staging",
                 "authorization_reference": "CHG-FRIDAY-002",

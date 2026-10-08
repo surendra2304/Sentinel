@@ -182,6 +182,71 @@ async def test_lifecycle_preserves_terminal_orchestrator_status_and_generates_re
 
 
 @pytest.mark.asyncio
+async def test_lifecycle_report_generation_failure_does_not_claim_task_completion(monkeypatch):
+    from importlib import import_module
+
+    from sentinel.intelligence.reporting.generator import report_generator
+
+    now = datetime.now(UTC)
+    task = Task(
+        id="task-lifecycle-report-failure",
+        objective="Local report failure regression",
+        target_set=TargetSet(
+            id="lifecycle-report-failure-target-set",
+            name="loopback target",
+            targets=[Target(id="lifecycle-report-failure-target", type="ip", value="127.0.0.1")],
+        ),
+        scope=Scope(
+            id="lifecycle-report-failure-scope",
+            name="loopback scope",
+            owner="lifecycle-test-operator",
+            written_authorization_reference="CHG-LIFECYCLE-REPORT-FAIL-1001",
+            allowed_targets=["127.0.0.1"],
+            allowed_methods=["passive_recon"],
+            time_window=TimeWindow(start_time=now - timedelta(minutes=1), end_time=now + timedelta(hours=1)),
+        ),
+        policy=Policy(id="lifecycle-report-failure-policy", name="local policy"),
+        mode=TaskMode.PASSIVE_RECON,
+        status=TaskStatus.SUBMITTED,
+        correlation_id="corr-lifecycle-report-failure",
+    )
+    manager = TaskLifecycleManager()
+    await manager.repo.create_task(task)
+
+    class CompletedOrchestrator:
+        async def run_task(self, received_task, max_iterations):
+            received_task.status = TaskStatus.COMPLETED
+            received_task.progress_percentage = 100.0
+            received_task.completed_at = datetime.now(UTC)
+            return received_task
+
+    monkeypatch.setattr(
+        import_module("sentinel.core.orchestrator.orchestrator"),
+        "AutonomousOrchestrator",
+        CompletedOrchestrator,
+    )
+
+    def fail_report(*args, **kwargs):
+        raise OSError("local report store is unavailable")
+
+    monkeypatch.setattr(report_generator, "generate_report", fail_report)
+
+    await manager._execute_task_pipeline(task.id)
+
+    persisted = await manager.repo.get_task(task.id)
+    assert persisted is not None
+    assert persisted.status == TaskStatus.FAILED
+    assert manager.audit_logger.verify_integrity()
+    with open(manager.audit_logger.log_path, encoding="utf-8") as audit_file:
+        audit_entries = [json.loads(line) for line in audit_file if line.strip()]
+    assert any(
+        entry["event_type"] == "TASK_FAILED"
+        and "report generation failed" in entry["details"]["error"].lower()
+        for entry in audit_entries
+    )
+
+
+@pytest.mark.asyncio
 async def test_task_lifecycle_cancellation_and_transitions():
     mgr = TaskLifecycleManager()
     now = datetime.now(UTC)

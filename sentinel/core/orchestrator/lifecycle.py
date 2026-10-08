@@ -249,8 +249,9 @@ class TaskLifecycleManager:
                 task_findings = await finding_engine.list_findings_async(task_id=task.id)
                 try:
                     report_generator.generate_report(task, findings=task_findings, report_type=ReportType.TECHNICAL)
-                except Exception:
+                except Exception as exc:
                     logger.exception("Task report generation failed", extra={"task_id": task.id})
+                    raise RuntimeError("Task report generation failed; task cannot be marked complete.") from exc
 
                 if task.status == TaskStatus.REPORTING:
                     await self._update_status(task, TaskStatus.COMPLETE, 100.0, "Task execution finished successfully.")

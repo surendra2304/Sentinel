@@ -62,7 +62,7 @@ class FridayPolicyContext(BaseModel):
     hard policy boundaries, scope limits, or authorization requirements.
     """
     environment: str = "production"
-    authorization_reference: str = "FRIDAY_DIRECTIVE"
+    authorization_reference: str | None = None
     constraints: dict[str, Any] = Field(default_factory=dict)
     is_advisory: bool = True
 

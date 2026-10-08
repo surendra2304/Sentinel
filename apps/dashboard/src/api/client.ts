@@ -211,23 +211,54 @@ export async function fetchTasks(): Promise<Task[]> {
   }
 }
 
-export async function submitTask(payload: {
+export interface TaskSubmissionScope {
+  owner: string;
+  written_authorization_reference: string;
+  allowed_targets: string[];
+  allowed_methods: string[];
+  time_window: { start_time: string; end_time: string };
+  maximum_impact: string;
+  rate_limit: number;
+  authorization: { allow_third_party_enrichment: boolean };
+}
+
+export interface TaskSubmissionPayload {
   objective: string;
   targets: Array<{ type: string; value: string }>;
   mode: string;
   requested_output?: string;
-}): Promise<unknown> {
-  try {
-    const res = await apiFetch(`${API_BASE}/tasks`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
+  scope: TaskSubmissionScope;
+}
+
+export interface TaskSubmissionResponse {
+  task_id: string;
+  objective: string;
+  mode: string;
+  status: string;
+  progress_percentage: number;
+  correlation_id: string;
+  created_at: string;
+  target_count: number;
+}
+
+export async function submitTask(payload: TaskSubmissionPayload): Promise<TaskSubmissionResponse> {
+  const res = await apiFetch(`${API_BASE}/tasks`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const raw = await res.text().catch(() => '');
+    let detail = raw;
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (isJsonRecord(parsed) && typeof parsed.detail === 'string') detail = parsed.detail;
+    } catch {
+      // Keep the response text for gateways that do not return JSON.
+    }
+    throw new Error(`Sentinel API returned ${res.status}${detail ? `: ${detail.slice(0, 240)}` : ''}`);
   }
+  return await res.json() as TaskSubmissionResponse;
 }
 
 export async function fetchTaskDetail(taskId: string): Promise<Task | null> {

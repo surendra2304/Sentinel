@@ -1,40 +1,131 @@
-﻿{
+{
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "FridayDelegationContract",
   "type": "object",
-  "required": ["capability", "objective", "targets", "mode", "requested_output"],
+  "allOf": [
+    {
+      "anyOf": [
+        { "required": ["scope"] },
+        { "required": ["scope_override"] }
+      ]
+    },
+    {
+      "anyOf": [
+        { "required": ["targets"], "properties": { "targets": { "minItems": 1 } } },
+        { "required": ["target"] }
+      ]
+    }
+  ],
   "properties": {
+    "version": { "type": "string" },
+    "schema_version": { "type": "string" },
+    "friday_request_id": { "type": "string" },
+    "task_id": { "type": ["string", "null"] },
+    "source_agent": { "type": ["string", "null"] },
+    "target_agent": { "type": ["string", "null"] },
+    "action": { "type": ["string", "null"] },
+    "payload": { "type": "object" },
+    "target": {
+      "oneOf": [
+        { "type": "string" },
+        {
+          "type": "object",
+          "required": ["value"],
+          "properties": {
+            "type": { "type": "string", "default": "domain" },
+            "value": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    },
+    "targets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["value"],
+        "properties": {
+          "type": { "type": "string", "default": "domain" },
+          "value": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["passive_recon", "assessment", "authorized_assessment", "active"],
+      "default": "assessment"
+    },
+    "scope": { "$ref": "#/definitions/explicit_scope" },
+    "scope_override": { "$ref": "#/definitions/explicit_scope" },
+    "priority": { "type": "string", "enum": ["normal", "high", "urgent"] },
+    "context": { "type": "object" },
+    "webhook_url": { "type": ["string", "null"], "format": "uri" },
     "capability": {
       "type": "string",
       "enum": ["sentinel.security_assessment", "sentinel.reconnaissance", "sentinel.incident_investigation"]
     },
-    "objective": { "type": "string", "minLength": 5 },
-    "targets": {
-      "type": "array",
-      "minItems": 1,
-      "items": {
-        "type": "object",
-        "required": ["type", "value"],
-        "properties": {
-          "type": { "type": "string" },
-          "value": { "type": "string" }
-        }
-      }
-    },
-    "mode": { "type": "string" },
+    "objective": { "type": "string" },
     "requested_output": {
       "type": "string",
       "enum": ["technical_and_executive", "summary", "detailed_report", "alert", "remediation_plan"]
     },
     "policy_context": {
       "type": "object",
+      "description": "Advisory context only; it cannot supply or override required authorization scope.",
       "properties": {
         "environment": { "type": "string" },
-        "authorization_reference": { "type": "string" },
-        "constraints": { "type": "object" }
+        "authorization_reference": { "type": ["string", "null"] },
+        "constraints": { "type": "object" },
+        "is_advisory": { "type": "boolean", "default": true }
       }
     },
-    "time_budget_seconds": { "type": "integer", "minimum": 1 },
+    "time_budget_seconds": { "type": ["integer", "null"], "minimum": 1 },
     "resource_constraints": { "type": "object" }
+  },
+  "definitions": {
+    "explicit_scope": {
+      "type": "object",
+      "required": ["owner", "allowed_methods", "time_window", "maximum_impact", "rate_limit"],
+      "allOf": [
+        {
+          "anyOf": [
+            { "required": ["written_authorization_reference"] },
+            {
+              "required": ["authorization"],
+              "properties": { "authorization": { "required": ["reference_ticket_id"] } }
+            }
+          ]
+        },
+        {
+          "anyOf": [
+            { "required": ["targets"] },
+            { "required": ["allowed_targets"] }
+          ]
+        }
+      ],
+      "properties": {
+        "owner": { "type": "string", "minLength": 1 },
+        "written_authorization_reference": { "type": "string", "minLength": 1 },
+        "targets": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "allowed_targets": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "allowed_methods": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "time_window": {
+          "type": "object",
+          "required": ["start_time", "end_time"],
+          "properties": {
+            "start_time": { "type": "string", "format": "date-time" },
+            "end_time": { "type": "string", "format": "date-time" }
+          }
+        },
+        "maximum_impact": { "type": "string", "enum": ["low", "medium", "high", "critical"] },
+        "rate_limit": { "type": "integer", "minimum": 1, "maximum": 1000 },
+        "authorization": {
+          "type": "object",
+          "properties": {
+            "reference_ticket_id": { "type": "string", "minLength": 1 },
+            "allow_third_party_enrichment": { "type": "boolean", "default": false }
+          }
+        }
+      }
+    }
   }
 }

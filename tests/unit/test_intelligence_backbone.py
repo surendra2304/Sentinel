@@ -48,7 +48,9 @@ async def test_evidence_store_integrity_and_chain_of_custody(tmp_path):
     # Export hash-verified bundle
     bundle = await store.export_evidence_bundle(task_id="task-evi-01", exported_by="lead_auditor")
     assert bundle["evidence_count"] == 1
+    assert bundle["bundle_version"] == 2
     assert "bundle_sha256_digest" in bundle
+    assert "bundle_signature" in bundle
     assert bundle["manifest"][0]["sha256_hash"] == evidence.sha256_hash
 
 

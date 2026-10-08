@@ -240,7 +240,13 @@ class PolicyEngine:
                 m in ("*", action.action_type, module_prefix)
                 or (m.endswith(".*") and action.action_type.startswith(m[:-2]))
                 or (m == "passive_recon" and module_prefix in ("recon", "dns", "osint", "cert"))
-                or (m == "discovery" and module_prefix in ("recon", "network", "web", "api", "cloud", "intel"))
+                or (
+                    m == "discovery"
+                    and (
+                        module_prefix in ("recon", "network", "web", "api", "cloud", "intel")
+                        or action.action_type == "http.observe"
+                    )
+                )
                 or (m == "validation" and module_prefix in ("web", "api", "vulnerability", "cloud", "mobile", "network", "endpoint"))
                 for m in allowed_methods
             )
