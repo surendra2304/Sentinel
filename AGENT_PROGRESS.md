@@ -3,12 +3,12 @@
 **Updated:** 2026-10-08 (Asia/Calcutta)<br>
 **Branch:** `arena/f082f82e-sentinel`<br>
 **Baseline commit:** `d991a5acbee890211e66539c547fd9e32c328143`<br>
-**Latest checkpoint:** `1809ca4` is committed and pushed on this branch.<br>
-**State:** Active; step 6 is in progress. This is not a completion claim.
+**Latest checkpoint:** `19002f7` is committed and pushed on this branch.<br>
+**State:** Active; steps 6 and 7 are verified complete, step 8 commit/push is in progress. This is not a completion claim.
 
 ## Current step
 
-**[~] 6 — Close one further demonstrated runtime/resource risk.** Current candidate: stream and cap subprocess output in `SubprocessSandbox` rather than buffering it all before truncation. Preserve timeout/cancellation semantics and verify only with a local child process. If inspection shows an unsafe or broader contract change, select the next bounded issue from the evidence notes without contacting external targets.
+**[~] 8 — Commit and push the verified subprocess-boundary item.** Final tests, static checks, Markdown link/line audit, whitespace/diff checks, and generated-output cleanup are complete. Commit only the staged, reviewed changes on `arena/f082f82e-sentinel`, push only to `origin`, then record the resulting checkpoint. No public or unrelated target was used.
 
 ## Checklist
 
@@ -17,19 +17,19 @@
 3. **[x] Implement and verify the pre-existing functional/security follow-up.** The working-tree patch includes explicit FRIDAY scope enforcement, dashboard scope/error flow, narrow `http.observe` policy correction, audit/evidence integrity fixes, cancellation/API fixes, local artifact-key containment, API-to-report loopback acceptance, and a CI security-test job.
 4. **[x] Fix report-failure task status.** A red-first test reproduced `completed` being persisted when report generation threw. The lifecycle now persists `failed` and records `TASK_FAILED`. The unit module passed 10 tests; the prior full suite passed 342.
 5. **[x] Bound scanner port inputs and Python-fallback sockets.** Rejects malformed/empty/out-of-range lists and more than 256 ports, deduplicates repeats, and caps shared Python socket checks at 32 per adapter instance. Red-first tests exposed 9 failures including a 32-vs-3 concurrency breach; targeted suite passed 11 including the loopback adapter test. Full Python suite now passes **352 in 11.66 s**, security suite **123 in 3.14 s**, Ruff, Mypy (165 source files), and all diary checks pass.
-6. **[~] Test/fix another concrete runtime boundary.** Investigate subprocess output buffering/capping (documented in Phase 7/9) using source inspection and local-process-only tests; choose an alternative if the current behavior is already bounded.
-7. **[ ] Final verification/evidence update.** Rerun full pytest, security tests, lint/type/diary checks, report link/line audit, whitespace and `git diff --check`; remove only verified generated outputs; record exact results.
-8. **[~] Commit and push each verified checkpoint on this fixed branch only.** The initial verified changes are committed as `1809ca4` and pushed; the next verified item will be committed/pushed to `arena/f082f82e-sentinel`. Never switch branches. Do not claim production readiness or zero defects.
+6. **[x] Bound output in both subprocess runners.** Replaced unbounded `communicate()` capture with one shared asynchronous reader that retains at most each configured stdout/stderr prefix while draining both pipes. Preserved per-stream markers, return shapes, timeout messages, and the standalone truncation flag; cancellation/timeout now reap the local child and signal a dedicated process group on POSIX. Preserved `SafeProcessRunner`’s 1-second POSIX SIGTERM grace before SIGKILL, verified with a SIGTERM-ignoring local child. The 8 MiB-per-stream regression held traced parent allocations to **492,157 bytes**; equivalent old `communicate()` capture peaked at **33,599,049 bytes**. Targeted suite: **13 passed**.
+7. **[x] Final verification/evidence update.** Full pytest **356 passed in 11.86 s**; security suite **125 passed in 3.81 s**; Ruff, Mypy (166 source files), and all 11 diary checks passed. Final report audit checked **191 links / 170 line anchors across 17 files**, with no invalid targets and zero Markdown trailing whitespace; staged `git diff --check` passed. Removed only verified untracked `data/artifacts/` test fixtures; `sentinel.egg-info/` and `logs/audit.jsonl` were absent.
+8. **[~] Commit and push each verified checkpoint on this fixed branch only.** Earlier audit changes are committed/pushed (`1809ca4`, progress checkpoint `19002f7`). This subprocess-boundary item is staged and will be committed/pushed to `arena/f082f82e-sentinel` next. Never switch branches. Do not claim production readiness or zero defects.
 
-## Latest verification before step 6
+## Latest verification after step 6 (2026-10-08)
 
-- Python: **352 passed in 11.66 s**, one non-failing Starlette/httpx deprecation warning.
-- Security: **123 passed in 3.14 s**, same non-failing warning.
-- Ruff passed; Mypy passed on 165 source files; all 11 diary checks passed.
-- Dashboard: lint passed, **14 tests** passed, production build passed in the previous verification pass; dashboard source was unchanged in the scanner pass.
-- Red-first scanner tests: 10 new cases pass; direct fake-connection concurrency harness performs no network I/O; local adapter test remained on loopback.
-- Markdown: **185** local links / **166** line anchors across 17 report/note files; no missing paths or out-of-range anchors; trailing-whitespace check passed.
-- `git diff --check` passed after the final report/note edit; test-generated `data/artifacts/` and pip-generated `sentinel.egg-info/` were removed.
+- Full local Python suite: **356 passed in 11.86 s**, one non-failing Starlette/httpx deprecation warning; no thread-exception warnings.
+- CI-equivalent security suite: **125 passed in 3.81 s**, same warning.
+- Ruff passed repository-wide; typed-definition Mypy passed on **166 source files**; all 11 diary checks passed.
+- Targeted sandbox/execution/process-runner tests: **13 passed**. They cover both output markers, exact-cap behavior, zero-timeout mapping, timeout escalation, injection-safe argv, and local cancellation cleanup.
+- Memory regression: child emitted 8 MiB on each stream; new sandbox retained 4 KiB per stream plus markers with **492,157 bytes** traced parent peak. An old-style local `Popen.communicate()` harness returned 16 MiB and peaked at **33,599,049 bytes**.
+- Dashboard lint, **14 tests**, and production build passed in the previous verification pass; dashboard source has not changed.
+- Final Markdown audit: **191** local links / **170** line anchors across 17 report/note files; zero invalid references and zero trailing whitespace. `git diff --cached --check` passed; verified generated task artifacts were removed.
 
 ## Boundaries / remaining unknowns
 
