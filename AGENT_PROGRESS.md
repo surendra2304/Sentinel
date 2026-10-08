@@ -8,7 +8,7 @@
 
 ## Current step
 
-**[~] 9 — Investigate the next concrete resource boundary.** Phase 8 records unbounded EventBus/SSE subscriber queues. Inspect the publisher, API stream and subscriber lifecycle before choosing an overflow policy; do not silently drop terminal task events. If a safe bounded policy cannot be established, select another specific risk from the evidence notes. Use local tests only; no external targets.
+**[~] 9 — Bound task-event SSE queues without stalling publishers.** Source inspection confirms `InMemoryEventBus.publish` awaits `put()` into unbounded per-correlation queues; both task and FRIDAY streams consume those queues and unregister in `finally`. The global 10,000-event history is not replayed by either route. Candidate policy: cap each queue, emit an explicit overflow signal when old live updates must be discarded, preserve a terminal task event under overflow, and test both stream mappings plus cleanup. Do not silently lose terminal events; all tests local.
 
 ## Checklist
 
@@ -20,7 +20,7 @@
 6. **[x] Bound output in both subprocess runners.** Replaced unbounded `communicate()` capture with one shared asynchronous reader that retains at most each configured stdout/stderr prefix while draining both pipes. Preserved per-stream markers, return shapes, timeout messages, and the standalone truncation flag; cancellation/timeout now reap the local child and signal a dedicated process group on POSIX. Preserved `SafeProcessRunner`’s 1-second POSIX SIGTERM grace before SIGKILL, verified with a SIGTERM-ignoring local child. The 8 MiB-per-stream regression held traced parent allocations to **492,157 bytes**; equivalent old `communicate()` capture peaked at **33,599,049 bytes**. Targeted suite: **13 passed**.
 7. **[x] Final verification/evidence update.** Full pytest **356 passed in 11.86 s**; security suite **125 passed in 3.81 s**; Ruff, Mypy (166 source files), and all 11 diary checks passed. Final report audit checked **191 links / 170 line anchors across 17 files**, with no invalid targets and zero Markdown trailing whitespace; staged `git diff --check` passed. Removed only verified untracked `data/artifacts/` test fixtures; `sentinel.egg-info/` and `logs/audit.jsonl` were absent.
 8. **[x] Commit and push the verified subprocess-boundary item.** Commit `674d270` is on `arena/f082f82e-sentinel` and was pushed to `origin`; no other branch was used. Continue recording future verified items with the same fixed-branch rule.
-9. **[~] Investigate unbounded EventBus/SSE queues.** Phase 8 identifies per-subscriber queues without a retention cap. Confirm whether a bounded overflow behavior can preserve terminal task events and client semantics; otherwise select another narrowly evidenced resource risk. Test only locally.
+9. **[~] Bound in-memory task-event queues.** `publish` fills unbounded per-correlation queues; two SSE routes read them and only unregister on generator teardown; event history is capped but is not replayed. Validate a bounded, explicit overflow signal that preserves terminal events and does not block publishers. Add local regression tests for queue size, terminal preservation, SSE mapping, and cleanup.
 
 ## Latest verification after step 6 (2026-10-08)
 
