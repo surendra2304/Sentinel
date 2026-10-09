@@ -26,6 +26,7 @@ class AuditEntry(BaseModel):
     """Immutable record of an authorized security event or action."""
 
     seq: int = 1
+    integrity_version: int = 2
     entry_id: str
     timestamp: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
     event_type: str
@@ -43,7 +44,7 @@ class AuditEntry(BaseModel):
 
 
 class AuditLogger:
-    """Tamper-evident audit logger maintaining a cryptographic SHA-256 hash chain."""
+    """Tamper-evident SHA-256/HMAC audit chain (v2 signs sequence and context metadata)."""
 
     GENESIS = "GENESIS_BLOCK_000000000000000000000000000000000000000000000000000000"
 
@@ -102,16 +103,10 @@ class AuditLogger:
                     data = json.loads(line)
                     if data.get("previous_hash") != last_hash and self.fail_closed:
                         raise AuditIntegrityError(f"Audit chain discontinuity at seq {seq}")
-                    raw_payload = {
-                        "entry_id": data["entry_id"],
-                        "event_type": data["event_type"],
-                        "actor": data["actor"],
-                        "target": data.get("target"),
-                        "action_type": data.get("action_type", "SYSTEM"),
-                        "scope_policy": data.get("scope_policy", "DEFAULT"),
-                        "decision": data.get("decision", "ALLOWED"),
-                        "details": data.get("details", {}),
-                    }
+                    version = int(data.get("integrity_version", 1))
+                    if version == 2 and data.get("seq") != seq:
+                        raise AuditIntegrityError(f"Audit sequence discontinuity at seq {seq}")
+                    raw_payload = self._payload_from_entry_data(data)
                     expected_hash = self._calculate_hash(raw_payload, last_hash)
                     if expected_hash != data.get("current_hash") and self.fail_closed:
                         raise AuditIntegrityError(f"Audit hash mismatch at seq {seq}")
@@ -129,6 +124,40 @@ class AuditLogger:
     def _calculate_hash(self, payload: dict[str, Any], prev_hash: str) -> str:
         serialized = json.dumps(payload, sort_keys=True) + prev_hash
         return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _payload_from_entry_data(data: dict[str, Any]) -> dict[str, Any]:
+        """Return the canonical signed payload, retaining v1 ledger compatibility."""
+        version = int(data.get("integrity_version", 1))
+        if version == 1:
+            # Legacy entries did not sign sequence, timestamp, tenant or action ID.
+            return {
+                "entry_id": data["entry_id"],
+                "event_type": data["event_type"],
+                "actor": data["actor"],
+                "target": data.get("target"),
+                "action_type": data.get("action_type", "SYSTEM"),
+                "scope_policy": data.get("scope_policy", "DEFAULT"),
+                "decision": data.get("decision", "ALLOWED"),
+                "details": data.get("details", {}),
+            }
+        if version != 2:
+            raise AuditIntegrityError(f"Unsupported audit integrity version: {version}")
+        return {
+            "integrity_version": version,
+            "seq": data["seq"],
+            "entry_id": data["entry_id"],
+            "timestamp": data["timestamp"],
+            "event_type": data["event_type"],
+            "actor": data["actor"],
+            "tenant_id": data["tenant_id"],
+            "action_id": data.get("action_id"),
+            "target": data.get("target"),
+            "action_type": data.get("action_type", "SYSTEM"),
+            "scope_policy": data.get("scope_policy", "DEFAULT"),
+            "decision": data.get("decision", "ALLOWED"),
+            "details": data.get("details", {}),
+        }
 
     def _sign_hash(self, hash_str: str) -> str:
         return hmac.new(self.signing_key, hash_str.encode("utf-8"), hashlib.sha256).hexdigest()
@@ -177,23 +206,32 @@ class AuditLogger:
                         lines = [line.strip() for line in f if line.strip()]
                         if lines:
                             last_data = json.loads(lines[-1])
-                            self._seq = last_data.get("seq", len(lines))
+                            # Sequence numbers are physical ledger positions; do not
+                            # trust an unverified JSON field when continuing a chain.
+                            self._seq = len(lines)
                             self._last_hash = last_data.get("current_hash", self._last_hash)
                         else:
                             self._seq = 0
                             self._last_hash = self.GENESIS
-                except Exception:
-                    pass
+                except Exception as exc:
+                    if self.fail_closed:
+                        raise AuditIntegrityError("Failed to read audit log before append") from exc
             else:
                 self._seq = 0
                 self._last_hash = self.GENESIS
 
             self._seq += 1
+            timestamp = datetime.now(UTC).isoformat()
             details = _redact_dict(details or {})
             raw_payload = {
+                "integrity_version": 2,
+                "seq": self._seq,
                 "entry_id": entry_id,
+                "timestamp": timestamp,
                 "event_type": event_type,
                 "actor": actor,
+                "tenant_id": tenant_id,
+                "action_id": action_id,
                 "target": target,
                 "action_type": action_type,
                 "scope_policy": scope_policy,
@@ -207,7 +245,9 @@ class AuditLogger:
 
             entry = AuditEntry(
                 seq=self._seq,
+                integrity_version=2,
                 entry_id=entry_id,
+                timestamp=timestamp,
                 event_type=event_type,
                 actor=actor,
                 tenant_id=tenant_id,
@@ -234,26 +274,21 @@ class AuditLogger:
             return True
 
         prev_hash = self.GENESIS
+        sequence = 0
         try:
             with open(self.log_path, encoding="utf-8") as f:
                 for line in f:
                     if not line.strip():
                         continue
+                    sequence += 1
                     data = json.loads(line)
                     if data.get("previous_hash") != prev_hash:
                         return False
+                    version = int(data.get("integrity_version", 1))
+                    if version == 2 and data.get("seq") != sequence:
+                        return False
 
-                    raw_payload = {
-                        "entry_id": data["entry_id"],
-                        "event_type": data["event_type"],
-                        "actor": data["actor"],
-                        "target": data.get("target"),
-                        "action_type": data.get("action_type", "SYSTEM"),
-                        "scope_policy": data.get("scope_policy", "DEFAULT"),
-                        "decision": data.get("decision", "ALLOWED"),
-                        "details": data.get("details", {}),
-                    }
-
+                    raw_payload = self._payload_from_entry_data(data)
                     expected_hash = self._calculate_hash(raw_payload, prev_hash)
                     if expected_hash != data.get("current_hash"):
                         return False

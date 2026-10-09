@@ -3,6 +3,7 @@
 import hashlib
 import os
 from abc import ABC, abstractmethod
+from pathlib import PureWindowsPath
 from typing import Any
 
 import aiofiles
@@ -45,12 +46,34 @@ class LocalFileSystemStorage(ArtifactStorage):
     """Local filesystem storage implementation with SHA-256 integrity verification."""
 
     def __init__(self, base_dir: str = "data/artifacts"):
-        self.base_dir = base_dir
+        self.base_dir = os.path.realpath(os.path.abspath(base_dir))
         os.makedirs(self.base_dir, exist_ok=True)
 
     def _resolve_path(self, key: str) -> str:
-        clean_key = key.lstrip("/\\")
-        return os.path.join(self.base_dir, clean_key)
+        """Resolve an artifact key without permitting traversal or symlink escapes."""
+        if not isinstance(key, str) or not key or "\x00" in key:
+            raise ValueError("Artifact key must be a non-empty relative path contained in the storage root.")
+
+        # Interpret both slash styles as separators so Windows traversal is also
+        # rejected when this service is running on POSIX (and vice versa).
+        normalized_key = key.replace("\\", "/")
+        if normalized_key.startswith("/") or PureWindowsPath(key).drive:
+            raise ValueError("Artifact key must be a non-empty relative path contained in the storage root.")
+
+        components = normalized_key.split("/")
+        if any(component in {"", ".", ".."} for component in components):
+            raise ValueError("Artifact key must be a non-empty relative path contained in the storage root.")
+
+        root = os.path.realpath(self.base_dir)
+        resolved_path = os.path.realpath(os.path.join(root, *components))
+        try:
+            if os.path.commonpath((root, resolved_path)) != root:
+                raise ValueError
+        except ValueError as exc:
+            raise ValueError(
+                "Artifact key must be a non-empty relative path contained in the storage root."
+            ) from exc
+        return resolved_path
 
     async def store_artifact(
         self,

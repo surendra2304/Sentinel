@@ -15,17 +15,38 @@ Tests:
    - Access control, key scopes, and consumer throttling.
 """
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from sentinel.apps.api import main as api_main
 from sentinel.apps.api.main import app
 from sentinel.core.models import SeverityLevel
 from sentinel.intelligence.risk.finding_engine import finding_engine
 from sentinel.storage.evidence.store import evidence_store
 
 
+def _explicit_friday_scope(targets: list[str]) -> dict:
+    now = datetime.now(UTC)
+    return {
+        "owner": "test-authorized-owner",
+        "written_authorization_reference": "TEST-CHANGE-REFERENCE",
+        "allowed_targets": targets,
+        "allowed_methods": ["discovery", "validation"],
+        "time_window": {
+            "start_time": (now - timedelta(minutes=1)).isoformat(),
+            "end_time": (now + timedelta(hours=1)).isoformat(),
+        },
+        "maximum_impact": "low",
+        "rate_limit": 25,
+        "authorization": {"allow_third_party_enrichment": False},
+    }
+
+
 @pytest.mark.asyncio
-async def test_enhanced_friday_delegation_request_and_blocked_targets():
+async def test_enhanced_friday_delegation_request_and_blocked_targets(monkeypatch):
+    monkeypatch.setattr(api_main.lifecycle_manager, "_start_task_job", lambda _task_id: None)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         # 1. Enhanced Delegation Request with full context, priority, and scope override
@@ -40,9 +61,7 @@ async def test_enhanced_friday_delegation_request_and_blocked_targets():
                 "related_incident_id": "INC-8812",
             },
             "webhook_url": "https://nexus.internal/webhooks/sentinel",
-            "scope_override": {
-                "allowed_targets": ["portal.nexus.internal"]
-            },
+            "scope_override": _explicit_friday_scope(["portal.nexus.internal"]),
             "objective": "Triage suspected authentication bypass",
         }
 
@@ -68,9 +87,7 @@ async def test_enhanced_friday_delegation_request_and_blocked_targets():
                 {"type": "domain", "value": "allowed.forge.internal"},
                 {"type": "ip", "value": "198.51.100.99"},
             ],
-            "scope_override": {
-                "allowed_targets": ["allowed.forge.internal"]
-            },
+            "scope_override": _explicit_friday_scope(["allowed.forge.internal"]),
             "context": {
                 "source_system": "forge",
             },

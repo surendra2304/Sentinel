@@ -129,6 +129,41 @@ async def test_policy_denies_expired_scope_and_impact_above_ceiling(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_discovery_scope_allows_http_observation_but_passive_mode_still_denies_it(tmp_path):
+    now = datetime.now(UTC)
+    target_url = "http://127.0.0.1:8000"
+    scope = Scope(
+        id="http-discovery",
+        name="HTTP discovery",
+        allowed_targets=[target_url, "127.0.0.1"],
+        allowed_methods=["discovery"],
+        time_window=TimeWindow(start_time=now - timedelta(minutes=1), end_time=now + timedelta(minutes=5)),
+        maximum_impact=ImpactLevel.LOW,
+    )
+    engine = PolicyEngine(
+        audit_logger=AuditLogger(str(tmp_path / "http-discovery.jsonl"), signing_key="http-discovery-test-key")
+    )
+    active_task = _make_policy_task(scope)
+    action = ActionRequest(
+        id="http-observe-discovery",
+        task_id=active_task.id,
+        agent="web_security_agent",
+        action_type="http.observe",
+        target_refs=[target_url],
+        expected_impact_level=ImpactLevel.LOW,
+    )
+
+    decision = await engine.evaluate_action(action, active_task)
+    assert decision.decision == PolicyDecisionType.ALLOW
+
+    passive_task = _make_policy_task(scope, mode=TaskMode.PASSIVE_RECON)
+    passive_action = action.model_copy(update={"task_id": passive_task.id})
+    passive_decision = await engine.evaluate_action(passive_action, passive_task)
+    assert passive_decision.decision == PolicyDecisionType.DENY
+    assert "not permitted in passive reconnaissance mode" in passive_decision.reason.lower()
+
+
+@pytest.mark.asyncio
 async def test_passive_mode_only_allows_explicit_passive_actions(tmp_path):
     now = datetime.now(UTC)
     scope = Scope(

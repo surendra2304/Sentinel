@@ -8,9 +8,12 @@ Verifies:
 5. Concurrency limits via semaphore gating.
 """
 
+import asyncio
 import sys
+import tracemalloc
 from unittest.mock import AsyncMock
 
+import psutil
 import pytest
 
 from sentinel.core.models import (
@@ -38,6 +41,10 @@ async def test_sandbox_timeout_kill():
     with pytest.raises(SandboxExecutionError, match="timed out"):
         await sandbox.execute_command(cmd, timeout=0.5)
 
+    short_cmd = [sys.executable, "-c", "import time; time.sleep(0.1)"]
+    with pytest.raises(SandboxExecutionError, match="timed out"):
+        await sandbox.execute_command(short_cmd, timeout=0)
+
 
 @pytest.mark.asyncio
 async def test_sandbox_output_size_cap():
@@ -50,9 +57,79 @@ async def test_sandbox_output_size_cap():
     assert len(stdout) < 2000
     assert b"[OUTPUT TRUNCATED: MAX SIZE REACHED]" in stdout
 
+    exact_cmd = [sys.executable, "-c", "import sys; sys.stdout.write('B' * 1000)"]
+    _, exact_stdout, _ = await sandbox.execute_command(exact_cmd)
+    assert exact_stdout == b"B" * 1000
+
+
+@pytest.mark.asyncio
+async def test_sandbox_drains_large_streams_with_bounded_memory():
+    cap = 4 * 1024
+    sandbox = SubprocessSandbox(max_output_bytes=cap)
+    script = """\
+import os
+chunk = b'x' * 65536
+for fd in (1, 2):
+    for _ in range(128):
+        remaining = memoryview(chunk)
+        while remaining:
+            written = os.write(fd, remaining)
+            remaining = remaining[written:]
+"""
+
+    tracing_before = tracemalloc.is_tracing()
+    if not tracing_before:
+        tracemalloc.start()
+    else:
+        tracemalloc.reset_peak()
+    try:
+        code, stdout, stderr = await sandbox.execute_command([sys.executable, "-c", script])
+        _, peak_bytes = tracemalloc.get_traced_memory()
+    finally:
+        if not tracing_before:
+            tracemalloc.stop()
+
+    assert code == 0
+    assert len(stdout) == cap + len(bytes((10,)) + b"[OUTPUT TRUNCATED: MAX SIZE REACHED]")
+    assert len(stderr) == cap + len(bytes((10,)) + b"[STDERR TRUNCATED: MAX SIZE REACHED]")
+    # The child emits 8 MiB to each stream; retaining those full streams would
+    # exceed this parent-process allocation ceiling by a wide margin.
+    assert peak_bytes < 4 * 1024 * 1024
+
+
+@pytest.mark.asyncio
+async def test_sandbox_cancellation_kills_and_reaps_child(tmp_path):
+    pid_file = tmp_path / "child.pid"
+    script = """\
+import os
+import time
+with open('child.pid', 'w', encoding='ascii') as pid_file:
+    pid_file.write(str(os.getpid()))
+time.sleep(30)
+"""
+    sandbox = SubprocessSandbox()
+    execution = asyncio.create_task(
+        sandbox.execute_command([sys.executable, "-c", script], working_dir=str(tmp_path))
+    )
+
+    for _ in range(200):
+        if pid_file.exists():
+            break
+        await asyncio.sleep(0.01)
+    assert pid_file.exists(), "local child did not start"
+    pid = int(pid_file.read_text(encoding="ascii"))
+    assert psutil.pid_exists(pid)
+
+    execution.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await execution
+
+    assert not psutil.pid_exists(pid)
+
 
 @pytest.mark.asyncio
 async def test_sandbox_injection_safety():
+
     sandbox = SubprocessSandbox()
     # Malicious parameter containing shell metacharacters: semicolon, pipe, ampersand, backticks
     malicious_arg = "; echo INJECTED_1 | dir & whoami `calc.exe`"

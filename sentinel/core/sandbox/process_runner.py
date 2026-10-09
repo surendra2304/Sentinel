@@ -1,17 +1,13 @@
-"""Sentinel Hardened Process Runner.
+"""Sentinel hardened process runner.
 
-Executes explicit argv without shell, sets up isolated process groups,
-strips host environment secrets, bounds output streams, and enforces timeout escalation.
+Executes explicit argv, bounds retained output, and enforces timeout cleanup.
 """
 
 from __future__ import annotations
 
-import asyncio
-import contextlib
-import os
-import signal
-import sys
 from dataclasses import dataclass
+
+from sentinel.core.sandbox.bounded_process import run_bounded_process
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,7 +21,7 @@ class ProcessExecutionError(RuntimeError):
 
 
 class SafeProcessRunner:
-    """Runs argv without a shell and terminates the entire process group on timeout."""
+    """Runs argv without a shell and terminates the process group on timeout."""
 
     def __init__(self, limits: ProcessLimits | None = None):
         self.limits = limits or ProcessLimits()
@@ -36,55 +32,31 @@ class SafeProcessRunner:
         if not argv:
             raise ProcessExecutionError("empty argv")
 
-        if sys.platform != "win32":
-            proc = await asyncio.create_subprocess_exec(
-                *argv,
-                cwd=cwd,
-                env=env,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                start_new_session=True,
-            )
-        else:
-            proc = await asyncio.create_subprocess_exec(
-                *argv,
-                cwd=cwd,
-                env=env,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-
         try:
-            out, err = await asyncio.wait_for(
-                proc.communicate(), timeout=self.limits.timeout_seconds
+            returncode, stdout, stderr, stdout_truncated, stderr_truncated = (
+                await run_bounded_process(
+                    argv,
+                    cwd=cwd,
+                    env=env,
+                    timeout_seconds=self.limits.timeout_seconds,
+                    max_output_bytes=self.limits.max_output_bytes,
+                    termination_grace_seconds=1.0,
+                )
             )
         except TimeoutError as exc:
-            killpg_fn = getattr(os, "killpg", None)
-            sigterm_val = getattr(signal, "SIGTERM", 15)
-            sigkill_val = getattr(signal, "SIGKILL", 9)
-            if killpg_fn is not None:
-                with contextlib.suppress(Exception):
-                    killpg_fn(proc.pid, sigterm_val)
-                try:
-                    await asyncio.wait_for(proc.wait(), timeout=1.0)
-                except TimeoutError:
-                    with contextlib.suppress(Exception):
-                        killpg_fn(proc.pid, sigkill_val)
-                    await proc.wait()
-            else:
-                with contextlib.suppress(Exception):
-                    proc.kill()
-                await proc.wait()
             raise ProcessExecutionError(
                 f"process timeout after {self.limits.timeout_seconds}s: {argv[0]}"
             ) from exc
 
-        out2, t1 = _truncate(out, self.limits.max_output_bytes)
-        err2, t2 = _truncate(err, self.limits.max_output_bytes)
-        return proc.returncode or 0, out2, err2, (t1 or t2)
+        marker = bytes((10,)) + b"[TRUNCATED]"
+        if stdout_truncated:
+            stdout += marker
+        if stderr_truncated:
+            stderr += marker
 
-
-def _truncate(data: bytes, cap: int) -> tuple[bytes, bool]:
-    if len(data) <= cap:
-        return data, False
-    return data[:cap] + b"\n[TRUNCATED]", True
+        return (
+            returncode,
+            stdout,
+            stderr,
+            stdout_truncated or stderr_truncated,
+        )

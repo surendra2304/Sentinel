@@ -4,6 +4,19 @@ import { fetchConsoleTasks, cancelTask, submitTask } from '../api/client';
 import { Task } from '../types';
 import { StopCircle, RefreshCw, Plus, Play, ShieldAlert, FileText } from 'lucide-react';
 
+export function inferTargetType(value: string): string {
+  const normalized = value.trim();
+  if (/^https?:\/\//i.test(normalized)) return 'url';
+  if (/^(?:\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/.test(normalized)) return 'cidr';
+  if (/^[0-9a-f:]+\/\d{1,3}$/i.test(normalized) && normalized.includes(':')) return 'cidr';
+  if (/^\[[0-9a-f:]+\](?:\/\d{1,3})?$/i.test(normalized)) {
+    return normalized.includes('/') ? 'cidr' : 'ip';
+  }
+  if (/^(?:\d{1,3}\.){3}\d{1,3}$/.test(normalized)) return 'ip';
+  if (/^[0-9a-f:]+$/i.test(normalized) && normalized.includes(':')) return 'ip';
+  return 'domain';
+}
+
 export const TasksPage: React.FC = () => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -13,6 +26,14 @@ export const TasksPage: React.FC = () => {
   const [objective, setObjective] = useState('');
   const [target, setTarget] = useState('');
   const [mode, setMode] = useState('passive_recon');
+  const [scopeOwner, setScopeOwner] = useState('');
+  const [authorizationReference, setAuthorizationReference] = useState('');
+  const [scopeStart, setScopeStart] = useState('');
+  const [scopeEnd, setScopeEnd] = useState('');
+  const [allowedMethods, setAllowedMethods] = useState<string[]>([]);
+  const [maximumImpact, setMaximumImpact] = useState('');
+  const [rateLimit, setRateLimit] = useState('25');
+  const [allowThirdPartyEnrichment, setAllowThirdPartyEnrichment] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -43,21 +64,58 @@ export const TasksPage: React.FC = () => {
 
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitting(true);
-    const targetType = target.match(/^\d+\.\d+\.\d+\.\d+$/) ? 'ip' : 'domain';
-    const result = await submitTask({
-      objective,
-      targets: [{ type: targetType, value: target }],
-      mode,
-      requested_output: 'comprehensive_report',
-    });
-    setSubmitting(false);
-    if (!result) {
-      setError('Sentinel did not accept the task. Check API access, authorization scope, and target format.');
+    setError(null);
+
+    const startMs = new Date(scopeStart).getTime();
+    const endMs = new Date(scopeEnd).getTime();
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || startMs >= endMs) {
+      setError('Enter a valid authorization window with an end time after its start time.');
       return;
     }
-    setShowModal(false);
-    await load();
+    if (allowedMethods.length === 0) {
+      setError('Select at least one explicitly authorized assessment method.');
+      return;
+    }
+    const parsedRateLimit = Number(rateLimit);
+    if (!Number.isInteger(parsedRateLimit) || parsedRateLimit < 1 || parsedRateLimit > 1000) {
+      setError('Rate limit must be an integer between 1 and 1000 requests per minute.');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await submitTask({
+        objective: objective.trim(),
+        targets: [{ type: inferTargetType(target), value: target.trim() }],
+        mode,
+        requested_output: 'comprehensive_report',
+        scope: {
+          owner: scopeOwner.trim(),
+          written_authorization_reference: authorizationReference.trim(),
+          allowed_targets: [target.trim()],
+          allowed_methods: allowedMethods,
+          time_window: {
+            start_time: new Date(startMs).toISOString(),
+            end_time: new Date(endMs).toISOString(),
+          },
+          maximum_impact: maximumImpact,
+          rate_limit: parsedRateLimit,
+          authorization: { allow_third_party_enrichment: allowThirdPartyEnrichment },
+        },
+      });
+      setShowModal(false);
+      await load();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Sentinel could not submit the task.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const toggleAllowedMethod = (method: string) => {
+    setAllowedMethods((current) => current.includes(method)
+      ? current.filter((value) => value !== method)
+      : [...current, method]);
   };
 
   return (
@@ -89,7 +147,7 @@ export const TasksPage: React.FC = () => {
 
       {showModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 max-w-lg w-full shadow-2xl space-y-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 max-w-2xl max-h-[90vh] overflow-y-auto w-full shadow-2xl space-y-4">
             <div className="flex justify-between items-center">
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
                 <Play className="w-5 h-5 text-cyan-400" />
@@ -101,8 +159,9 @@ export const TasksPage: React.FC = () => {
             </div>
             <form onSubmit={handleCreateTask} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Objective</label>
+                <label htmlFor="task-objective" className="block text-xs font-semibold text-slate-300 uppercase mb-1">Objective</label>
                 <input
+                  id="task-objective"
                   type="text"
                   value={objective}
                   onChange={(e) => setObjective(e.target.value)}
@@ -111,8 +170,9 @@ export const TasksPage: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Target (Domain / IP)</label>
+                <label htmlFor="task-target" className="block text-xs font-semibold text-slate-300 uppercase mb-1">Target (Domain / IP / URL / CIDR)</label>
                 <input
+                  id="task-target"
                   type="text"
                   value={target}
                   onChange={(e) => setTarget(e.target.value)}
@@ -121,17 +181,129 @@ export const TasksPage: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Task Mode</label>
+                <label htmlFor="task-mode" className="block text-xs font-semibold text-slate-300 uppercase mb-1">Task Mode</label>
                 <select
+                  id="task-mode"
                   value={mode}
                   onChange={(e) => setMode(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-cyan-500"
                 >
                   <option value="passive_recon">Passive Reconnaissance (Non-intrusive)</option>
-                  <option value="assessment">Security Assessment (Scanning & Discovery)</option>
-                  <option value="authorized_assessment">Full Authorized Assessment (Active Evaluation)</option>
+                  <option value="assessment">Security Assessment (Discovery and observation)</option>
+                  <option value="authorized_assessment">Authorized Assessment</option>
                 </select>
               </div>
+
+              <fieldset className="rounded-lg border border-amber-500/30 bg-amber-500/[0.04] p-4 space-y-3">
+                <legend className="px-2 text-xs font-semibold uppercase text-amber-200">Authorization scope — required</legend>
+                <p className="text-xs text-slate-300">
+                  Only submit targets you are authorized to assess. Sentinel checks the declared scope but does not verify that an external authorization ticket exists.
+                </p>
+                <div>
+                  <label htmlFor="scope-owner" className="block text-xs font-semibold text-slate-300 uppercase mb-1">Authorizing owner</label>
+                  <input
+                    id="scope-owner"
+                    type="text"
+                    value={scopeOwner}
+                    onChange={(e) => setScopeOwner(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-cyan-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label htmlFor="authorization-reference" className="block text-xs font-semibold text-slate-300 uppercase mb-1">Written authorization reference</label>
+                  <input
+                    id="authorization-reference"
+                    type="text"
+                    value={authorizationReference}
+                    onChange={(e) => setAuthorizationReference(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-cyan-500"
+                    required
+                  />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label htmlFor="scope-start" className="block text-xs font-semibold text-slate-300 uppercase mb-1">Authorization starts</label>
+                    <input
+                      id="scope-start"
+                      type="datetime-local"
+                      value={scopeStart}
+                      onChange={(e) => setScopeStart(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-cyan-500"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="scope-end" className="block text-xs font-semibold text-slate-300 uppercase mb-1">Authorization ends</label>
+                    <input
+                      id="scope-end"
+                      type="datetime-local"
+                      value={scopeEnd}
+                      onChange={(e) => setScopeEnd(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-cyan-500"
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label htmlFor="maximum-impact" className="block text-xs font-semibold text-slate-300 uppercase mb-1">Maximum impact</label>
+                    <select
+                      id="maximum-impact"
+                      value={maximumImpact}
+                      onChange={(e) => setMaximumImpact(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-cyan-500"
+                      required
+                    >
+                      <option value="" disabled>Select an impact ceiling</option>
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                      <option value="critical">Critical</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="scope-rate-limit" className="block text-xs font-semibold text-slate-300 uppercase mb-1">Rate limit (requests/minute)</label>
+                    <input
+                      id="scope-rate-limit"
+                      type="number"
+                      min="1"
+                      max="1000"
+                      step="1"
+                      value={rateLimit}
+                      onChange={(e) => setRateLimit(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-cyan-500"
+                      required
+                    />
+                  </div>
+                </div>
+                <fieldset className="space-y-2">
+                  <legend className="block text-xs font-semibold text-slate-300 uppercase">Allowed methods (select explicitly)</legend>
+                  {[
+                    ['passive_recon', 'Passive reconnaissance'],
+                    ['discovery', 'Discovery and service observation'],
+                    ['validation', 'Vulnerability validation'],
+                  ].map(([value, label]) => (
+                    <label key={value} className="flex items-center gap-2 text-sm text-slate-200">
+                      <input
+                        type="checkbox"
+                        checked={allowedMethods.includes(value)}
+                        onChange={() => toggleAllowedMethod(value)}
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </fieldset>
+                <label className="flex items-start gap-2 text-sm text-slate-200">
+                  <input
+                    type="checkbox"
+                    checked={allowThirdPartyEnrichment}
+                    onChange={(e) => setAllowThirdPartyEnrichment(e.target.checked)}
+                  />
+                  <span>Allow third-party enrichment. Leave unchecked unless the authorization explicitly permits sharing target data with external providers.</span>
+                </label>
+              </fieldset>
+
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"

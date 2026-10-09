@@ -15,6 +15,10 @@ from sentinel.core.models import ActionRequest, ActionResult
 from sentinel.core.orchestrator.adapter import ToolAdapter
 from sentinel.core.orchestrator.sandbox import SubprocessSandbox
 
+DEFAULT_SCAN_PORTS = (21, 22, 80, 443, 8080, 8443)
+MAX_PORTS_PER_SCAN = 256
+MAX_CONCURRENT_PORT_CHECKS = 32
+
 
 class NetworkScannerAdapter(ToolAdapter):
     """Network port scan & service discovery adapter with native asyncio fallback."""
@@ -22,6 +26,24 @@ class NetworkScannerAdapter(ToolAdapter):
     def __init__(self):
         self.sandbox = SubprocessSandbox(default_timeout_seconds=30.0)
         self.has_nmap = shutil.which("nmap") is not None
+        self._scan_semaphore = asyncio.Semaphore(MAX_CONCURRENT_PORT_CHECKS)
+
+    @staticmethod
+    def _validated_ports(action: ActionRequest) -> list[int]:
+        raw_ports = action.parameters.get("ports", DEFAULT_SCAN_PORTS)
+        if not isinstance(raw_ports, (list, tuple)):
+            raise ValueError("Scan ports must be a list of integers.")
+        if not raw_ports:
+            raise ValueError("A scan must include at least one port.")
+        if len(raw_ports) > MAX_PORTS_PER_SCAN:
+            raise ValueError(f"A scan may include at most {MAX_PORTS_PER_SCAN} ports.")
+        if any(
+            isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535
+            for port in raw_ports
+        ):
+            raise ValueError("Every scan port must be an integer between 1 and 65535.")
+        # Duplicate input must not cause duplicate network work.
+        return list(dict.fromkeys(raw_ports))
 
     @property
     def name(self) -> str:
@@ -41,12 +63,16 @@ class NetworkScannerAdapter(ToolAdapter):
     def validate_params(self, action: ActionRequest) -> tuple[bool, str | None]:
         if not action.target_refs:
             return False, "Target references cannot be empty for network scanning."
+        try:
+            self._validated_ports(action)
+        except ValueError as exc:
+            return False, str(exc)
         return True, None
 
     async def run(self, action: ActionRequest) -> tuple[ActionResult, bytes, str]:
         start_time = time.time()
         target = action.target_refs[0].strip()
-        ports = action.parameters.get("ports", [21, 22, 80, 443, 8080, 8443])
+        ports = self._validated_ports(action)
 
         # If Nmap is installed and not forced to python fallback, run in sandbox
         if self.has_nmap and not action.parameters.get("force_python_fallback", False):
@@ -72,29 +98,30 @@ class NetworkScannerAdapter(ToolAdapter):
 
         async def check_port(port: int):
             writer = None
-            try:
-                conn = asyncio.open_connection(target_host, port)
-                reader, writer = await asyncio.wait_for(conn, timeout=0.5)
-                results["open_ports"].append(port)
-
-                # Attempt non-blocking banner grab
+            async with self._scan_semaphore:
                 try:
-                    writer.write(b"HEAD / HTTP/1.0\r\n\r\n")
-                    await asyncio.wait_for(writer.drain(), timeout=0.2)
-                    banner_data = await asyncio.wait_for(reader.read(256), timeout=0.2)
-                    if banner_data:
-                        results["banners"][str(port)] = banner_data.decode("latin-1", errors="ignore").strip()
-                except Exception:
-                    pass
-            except Exception:
-                results["closed_ports"].append(port)
-            finally:
-                if writer:
+                    conn = asyncio.open_connection(target_host, port)
+                    reader, writer = await asyncio.wait_for(conn, timeout=0.5)
+                    results["open_ports"].append(port)
+
+                    # Attempt non-blocking banner grab
                     try:
-                        writer.close()
-                        await asyncio.wait_for(writer.wait_closed(), timeout=0.2)
+                        writer.write(b"HEAD / HTTP/1.0\r\n\r\n")
+                        await asyncio.wait_for(writer.drain(), timeout=0.2)
+                        banner_data = await asyncio.wait_for(reader.read(256), timeout=0.2)
+                        if banner_data:
+                            results["banners"][str(port)] = banner_data.decode("latin-1", errors="ignore").strip()
                     except Exception:
                         pass
+                except Exception:
+                    results["closed_ports"].append(port)
+                finally:
+                    if writer:
+                        try:
+                            writer.close()
+                            await asyncio.wait_for(writer.wait_closed(), timeout=0.2)
+                        except Exception:
+                            pass
 
         tasks = [check_port(p) for p in ports]
         await asyncio.gather(*tasks)

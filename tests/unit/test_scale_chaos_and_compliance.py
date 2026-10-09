@@ -10,6 +10,7 @@ Verifies:
 """
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -114,16 +115,32 @@ async def test_health_readiness_and_prometheus_metrics(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_concurrent_load_and_chaos_resilience():
+async def test_concurrent_load_and_chaos_resilience(monkeypatch):
+    monkeypatch.setattr(api_main.lifecycle_manager, "_start_task_job", lambda _task_id: None)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         # 1. Simulate 10 Concurrent Task Delegations
         async def submit_delegation(i: int):
+            target = f"node-{i}.load.corp"
+            now = datetime.now(UTC)
             payload = {
                 "friday_request_id": f"load-req-{i}",
-                "target": {"type": "domain", "value": f"node-{i}.load.corp"},
-                "mode": "authorized_assessment",
-                "objective": f"Stress test load client {i}",
+                "target": {"type": "domain", "value": target},
+                "mode": "passive_recon",
+                "objective": f"Local scope validation stress case {i}",
+                "scope": {
+                    "owner": "load-test-owner",
+                    "written_authorization_reference": f"LOCAL-LOAD-ONLY-{i}",
+                    "targets": [target],
+                    "allowed_methods": ["passive_recon"],
+                    "time_window": {
+                        "start_time": (now - timedelta(minutes=1)).isoformat(),
+                        "end_time": (now + timedelta(minutes=5)).isoformat(),
+                    },
+                    "rate_limit": 5,
+                    "maximum_impact": "low",
+                    "authorization": {"allow_third_party_enrichment": False},
+                },
             }
             return await client.post("/api/v1/friday/delegate", json=payload)
 

@@ -1,7 +1,10 @@
 """Comprehensive tests for PDF Reporting, Evidence Bundle Export & Tamper Verification, Credential Vault, and Approval Attribution."""
 
 import asyncio
+import hashlib
+import io
 import json
+import zipfile
 
 import pytest
 
@@ -148,6 +151,7 @@ async def test_evidence_zip_bundle_export_and_tamper_detection(tmp_path):
     # 1. Clean verification must pass
     result = evidence_store.verify_evidence_zip_bundle(zip_bytes)
     assert result["valid"] is True
+    assert result["signature_verified"] is True
     assert result["task_id"] == task_id
     assert result["verified_records"] == 2
 
@@ -165,6 +169,28 @@ async def test_evidence_zip_bundle_export_and_tamper_detection(tmp_path):
 
     with pytest.raises(ValueError):
         evidence_store.verify_evidence_zip_bundle(bytes(tampered_bytes))
+
+    # 3. Recomputing the public manifest digest must not forge the signed manifest.
+    with zipfile.ZipFile(io.BytesIO(zip_bytes), "r") as source_zip:
+        archive_members = {name: source_zip.read(name) for name in source_zip.namelist()}
+    manifest = json.loads(archive_members["manifest.json"])
+    manifest["task_id"] = "forged-task-id"
+    old_signature = manifest["manifest_signature"]
+    manifest.pop("manifest_sha256")
+    manifest.pop("manifest_signature")
+    new_digest = hashlib.sha256(
+        json.dumps(manifest, indent=2, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+    manifest["manifest_sha256"] = new_digest
+    manifest["manifest_signature"] = old_signature
+    archive_members["manifest.json"] = json.dumps(manifest, indent=2, sort_keys=True).encode("utf-8")
+
+    forged_bundle = io.BytesIO()
+    with zipfile.ZipFile(forged_bundle, "w", zipfile.ZIP_STORED) as forged_zip:
+        for name, contents in archive_members.items():
+            forged_zip.writestr(name, contents)
+    with pytest.raises(ValueError, match="manifest signature"):
+        evidence_store.verify_evidence_zip_bundle(forged_bundle.getvalue())
 
 
 # ---------------------------------------------------------------------------

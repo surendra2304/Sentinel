@@ -5,7 +5,7 @@ import json
 import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager, suppress
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -38,12 +38,10 @@ from sentinel.core.models import (
     Event,
     Finding,
     FindingStatus,
-    ImpactLevel,
-    Scope,
     SeverityLevel,
     Task,
     TaskMode,
-    TimeWindow,
+    TaskStatus,
 )
 from sentinel.core.orchestrator.lifecycle import lifecycle_manager
 from sentinel.core.policy.engine import ApprovalRecord, policy_engine
@@ -376,10 +374,24 @@ async def cancel_task(task_id: str, reason: str = Query("Operator Kill Switch"))
     except KeyError as err:
         raise HTTPException(status_code=404, detail=f"Task {task_id} not found.") from err
 
+    terminal_statuses = {
+        TaskStatus.COMPLETE,
+        TaskStatus.COMPLETED,
+        TaskStatus.BLOCKED,
+        TaskStatus.PARTIALLY_COMPLETED,
+        TaskStatus.FAILED,
+    }
+    if task.status == TaskStatus.CANCELLED:
+        message = f"Task {task_id} is cancelled."
+    elif task.status in terminal_statuses:
+        message = f"Task {task_id} is already terminal ({task.status.value}); no cancellation was performed."
+    else:
+        message = f"Cancellation request for task {task_id} was accepted; current status is {task.status.value}."
+
     return CancelTaskResponse(
         task_id=task.id,
         status=task.status.value,
-        message=f"Task {task_id} execution halted successfully.",
+        message=message,
     )
 
 
@@ -608,71 +620,58 @@ async def friday_delegate(fr: FridayDelegationRequest) -> FridayDelegationRespon
                 "value": getattr(effective_target, "value", str(effective_target)),
             })
 
-    # 2. Strict Scope Construction & Validation (Prompt 5 Rules 3 & 4)
-    # FRIDAY policy_context is strictly advisory and cannot override Sentinel boundaries.
+    # 2. Construct and validate a caller-supplied authorization scope.
+    # FRIDAY context, payload text, and service identity are advisory; none can
+    # manufacture an owner, authorization reference, method, impact, or time window.
     try:
         raw_scope = fr.scope or fr.scope_override
-        if raw_scope:
-            scope_dict = dict(raw_scope) if isinstance(raw_scope, dict) else raw_scope.model_dump()
-            # Normalize defaults for partial scope dictionaries
-            if "owner" not in scope_dict:
-                scope_dict["owner"] = fr.source_agent or (fr.context.source_system if fr.context else None) or "friday"
-            if "written_authorization_reference" not in scope_dict and "authorization" not in scope_dict:
-                scope_dict["written_authorization_reference"] = (
-                    (fr.payload.get("written_authorization_reference") if fr.payload else None)
-                    or (fr.payload.get("authorization_reference") if fr.payload else None)
-                    or fr.policy_context.authorization_reference
-                    or f"FRIDAY-{fr.friday_request_id or 'AUTH'}"
-                )
-            if "time_window" not in scope_dict and "authorization" not in scope_dict:
-                scope_dict["time_window"] = TimeWindow(
-                    start_time=datetime.now(UTC),
-                    end_time=datetime.now(UTC) + timedelta(hours=24),
-                )
-            elif isinstance(scope_dict.get("time_window"), dict):
-                tw_data = scope_dict["time_window"]
-                scope_dict["time_window"] = TimeWindow(
-                    start_time=datetime.fromisoformat(str(tw_data["start_time"]).replace("Z", "+00:00")),
-                    end_time=datetime.fromisoformat(str(tw_data["end_time"]).replace("Z", "+00:00")),
-                )
-            if "allowed_methods" not in scope_dict:
-                scope_dict["allowed_methods"] = ["passive_recon", "discovery", "validation"]
-            if "targets" not in scope_dict and "allowed_targets" in scope_dict:
-                scope_dict["targets"] = scope_dict["allowed_targets"]
-
-            if "targets" in scope_dict and isinstance(scope_dict["targets"], list):
-                assessment_scope = AssessmentScope(**scope_dict)
-            else:
-                scope_model = Scope(**scope_dict)
-                assessment_scope = scope_model.to_assessment_scope()
-        else:
-            if not targets_to_eval:
-                raise MissingScopeError("Scope must specify at least one target in 'targets'.")
-
-            auth_ref = (
-                (fr.payload.get("written_authorization_reference") if fr.payload else None)
-                or (fr.payload.get("authorization_reference") if fr.payload else None)
-                or fr.policy_context.authorization_reference
-                or f"FRIDAY-{fr.friday_request_id or 'AUTH'}"
+        if not raw_scope:
+            raise MissingScopeError(
+                "A complete explicit scope is required; Sentinel will not synthesize authorization from FRIDAY context."
             )
 
-            target_values = [t["value"] for t in targets_to_eval]
-            time_window = TimeWindow(
-                start_time=datetime.now(UTC),
-                end_time=datetime.now(UTC) + timedelta(hours=24),
-            )
-            assessment_scope = AssessmentScope(
-                owner=fr.source_agent or (fr.context.source_system if fr.context else None) or "friday",
-                written_authorization_reference=auth_ref,
-                targets=target_values,
-                excluded_targets=[],
-                allowed_methods=["passive_recon", "discovery", "validation"] if fr.mode != "active" else ["passive_recon", "discovery", "validation", "assessment"],
-                time_window=time_window,
-                rate_limit=int(fr.resource_constraints.get("rate_limit", 50)),
-                maximum_impact=ImpactLevel.LOW,
-            )
+        scope_dict = dict(raw_scope)
+        authorization_data = scope_dict.get("authorization")
+        authorization_data = dict(authorization_data) if isinstance(authorization_data, dict) else {}
+        authorization_reference = (
+            scope_dict.get("written_authorization_reference")
+            or authorization_data.get("reference_ticket_id")
+        )
+        if authorization_reference:
+            scope_dict["written_authorization_reference"] = authorization_reference
 
-        # Validate Scope fail-closed per Prompt 5 Rule 4
+        if "targets" not in scope_dict and isinstance(scope_dict.get("allowed_targets"), list):
+            # Copy only a target allowlist explicitly supplied as part of the scope.
+            scope_dict["targets"] = list(scope_dict["allowed_targets"])
+
+        required_scope_fields = (
+            "owner",
+            "written_authorization_reference",
+            "targets",
+            "allowed_methods",
+            "time_window",
+            "maximum_impact",
+            "rate_limit",
+        )
+        missing_scope_fields = [
+            field_name
+            for field_name in required_scope_fields
+            if field_name not in scope_dict or scope_dict[field_name] is None
+        ]
+        if missing_scope_fields:
+            raise MissingScopeError(
+                "Scope must explicitly include: " + ", ".join(missing_scope_fields) + "."
+            )
+        if not str(scope_dict["owner"]).strip():
+            raise MissingScopeError("Scope owner must be non-empty.")
+        if not str(scope_dict["written_authorization_reference"]).strip():
+            raise MissingScopeError("Written authorization reference must be non-empty.")
+        if not scope_dict["targets"]:
+            raise MissingScopeError("Scope must include at least one authorized target.")
+        if not scope_dict["allowed_methods"]:
+            raise MissingScopeError("Scope must explicitly allow at least one assessment method.")
+
+        assessment_scope = AssessmentScope.model_validate(scope_dict)
         ScopeResolver.validate_scope(assessment_scope)
 
     except ScopeValidationError as e:
@@ -702,11 +701,39 @@ async def friday_delegate(fr: FridayDelegationRequest) -> FridayDelegationRespon
             detail=f"All requested targets are outside authorized scope boundaries: {[b.target for b in blocked_targets]}",
         )
 
-    task_mode = TaskMode.AUTHORIZED_ASSESSMENT if fr.mode in ("authorized_assessment", "active") else TaskMode.PASSIVE_RECON
+    mode_aliases = {"active": TaskMode.AUTHORIZED_ASSESSMENT.value}
+    requested_mode = mode_aliases.get(fr.mode.strip().lower(), fr.mode.strip().lower())
+    supported_friday_modes = {
+        TaskMode.PASSIVE_RECON,
+        TaskMode.ASSESSMENT,
+        TaskMode.AUTHORIZED_ASSESSMENT,
+    }
+    try:
+        task_mode = TaskMode(requested_mode)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported FRIDAY task mode '{fr.mode}'.",
+        ) from e
+    if task_mode not in supported_friday_modes:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported FRIDAY task mode '{fr.mode}'.",
+        )
+
     scope_data = assessment_scope.model_dump()
     scope_data["id"] = f"scope-fri-{int(datetime.now(UTC).timestamp())}"
     scope_data["name"] = f"FRIDAY: {fr.objective[:30]}"
     scope_data["allowed_targets"] = [t["value"] for t in allowed_targets]
+    # AssessmentScope owns the strict required fields; retain only explicitly
+    # supplied enrichment consent from the nested authorization object.
+    scope_data["authorization"] = {
+        **authorization_data,
+        "reference_ticket_id": assessment_scope.written_authorization_reference,
+        "authorized_by": assessment_scope.owner,
+        "expiry": assessment_scope.time_window.end_time,
+        "allow_third_party_enrichment": authorization_data.get("allow_third_party_enrichment") is True,
+    }
 
     task = await lifecycle_manager.create_and_submit_task(
         objective=fr.objective,
@@ -1058,13 +1085,15 @@ class CancelTaskRequest(BaseModel):
     reason: str = "Operator Kill Switch"
 
 
-@app.post(f"{settings.api_prefix}/tasks/{{task_id}}/cancel", tags=["Task Lifecycle"])
 @app.post(f"{settings.api_prefix}/friday/tasks/{{task_id}}/cancel", tags=["FRIDAY Integration"])
 @app.post(f"{settings.api_prefix}/sentinel/tasks/{{task_id}}/cancel", tags=["FRIDAY Integration"])
 async def cancel_task_endpoint(task_id: str, req: CancelTaskRequest | None = None) -> dict[str, Any]:
-    """Immediately halt and cancel a specific Sentinel task."""
+    """Immediately halt and cancel a specific Sentinel task via integration aliases."""
     reason = req.reason if req else "Operator requested cancellation"
-    task = await lifecycle_manager.cancel_task(task_id, reason=reason)
+    try:
+        task = await lifecycle_manager.cancel_task(task_id, reason=reason)
+    except KeyError as err:
+        raise HTTPException(status_code=404, detail=f"Task {task_id!r} not found.") from err
     return {"task_id": task.id, "status": task.status.value, "reason": reason}
 
 

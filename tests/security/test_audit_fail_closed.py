@@ -62,3 +62,75 @@ def test_audit_tampered_record_causes_startup_failure(tmp_path):
 
     with pytest.raises(AuditIntegrityError):
         AuditLogger(str(log_file), signing_key=KEY, fail_closed=True)
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("seq", 99),
+        ("timestamp", "2030-01-01T00:00:00+00:00"),
+        ("tenant_id", "other-tenant"),
+        ("action_id", "other-action"),
+    ],
+)
+def test_audit_v2_signs_sequence_and_context_metadata(tmp_path, field, replacement):
+    log_file = tmp_path / f"audit-{field}.jsonl"
+    logger = AuditLogger(str(log_file), signing_key=KEY)
+    logger.log_event(
+        "e1",
+        "ACTION_RUN",
+        "actor1",
+        "EXEC",
+        "POL1",
+        "SUCCESS",
+        tenant_id="tenant-one",
+        action_id="action-one",
+    )
+    row = json.loads(log_file.read_text(encoding="utf-8"))
+    row[field] = replacement
+    log_file.write_text(json.dumps(row) + "\n", encoding="utf-8")
+
+    assert logger.verify_integrity() is False
+    with pytest.raises(AuditIntegrityError):
+        AuditLogger(str(log_file), signing_key=KEY, fail_closed=True)
+
+
+def test_audit_v1_ledger_can_be_verified_and_extended(tmp_path):
+    log_file = tmp_path / "legacy-audit.jsonl"
+    logger = AuditLogger(str(log_file), signing_key=KEY)
+    legacy_payload = {
+        "entry_id": "legacy-one",
+        "event_type": "TASK_CREATE",
+        "actor": "legacy-actor",
+        "target": None,
+        "action_type": "SYSTEM",
+        "scope_policy": "DEFAULT",
+        "decision": "ALLOWED",
+        "details": {},
+    }
+    legacy_hash = logger._calculate_hash(legacy_payload, AuditLogger.GENESIS)
+    legacy_row = {
+        "seq": 1,
+        "entry_id": "legacy-one",
+        "timestamp": "2025-01-01T00:00:00+00:00",
+        "event_type": "TASK_CREATE",
+        "actor": "legacy-actor",
+        "tenant_id": "default",
+        "action_id": None,
+        "target": None,
+        "action_type": "SYSTEM",
+        "scope_policy": "DEFAULT",
+        "decision": "ALLOWED",
+        "details": {},
+        "previous_hash": AuditLogger.GENESIS,
+        "current_hash": legacy_hash,
+        "signature": logger._sign_hash(legacy_hash),
+    }
+    log_file.write_text(json.dumps(legacy_row) + "\n", encoding="utf-8")
+
+    migrated = AuditLogger(str(log_file), signing_key=KEY)
+    assert migrated.verify_integrity() is True
+    appended = migrated.log_event("next", "ACTION_RUN", "new-actor", "EXEC", "POL1", "SUCCESS")
+    assert appended.seq == 2
+    assert appended.integrity_version == 2
+    assert migrated.verify_integrity() is True
