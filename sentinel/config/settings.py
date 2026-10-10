@@ -64,6 +64,9 @@ class AuditSettings(BaseSettings):
         env_prefix="SENTINEL_AUDIT_",
         env_file=".env",
         env_file_encoding="utf-8",
+        # Ignore unrelated keys in the shared .env file (e.g. SENTINEL_PORT, APP_ENV)
+        # so only SENTINEL_AUDIT_-prefixed values feed audit settings.
+        extra="ignore",
     )
 
     log_file_path: str = "logs/audit.jsonl"

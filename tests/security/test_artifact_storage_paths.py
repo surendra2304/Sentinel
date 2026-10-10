@@ -1,5 +1,7 @@
 """Artifact storage must never let a key escape its configured directory."""
 
+import os
+
 import pytest
 
 from sentinel.storage.artifacts.storage import LocalFileSystemStorage
@@ -34,6 +36,10 @@ async def test_local_artifact_storage_rejects_traversal_and_absolute_keys(tmp_pa
 
 
 @pytest.mark.asyncio
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="Creating directory symlinks on Windows requires developer mode or elevation",
+)
 async def test_local_artifact_storage_rejects_symlink_escape(tmp_path):
     root = tmp_path / "artifacts"
     outside = tmp_path / "outside"
