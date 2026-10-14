@@ -2,11 +2,12 @@
 
 Serves as the authoritative signing and verification gatekeeper for the
 FRIDAY Universe. Enforces tamper-detection, payload canonicalization,
-and cryptographic envelope integrity.
+and cryptographic envelope integrity with threadpool offloading and caching.
 """
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -19,6 +20,8 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+
+from sentinel.core.cache.ttl_lru_cache import TTLLRUCache
 
 
 def canonicalize_payload(payload: Any) -> bytes:
@@ -33,7 +36,7 @@ def canonicalize_payload(payload: Any) -> bytes:
 class CryptoGatekeeper:
     """Cryptographic signing and verification engine supporting HMAC-SHA256 & ECDSA."""
 
-    def __init__(self, hmac_key: str | bytes | None = None):
+    def __init__(self, hmac_key: str | bytes | None = None, cache_size: int = 2000, cache_ttl: float = 300.0):
         raw_key = (
             hmac_key
             or os.environ.get("SENTINEL_AUDIT_HMAC_KEY")
@@ -46,6 +49,10 @@ class CryptoGatekeeper:
             self._hmac_key = raw_key
 
         self._ecdsa_private_key = self._initialize_ecdsa_key()
+        self._verify_cache: TTLLRUCache[str, tuple[bool, str | None]] = TTLLRUCache(
+            maxsize=cache_size,
+            ttl_seconds=cache_ttl,
+        )
 
     def _initialize_ecdsa_key(self) -> ec.EllipticCurvePrivateKey:
         """Initialize or derive an ECDSA SECP256R1 private key."""
@@ -89,7 +96,7 @@ class CryptoGatekeeper:
         key_id: str | None = None,
         caller_id: str = "sentinel",
     ) -> dict[str, Any]:
-        """Sign a payload using HMAC-SHA256 or ECDSA-SHA256."""
+        """Sign a payload using HMAC-SHA256 or ECDSA-SHA256 synchronously."""
         payload_bytes = canonicalize_payload(payload)
         payload_hash = hashlib.sha256(payload_bytes).hexdigest()
         now = datetime.now(UTC).isoformat()
@@ -119,6 +126,16 @@ class CryptoGatekeeper:
             "key_id": key_id or "default",
         }
 
+    async def sign_async(
+        self,
+        payload: Any,
+        algorithm: str = "HMAC-SHA256",
+        key_id: str | None = None,
+        caller_id: str = "sentinel",
+    ) -> dict[str, Any]:
+        """Offload CPU-bound signing operation to threadpool."""
+        return await asyncio.to_thread(self.sign, payload, algorithm, key_id, caller_id)
+
     def verify(
         self,
         payload: Any,
@@ -126,17 +143,26 @@ class CryptoGatekeeper:
         algorithm: str = "HMAC-SHA256",
         public_key_pem: str | None = None,
     ) -> tuple[bool, str | None]:
-        """Verify signature validity for a payload."""
+        """Verify signature validity for a payload with in-memory caching."""
         payload_bytes = canonicalize_payload(payload)
+        payload_hash = hashlib.sha256(payload_bytes).hexdigest()
         algo = algorithm.upper().strip()
 
+        # Cache key based on algorithm, signature, payload_hash, and optional public key
+        cache_key = f"{algo}:{signature}:{payload_hash}:{public_key_pem or 'self'}"
+        cached = self._verify_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        res: tuple[bool, str | None]
         if algo in {"HMAC-SHA256", "HMAC", "SHA256"}:
             expected = hmac.new(self._hmac_key, payload_bytes, hashlib.sha256).hexdigest()
             if hmac.compare_digest(expected, signature.strip()):
-                return True, None
-            return False, "Invalid HMAC-SHA256 signature mismatch."
+                res = (True, None)
+            else:
+                res = (False, "Invalid HMAC-SHA256 signature mismatch.")
 
-        if algo in {"ECDSA", "ECDSA-SHA256", "SECP256R1"}:
+        elif algo in {"ECDSA", "ECDSA-SHA256", "SECP256R1"}:
             try:
                 sig_bytes = base64.b64decode(signature.strip())
                 if public_key_pem:
@@ -144,13 +170,36 @@ class CryptoGatekeeper:
                 else:
                     pub = self._ecdsa_private_key.public_key()
                 pub.verify(sig_bytes, payload_bytes, ec.ECDSA(hashes.SHA256()))  # type: ignore[union-attr]
-                return True, None
+                res = (True, None)
             except InvalidSignature:
-                return False, "Invalid ECDSA signature verification failed."
+                res = (False, "Invalid ECDSA signature verification failed.")
             except Exception as e:
-                return False, f"ECDSA verification error: {e}"
+                res = (False, f"ECDSA verification error: {e}")
 
-        return False, f"Unsupported verification algorithm: '{algorithm}'."
+        else:
+            res = (False, f"Unsupported verification algorithm: '{algorithm}'.")
+
+        # Cache valid verification and permanent signature failures (avoid caching temporary exceptions)
+        self._verify_cache.set(cache_key, res)
+        return res
+
+    async def verify_async(
+        self,
+        payload: Any,
+        signature: str,
+        algorithm: str = "HMAC-SHA256",
+        public_key_pem: str | None = None,
+    ) -> tuple[bool, str | None]:
+        """Offload CPU-bound verification operation to threadpool."""
+        return await asyncio.to_thread(self.verify, payload, signature, algorithm, public_key_pem)
+
+    def cache_stats(self) -> dict[str, Any]:
+        """Return verification cache metrics."""
+        return self._verify_cache.stats()
+
+    def clear_cache(self) -> None:
+        """Clear verification cache."""
+        self._verify_cache.clear()
 
 
 # Global singleton instance

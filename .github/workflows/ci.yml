@@ -45,7 +45,7 @@ jobs:
         env:
           SENTINEL_AUDIT_SIGNING_KEY: sentinel-ci-audit-key-32characters-long
           SENTINEL_AUDIT_HMAC_KEY: sentinel-ci-audit-key-32characters-long
-        run: pytest -v --tb=short
+        run: pytest -v --tb=short --cov=sentinel --cov-fail-under=85
 
       - name: Setup Node.js for Dashboard Verification
         uses: actions/setup-node@v4

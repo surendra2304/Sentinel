@@ -149,3 +149,7 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Retrieve cached global settings instance."""
     return Settings()
+
+
+SentinelSettings = Settings
+

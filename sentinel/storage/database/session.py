@@ -1,8 +1,10 @@
 """SQLAlchemy Async Session Management & Engine Factory for Sentinel."""
 
+import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -12,8 +14,22 @@ from sqlalchemy.ext.asyncio import (
 
 from sentinel.config.settings import get_settings
 
+logger = logging.getLogger("sentinel.storage.session")
+
 _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
+
+
+def _set_sqlite_pragmas(dbapi_connection, connection_record):
+    """Enforce WAL mode, 5000ms busy timeout, and synchronous NORMAL on SQLite connections."""
+    try:
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL;")
+        cursor.execute("PRAGMA busy_timeout=5000;")
+        cursor.execute("PRAGMA synchronous=NORMAL;")
+        cursor.close()
+    except Exception as e:
+        logger.warning(f"Failed to apply SQLite PRAGMAs: {e}")
 
 
 def get_async_engine() -> AsyncEngine:
@@ -24,6 +40,7 @@ def get_async_engine() -> AsyncEngine:
         # Handle SQLite for testing / memory fallback
         if "sqlite" in url:
             _engine = create_async_engine(url, echo=settings.db.echo)
+            event.listen(_engine.sync_engine, "connect", _set_sqlite_pragmas)
         else:
             _engine = create_async_engine(
                 url,
@@ -45,6 +62,15 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
             autoflush=False,
         )
     return _session_factory
+
+
+async def close_async_engine() -> None:
+    """Cleanly dispose of SQLAlchemy engine connections."""
+    global _engine, _session_factory
+    if _engine is not None:
+        await _engine.dispose()
+        _engine = None
+        _session_factory = None
 
 
 @asynccontextmanager

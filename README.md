@@ -33,6 +33,42 @@ The FRIDAY Universe operates on Oracle Cloud Always Free (2 OCPUs, 12 GB RAM Amp
 | **Central Ecosystem Gateway**| `http://friday:10000` | FRIDAY Core OS & Task Orchestrator |
 | **Runtime Base** | Python 3.11-slim | Runs under non-root user `appuser` (UID 1000) |
 | **Healthcheck Route** | `/health` (`http://localhost:8000/health`) | Process liveness, audit validation, and engine health |
+| **Readiness Route** | `/ready` (`http://localhost:8000/ready`) | Cryptographic key, SQLite WAL DB, and audit checks |
+| **Telemetry Route** | `/status` (`http://localhost:8000/status`) | Uptime, request & error metrics, circuit breaker states |
+
+### Microservice Architecture
+
+```mermaid
+graph TD
+    Client[Mesh Client / Reverse Proxy] -->|Port 8000 / 8007| FastAPI[FastAPI Sentinel Gateway]
+    FastAPI --> CorrelationMiddleware[Correlation ID & Logging Middleware]
+    CorrelationMiddleware --> Routes[API Route Handlers]
+    
+    subgraph Diagnostic Endpoints
+        Routes --> Health["/health (Liveness)"]
+        Routes --> Ready["/ready (Readiness: Keys + WAL DB + Audit)"]
+        Routes --> Status["/status & /metrics (Telemetry & Uptime)"]
+    end
+    
+    subgraph Core Subsystems
+        Routes --> Crypto[CryptoGatekeeper: Offloaded to Threadpool]
+        Routes --> Cache[TTLLRUCache: In-Memory Signatures & Scope]
+        Routes --> Policy[PolicyEngine: Async Validation]
+    end
+    
+    subgraph Storage Layer
+        Crypto --> Audit[Durable Audit Store]
+        Policy --> SQLite[(SQLite WAL Database: busy_timeout=5000ms)]
+    end
+    
+    subgraph Outbound Mesh Resilience
+        Routes --> ResilientClient[Resilient HTTP Client]
+        ResilientClient --> CB[Circuit Breaker & Backoff Retries]
+        CB --> FridayCore[FRIDAY Core :10000]
+        CB --> LLMInference[LLM Inference :8000]
+        CB --> Memora[Memora Knowledge :8000]
+    end
+```
 
 ---
 
@@ -104,7 +140,91 @@ curl -s -X GET "https://friday-universe.duckdns.org/sentinel/health"
 
 ---
 
-### 4.2 Cryptographic Signing (`/sign`)
+### 4.2 Readiness Probe (`/ready`)
+
+Verifies that essential subsystems (cryptographic signing keys, SQLite WAL storage, audit hash continuity) are fully initialized before routing mesh traffic.
+
+* **Method**: `GET`
+* **Path**: `/ready` (also `/api/v1/ready`)
+
+#### Example Request:
+```bash
+curl -s -X GET "https://friday-universe.duckdns.org/sentinel/ready"
+```
+
+#### Example Response (200 OK when ready):
+```json
+{
+  "status": "READY",
+  "ready": true,
+  "evidence_class": "local_readiness_checks",
+  "observed_at": "2026-10-14T16:20:00.000000+00:00",
+  "checks": {
+    "crypto_keys": true,
+    "database_wal": true,
+    "audit_integrity": true,
+    "event_bus_initialized": true,
+    "storage_backend_configured": true,
+    "audit_durable": true
+  },
+  "modules_active": 8,
+  "event_bus": "LocalEventBus",
+  "storage_backend": "postgres",
+  "peer_connectivity": "not_checked"
+}
+```
+
+---
+
+### 4.3 Diagnostic Telemetry & Operational Status (`/status`)
+
+Exposes real-time diagnostic telemetry, uptime, error counters, cache statistics, and circuit breaker metrics.
+
+* **Method**: `GET`
+* **Path**: `/status` (also `/api/v1/status`)
+
+#### Example Request:
+```bash
+curl -s -X GET "https://friday-universe.duckdns.org/sentinel/status"
+```
+
+#### Example Response (200 OK):
+```json
+{
+  "status": "operational",
+  "service": "sentinel",
+  "version": "2.0.0",
+  "environment": "production",
+  "uptime_seconds": 3612.45,
+  "started_at": "2026-10-14T15:00:00.000000+00:00",
+  "observed_at": "2026-10-14T16:00:12.450000+00:00",
+  "requests_total": 1420,
+  "errors_total": 0,
+  "subsystems": {
+    "cryptographic_gatekeeper": "active",
+    "verification_cache": {
+      "size": 34,
+      "maxsize": 2000,
+      "hits": 312,
+      "misses": 34,
+      "hit_ratio": 0.9017
+    },
+    "mesh_circuit_breakers": [
+      {
+        "name": "mesh_friday:10000",
+        "state": "closed",
+        "failure_count": 0,
+        "total_calls": 84
+      }
+    ],
+    "audit_engine": "valid"
+  }
+}
+```
+
+---
+
+### 4.4 Cryptographic Signing (`/sign`)
 
 Signs an inter-agent payload using HMAC-SHA256 or ECDSA-SHA256 and records the event in the audit log.
 

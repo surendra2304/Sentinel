@@ -9,6 +9,8 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
+import httpx
+
 logger = logging.getLogger(__name__)
 
 
@@ -53,6 +55,42 @@ class MemoraClient:
                 return result
         except urllib.error.HTTPError as exc:
             self.last_error = f"Memora HTTP {exc.code}"
+            return {"status": "error", "cloud": False, "error": self.last_error}
+        except Exception as exc:
+            self.last_error = type(exc).__name__
+            return {"status": "error", "cloud": False, "error": self.last_error}
+
+    async def _request_async(self, agent_name: str, path: str, *, method: str = "GET", payload: dict[str, Any] | None = None) -> Any:
+        agent = agent_name.strip().lower()
+        key = self.api_key or os.getenv(f"{agent.upper()}_API_KEY")
+        if not key:
+            self.last_error = f"{agent.upper()}_API_KEY is not configured"
+            return {"status": "error", "cloud": False, "error": self.last_error}
+        if not self.base_url:
+            self.last_error = "MEMORA_URL is not configured"
+            return {"status": "error", "cloud": False, "error": self.last_error}
+        headers = {
+            "X-Agent-Name": agent,
+            "Authorization": f"Bearer {key}",
+            "Accept": "application/json",
+        }
+        if payload is not None:
+            headers["Content-Type"] = "application/json"
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.request(
+                    method, f"{self.base_url}{path}", json=payload, headers=headers
+                )
+                if response.status_code < 200 or response.status_code >= 300:
+                    self.last_error = f"Memora HTTP {response.status_code}"
+                    return {"status": "error", "cloud": False, "error": self.last_error}
+                result = response.json() if response.content else {}
+                self.last_error = None
+                if isinstance(result, dict):
+                    result.setdefault("cloud", True)
+                return result
+        except httpx.HTTPStatusError as exc:
+            self.last_error = f"Memora HTTP {exc.response.status_code}"
             return {"status": "error", "cloud": False, "error": self.last_error}
         except Exception as exc:
             self.last_error = type(exc).__name__

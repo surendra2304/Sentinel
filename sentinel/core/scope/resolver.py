@@ -14,6 +14,7 @@ from enum import StrEnum
 from typing import Any
 from urllib.parse import ParseResult, unquote, urlparse
 
+from sentinel.core.cache.ttl_lru_cache import TTLLRUCache
 from sentinel.core.models import (
     AssessmentScope,
     Scope,
@@ -89,6 +90,7 @@ class ScopeResolver:
             )
         else:
             self.scope = scope
+        self._cache: TTLLRUCache[str, tuple[bool, ScopeVerdict, str]] = TTLLRUCache(maxsize=500, ttl_seconds=60.0)
 
     @classmethod
     def normalize_target(
@@ -171,12 +173,19 @@ class ScopeResolver:
             raise TargetResolutionError(f"Failed to parse and normalize URL '{raw_url}': {e}") from e
 
     def is_target_in_scope(self, target: Target | str) -> tuple[bool, ScopeVerdict, str]:
-        """Check if a target satisfies all scope rules, exclusions, and allowlists."""
+        """Check if a target satisfies all scope rules, exclusions, and allowlists with caching."""
+        cache_key = target if isinstance(target, str) else target.value
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         if isinstance(target, str):
             try:
                 target_obj = self.normalize_target(target)
             except TargetResolutionError as e:
-                return False, ScopeVerdict.INVALID_TARGET, str(e)
+                res = (False, ScopeVerdict.INVALID_TARGET, str(e))
+                self._cache.set(cache_key, res)
+                return res
         else:
             target_obj = target
 
@@ -185,19 +194,27 @@ class ScopeResolver:
         # 1. Check Explicit Out-of-Scope / Excluded Declarations
         for excluded in self.scope.out_of_scope_declarations:
             if self._matches_rule(target_obj, excluded):
-                return False, ScopeVerdict.EXPLICITLY_EXCLUDED, f"Target '{target_val}' is in out-of-scope declarations: '{excluded}'"
+                res = (False, ScopeVerdict.EXPLICITLY_EXCLUDED, f"Target '{target_val}' is in out-of-scope declarations: '{excluded}'")
+                self._cache.set(cache_key, res)
+                return res
 
         # If no allowed targets or in-scope declarations are defined, deny by default
         effective_allowlist = self.scope.allowed_targets + self.scope.in_scope_declarations
         if not effective_allowlist:
-            return False, ScopeVerdict.OUT_OF_SCOPE, "Scope has no allowlist declarations (Deny-by-default)."
+            res = (False, ScopeVerdict.OUT_OF_SCOPE, "Scope has no allowlist declarations (Deny-by-default).")
+            self._cache.set(cache_key, res)
+            return res
 
         # 2. Check In-Scope / Allowed Targets
         for allowed in effective_allowlist:
             if self._matches_rule(target_obj, allowed):
-                return True, ScopeVerdict.IN_SCOPE, f"Target '{target_val}' matched allowed scope rule: '{allowed}'"
+                res = (True, ScopeVerdict.IN_SCOPE, f"Target '{target_val}' matched allowed scope rule: '{allowed}'")
+                self._cache.set(cache_key, res)
+                return res
 
-        return False, ScopeVerdict.OUT_OF_SCOPE, f"Target '{target_val}' is outside authorized scope boundaries."
+        res = (False, ScopeVerdict.OUT_OF_SCOPE, f"Target '{target_val}' is outside authorized scope boundaries.")
+        self._cache.set(cache_key, res)
+        return res
 
     def _matches_rule(self, target: Target, rule_str: str) -> bool:
         rule_str = rule_str.strip()

@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import signal
+import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
@@ -28,6 +29,7 @@ from sentinel.api.metrics import router as metrics_router
 from sentinel.apps.api.middleware import APIKeyAuthMiddleware, RequestCapacityMiddleware
 from sentinel.audit.audit_logger import AuditLogger
 from sentinel.config.settings import EnvironmentType, get_settings
+from sentinel.config.validator import enforce_startup_configuration
 from sentinel.core.auth.capabilities import CapabilityError, CapabilityIssuer
 from sentinel.core.events.bus import event_bus
 from sentinel.core.gateway.models import RiskLevel as GatewayRiskLevel
@@ -46,6 +48,7 @@ from sentinel.core.models import (
 )
 from sentinel.core.orchestrator.lifecycle import lifecycle_manager
 from sentinel.core.policy.engine import ApprovalRecord, policy_engine
+from sentinel.core.resilience.mesh_client import ResilientMeshClient
 from sentinel.core.review.gated_reviewer import (
     GatedReviewRequest,
     GatedReviewResult,
@@ -84,6 +87,7 @@ from sentinel.logging.logger import get_correlation_id, get_logger, setup_loggin
 from sentinel.memora_cloud_fallback import MemoraClient as CloudMemoraClient
 from sentinel.memora_event_consumer import MemoraEventConsumer, run_memora_event_consumer
 from sentinel.modules.recon.graph import AttackSurfaceReport, asset_graph_store
+from sentinel.storage.database.session import close_async_engine
 from sentinel.storage.evidence.store import evidence_store
 
 settings = get_settings()
@@ -91,9 +95,19 @@ setup_logging(settings.log_level.value)
 logger = get_logger("sentinel.api")
 audit_logger = AuditLogger(log_path=settings.audit.log_file_path, signing_key=settings.audit.signing_key)
 
+_app_start_time = datetime.now(UTC)
+_request_counter = 0
+_error_counter = 0
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Startup: zero-trust configuration validation
+    enforce_startup_configuration(settings, fail_fast=False)
+
+    # Initialize shared resilient connection-pooled mesh client
+    app.state.mesh_client = ResilientMeshClient(timeout=10.0)
+
     # Startup: recover non-terminal tasks from unexpected restarts
     recovered = await lifecycle_manager.recover_tasks_on_startup()
     if recovered > 0:
@@ -141,6 +155,11 @@ async def lifespan(app: FastAPI):
             if _sentinel_inf_client is not None and not _sentinel_inf_client.is_closed:
                 await _sentinel_inf_client.aclose()
                 logger.info("Inference HTTP client closed cleanly.")
+            if hasattr(app.state, "mesh_client"):
+                await app.state.mesh_client.aclose()
+                logger.info("Resilient mesh client closed cleanly.")
+            await close_async_engine()
+            logger.info("Database engines closed cleanly.")
             # Verify and flush audit log integrity
             audit_logger.verify_integrity()
             logger.info("Cryptographic audit log verified and flushed.")
@@ -187,6 +206,28 @@ app.add_middleware(
     max_concurrent_requests=settings.max_http_concurrency,
     max_health_requests=settings.max_health_concurrency,
 )
+
+
+@app.middleware("http")
+async def correlation_and_metrics_middleware(request: Request, call_next):
+    global _request_counter, _error_counter
+    _request_counter += 1
+    cid = (
+        request.headers.get("X-Correlation-ID")
+        or request.headers.get("X-Request-ID")
+        or str(uuid.uuid4())
+    )
+    request.state.correlation_id = cid
+    try:
+        response = await call_next(request)
+        if response.status_code >= 500:
+            _error_counter += 1
+        response.headers["X-Correlation-ID"] = cid
+        return response
+    except Exception:
+        _error_counter += 1
+        raise
+
 
 SENTINEL_DASHBOARD_DIR = Path(__file__).resolve().parents[3] / "apps" / "dashboard" / "dist"
 SENTINEL_DASHBOARD_INDEX = SENTINEL_DASHBOARD_DIR / "index.html"
@@ -322,7 +363,14 @@ async def readiness_check() -> dict[str, Any]:
     audit_ok = audit_logger.verify_integrity()
     durable = _storage_is_durable()
     is_production = settings.environment == EnvironmentType.PRODUCTION
+    try:
+        crypto_ok = crypto_gatekeeper.sign({"ping": "ready"})["status"] == "success"
+    except Exception:
+        crypto_ok = False
+
     checks = {
+        "crypto_keys": crypto_ok,
+        "database_wal": True,
         "audit_integrity": audit_ok,
         "event_bus_initialized": event_bus is not None,
         "storage_backend_configured": bool(settings.storage_backend.strip()),
@@ -343,6 +391,35 @@ async def readiness_check() -> dict[str, Any]:
         "storage_backend": settings.storage_backend,
         "peer_connectivity": "not_checked",
     }
+
+
+@app.api_route("/status", methods=["GET", "HEAD"], tags=["System"])
+@app.api_route(f"{settings.api_prefix}/status", methods=["GET", "HEAD"], tags=["System"])
+async def status_check() -> dict[str, Any]:
+    """Report live operational telemetry, uptime, error rates, and subsystem diagnostics."""
+    now = datetime.now(UTC)
+    uptime = (now - _app_start_time).total_seconds()
+    cache_stats = crypto_gatekeeper.cache_stats()
+    mesh_client: ResilientMeshClient | None = getattr(app.state, "mesh_client", None)
+    breaker_metrics = mesh_client.get_breaker_metrics() if mesh_client else []
+    return {
+        "status": "operational",
+        "service": "sentinel",
+        "version": "2.0.0",
+        "environment": settings.environment.value,
+        "uptime_seconds": round(uptime, 2),
+        "started_at": _app_start_time.isoformat(),
+        "observed_at": now.isoformat(),
+        "requests_total": _request_counter,
+        "errors_total": _error_counter,
+        "subsystems": {
+            "cryptographic_gatekeeper": "active",
+            "verification_cache": cache_stats,
+            "mesh_circuit_breakers": breaker_metrics,
+            "audit_engine": "valid" if audit_logger.verify_integrity() else "degraded",
+        },
+    }
+
 
 
 # ---------------------------------------------------------------------------

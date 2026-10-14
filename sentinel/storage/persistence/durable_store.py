@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import sqlite3
 import threading
@@ -112,3 +113,9 @@ class SentinelPersistence:
             expires_at=row[6],
             nonce=row[7],
         )
+
+    def close(self) -> None:
+        """Cleanly close underlying SQLite database connection."""
+        with self.lock, contextlib.suppress(Exception):
+            self.db.close()
+
