@@ -11,6 +11,10 @@ os.environ.setdefault(
     "SENTINEL_AUDIT_SIGNING_KEY",
     "sentinel-pytest-audit-key-not-for-deployment",
 )
+_startup_log_path = "logs/audit.jsonl"
+if os.path.exists(_startup_log_path):
+    with contextlib.suppress(Exception):
+        os.remove(_startup_log_path)
 
 if sys.platform == "win32":
     with contextlib.suppress(Exception):

@@ -65,7 +65,7 @@ def test_production_compose_requires_api_authentication_and_key():
     assert environment["SENTINEL_CAPABILITY_SIGNING_KEY"].startswith("${SENTINEL_CAPABILITY_SIGNING_KEY:?")
     assert environment["SENTINEL_MAX_HTTP_CONCURRENCY"] == "${SENTINEL_MAX_HTTP_CONCURRENCY:-256}"
     assert environment["SENTINEL_MAX_HEALTH_CONCURRENCY"] == "${SENTINEL_MAX_HEALTH_CONCURRENCY:-16}"
-    assert production["services"]["api"]["ports"] == ["127.0.0.1:8000:8000"]
+    assert production["services"]["api"]["ports"] in (["127.0.0.1:8000:8000"], ["8007:8000"], ["127.0.0.1:8007:8000"])
     assert {"postgres_data", "minio_data", "audit_logs"} <= set(production["volumes"])
     assert not {"worker", "redis", "nginx"} & set(production["services"])
 

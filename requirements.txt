@@ -1,0 +1,48 @@
+# ==============================================================================
+# SENTINEL Enterprise Hardened Dependencies (Python 3.11+)
+# Cryptographic signing gatekeeper (HMAC-SHA256 & ECDSA) & security watchdog
+# ==============================================================================
+
+# Framework & ASGI Runtime
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+
+# Data Validation & Typed Settings
+pydantic==2.13.4
+pydantic-settings==2.15.0
+
+# Cryptography & Security Signatures (Pinned & Secure)
+cryptography==50.0.0
+pyjwt==2.13.0
+
+# Database & Object Storage Persistence
+sqlalchemy[asyncio]==2.0.52
+asyncpg==0.31.0
+alembic==1.19.1
+minio==7.2.20
+aiofiles==25.1.0
+
+# CLI & Terminal UI
+typer==0.27.1
+rich==15.0.0
+
+# HTTP Client & Streaming
+httpx==0.28.1
+sse-starlette==3.4.8
+
+# Structured Logging & Telemetry
+structlog==26.1.0
+
+# Report Generation
+reportlab==5.0.1
+weasyprint==69.0
+jinja2==3.1.6
+
+# Network, DNS & System Metrics
+dnspython==2.8.0
+dpkt==1.9.8
+psutil==7.2.2
+
+# Configuration & Parsers
+python-dotenv==1.2.2
+pyyaml==6.0.3

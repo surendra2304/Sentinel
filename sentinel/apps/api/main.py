@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+import signal
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
@@ -55,6 +56,10 @@ from sentinel.core.scope.resolver import (
     ScopeResolver,
     ScopeValidationError,
 )
+from sentinel.core.security.crypto_gatekeeper import (
+    canonicalize_payload,
+    crypto_gatekeeper,
+)
 from sentinel.integrations.friday.models import (
     BlockedActionRecord,
     BlockedTargetRecord,
@@ -92,7 +97,7 @@ async def lifespan(app: FastAPI):
     # Startup: recover non-terminal tasks from unexpected restarts
     recovered = await lifecycle_manager.recover_tasks_on_startup()
     if recovered > 0:
-        logger.warning("Recovered pending tasks during startup", extra={"recovered_count": recovered})
+        logger.warning(f"Recovered pending tasks during startup: {recovered}")
 
     memora_task = None
     enabled = os.getenv("SENTINEL_MEMORA_EVENTS_ENABLED", "false").strip().lower() in {
@@ -108,18 +113,43 @@ async def lifespan(app: FastAPI):
             run_memora_event_consumer(consumer, interval),
             name="sentinel_memora_event_consumer",
         )
-        logger.info("Memora security advisory consumer started", extra={"poll_seconds": interval})
+        logger.info(f"Memora security advisory consumer started (polling every {interval}s)")
     elif enabled:
         logger.error("Memora advisory consumer is enabled but SENTINEL_API_KEY is missing")
+
+    # Clean signal handling for SIGTERM and SIGINT
+    loop = asyncio.get_running_loop()
+
+    def _sig_handler(sig_name: str) -> None:
+        logger.info(f"Signal {sig_name} trapped: beginning 5-second graceful shutdown budget...")
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        with suppress(NotImplementedError, RuntimeError):
+            loop.add_signal_handler(sig, lambda s=sig.name: _sig_handler(s))
 
     try:
         yield
     finally:
-        if memora_task:
-            memora_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await memora_task
-            logger.info("Memora security advisory consumer stopped")
+        logger.info("Initiating graceful shutdown of cryptographic sessions and background routines...")
+        async def _graceful_drain():
+            if memora_task:
+                memora_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await memora_task
+                logger.info("Memora security advisory consumer stopped cleanly.")
+            global _sentinel_inf_client
+            if _sentinel_inf_client is not None and not _sentinel_inf_client.is_closed:
+                await _sentinel_inf_client.aclose()
+                logger.info("Inference HTTP client closed cleanly.")
+            # Verify and flush audit log integrity
+            audit_logger.verify_integrity()
+            logger.info("Cryptographic audit log verified and flushed.")
+
+        try:
+            await asyncio.wait_for(_graceful_drain(), timeout=5.0)
+            logger.info("Sentinel graceful shutdown completed successfully within 5.0 seconds.")
+        except TimeoutError:
+            logger.warning("Graceful shutdown exceeded 5.0s budget; forced process termination.")
 
 
 app = FastAPI(
@@ -131,9 +161,22 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+CORS_ORIGINS = [
+    "https://friday-universe.duckdns.org",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "http://localhost:8007",
+    "http://127.0.0.1:8007",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+custom_origins = os.getenv("SENTINEL_CORS_ORIGINS")
+if custom_origins:
+    CORS_ORIGINS.extend([orig.strip() for orig in custom_origins.split(",") if orig.strip()])
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -254,22 +297,21 @@ async def health_check() -> dict[str, Any]:
     durable = _storage_is_durable()
     return {
         "status": "ok",
+        "service": "sentinel",
         "evidence_class": "process_liveness",
-        "service": "SENTINEL",
+        "observed_at": datetime.now(UTC).isoformat(),
+        "security_engine": "active",
         "version": "1.0.0",
         "environment": settings.environment.value,
         "kill_switch_active": settings.kill_switch_active,
         "audit_chain_valid": audit_ok,
         "audit_evidence_class": "audit_chain_integrity_check",
         "audit_chain_entries": entries,
-        # True means "nothing to verify", not "verified": an empty ledger passes
-        # verify_integrity() trivially, so it is never evidence of integrity.
         "audit_chain_vacuous": bool(audit_ok) and entries == 0,
         "audit_durable": durable,
         "audit_persistence_evidence": (
             "durable_store_configured" if durable else "in_memory_backend_lost_on_redeploy"
         ),
-        "observed_at": datetime.now(UTC).isoformat(),
     }
 
 
@@ -1386,10 +1428,122 @@ async def sentinel_ask_inference(req: SentinelInferenceRequest):
     r = await client.post(url, json=payload, headers=headers)
     lat = round((time.perf_counter() - t0) * 1000, 2)
     return {
-        "origin": "LOCAL (Sentinel :8003)",
+        "origin": "LOCAL (Sentinel :8000)",
         "status": r.status_code,
         "latency_ms": lat,
         "data": r.json() if r.status_code == 200 else {"error": r.text},
     }
+
+
+# ── Cryptographic Signing Gatekeeper (HMAC-SHA256 & ECDSA) ────────────────────
+
+class SignPayloadRequest(BaseModel):
+    payload: Any = Field(..., description="The payload to sign (string, dict, or object)")
+    algorithm: str = Field(default="HMAC-SHA256", description="Signature algorithm: HMAC-SHA256 or ECDSA-SHA256")
+    key_id: str | None = Field(default=None, description="Optional key identifier")
+    caller_id: str = Field(default="sentinel", description="Calling agent or identity")
+
+
+class SignPayloadResponse(BaseModel):
+    status: str
+    algorithm: str
+    signature: str
+    payload_hash: str
+    timestamp: str
+    signer: str
+    caller_id: str
+    key_id: str
+
+
+class VerifyPayloadRequest(BaseModel):
+    payload: Any = Field(..., description="The payload to verify")
+    signature: str = Field(..., description="The cryptographic signature string")
+    algorithm: str = Field(default="HMAC-SHA256", description="Algorithm used to sign")
+    public_key_pem: str | None = Field(default=None, description="Optional ECDSA public key in PEM format")
+
+
+class VerifyPayloadResponse(BaseModel):
+    valid: bool
+    algorithm: str
+    payload_hash: str
+    verified_at: str
+    signer: str
+    error: str | None = None
+
+
+@app.post("/sign", response_model=SignPayloadResponse, tags=["Cryptographic Gatekeeper"])
+@app.post(f"{settings.api_prefix}/sign", response_model=SignPayloadResponse, tags=["Cryptographic Gatekeeper"])
+async def sign_payload_endpoint(req: SignPayloadRequest) -> dict[str, Any]:
+    """Cryptographic signing gatekeeper: sign an inter-agent payload using HMAC-SHA256 or ECDSA."""
+    try:
+        res = crypto_gatekeeper.sign(
+            payload=req.payload,
+            algorithm=req.algorithm,
+            key_id=req.key_id,
+            caller_id=req.caller_id,
+        )
+        audit_logger.append(
+            event_type="CRYPTOGRAPHIC_SIGN",
+            actor_id=req.caller_id,
+            payload={"algorithm": res["algorithm"], "payload_hash": res["payload_hash"], "key_id": res["key_id"]},
+        )
+        return res
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@app.post("/verify", response_model=VerifyPayloadResponse, tags=["Cryptographic Gatekeeper"])
+@app.post(f"{settings.api_prefix}/verify", response_model=VerifyPayloadResponse, tags=["Cryptographic Gatekeeper"])
+async def verify_payload_endpoint(req: VerifyPayloadRequest) -> dict[str, Any]:
+    """Cryptographic verification gatekeeper: verify HMAC-SHA256 or ECDSA signature for a payload."""
+    payload_bytes = canonicalize_payload(req.payload)
+    import hashlib
+    payload_hash = hashlib.sha256(payload_bytes).hexdigest()
+    valid, err = crypto_gatekeeper.verify(
+        payload=req.payload,
+        signature=req.signature,
+        algorithm=req.algorithm,
+        public_key_pem=req.public_key_pem,
+    )
+    return {
+        "valid": valid,
+        "algorithm": req.algorithm,
+        "payload_hash": payload_hash,
+        "verified_at": datetime.now(UTC).isoformat(),
+        "signer": "sentinel",
+        "error": err,
+    }
+
+
+@app.get("/audit", tags=["Security Governance"])
+@app.get(f"{settings.api_prefix}/audit", tags=["Security Governance"])
+async def get_audit_status() -> dict[str, Any]:
+    """Retrieve audit log chain integrity status, sequence count, and ledger summary."""
+    valid = audit_logger.verify_integrity()
+    count = audit_logger.entry_count()
+    return {
+        "status": "ok",
+        "service": "sentinel",
+        "evidence_class": "audit_chain_integrity_check",
+        "chain_valid": valid,
+        "entry_count": count,
+        "last_hash": getattr(audit_logger, "_last_hash", "GENESIS"),
+        "storage_backend": settings.storage_backend,
+        "storage_durable": _storage_is_durable(),
+        "observed_at": datetime.now(UTC).isoformat(),
+    }
+
+
+@app.get("/public-key", tags=["Cryptographic Gatekeeper"])
+@app.get(f"{settings.api_prefix}/public-key", tags=["Cryptographic Gatekeeper"])
+async def get_public_key() -> dict[str, Any]:
+    """Export the Sentinel ECDSA public verification key in PEM format."""
+    return {
+        "algorithm": "ECDSA-SHA256",
+        "curve": "SECP256R1",
+        "public_key_pem": crypto_gatekeeper.get_ecdsa_public_key_pem(),
+        "signer": "sentinel",
+    }
+
 
 

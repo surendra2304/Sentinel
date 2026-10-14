@@ -40,8 +40,10 @@ def _run_entrypoint(
         "PORT": port,
         "SENTINEL_MAX_HTTP_CONCURRENCY": max_http_concurrency,
     }
+    import shutil
+    bash_bin = shutil.which("bash") or "bash"
     result = subprocess.run(
-        ["bash", str(ENTRYPOINT)],
+        [bash_bin, str(ENTRYPOINT)],
         capture_output=True,
         check=False,
         env=env,

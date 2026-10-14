@@ -1,4 +1,4 @@
-# ── SENTINEL Dashboard Build ─────────────────────────────────────────────────
+# ── Stage 1: Build React Dashboard ───────────────────────────────────────────
 FROM node:22-alpine AS dashboard-builder
 
 WORKDIR /dashboard
@@ -7,26 +7,15 @@ RUN npm ci
 COPY apps/dashboard/ ./
 RUN npm run build
 
-# ── SENTINEL API Dockerfile ──────────────────────────────────────────────────
-# Stage 1: Build dependencies
-FROM python:3.11-slim AS builder
+# ── Stage 2: Python Application Image ────────────────────────────────────────
+FROM python:3.11-slim
 
-WORKDIR /build
-COPY pyproject.toml README.md* ./
-COPY sentinel/ ./sentinel/
+# Container Security Environment Variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PORT=8000
 
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir build && \
-    pip install --no-cache-dir -e .
-
-# Stage 2: Runtime (minimal, non-root)
-FROM python:3.11-slim AS runtime
-
-# Security: create non-root user
-RUN groupadd --gid 1001 sentinel && \
-    useradd --uid 1001 --gid sentinel --shell /bin/bash --create-home sentinel
-
-# Install runtime OS deps (including WeasyPrint / cairo / pango libs)
+# Install runtime dependencies including curl for HEALTHCHECK
 RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
         libpango-1.0-0 \
@@ -36,33 +25,41 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libfontconfig1 \
     && rm -rf /var/lib/apt/lists/*
 
+# Container security: Create non-root user
+RUN useradd -m -u 1000 appuser
+
 WORKDIR /app
 
-# Copy installed packages from builder
-COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
+# Install Python dependencies
+COPY requirements.txt pyproject.toml ./
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-# Copy application source
-COPY --chown=sentinel:sentinel sentinel/ ./sentinel/
-COPY --from=dashboard-builder --chown=sentinel:sentinel /dashboard/dist ./apps/dashboard/dist
-COPY --chown=sentinel:sentinel contracts/ ./contracts/
-COPY --chown=sentinel:sentinel pyproject.toml ./
-COPY --chown=sentinel:sentinel alembic.ini ./
-COPY --chown=sentinel:sentinel alembic/ ./alembic/
-COPY --chown=sentinel:sentinel docker/entrypoint.sh ./entrypoint.sh
+# Copy application source & contracts
+COPY --chown=appuser:appuser sentinel/ ./sentinel/
+COPY --chown=appuser:appuser contracts/ ./contracts/
+COPY --chown=appuser:appuser alembic.ini ./
+COPY --chown=appuser:appuser alembic/ ./alembic/
+COPY --chown=appuser:appuser docker/entrypoint.sh ./entrypoint.sh
 
-# Directories sentinel needs to write at runtime
+# Copy compiled dashboard from stage 1
+COPY --from=dashboard-builder --chown=appuser:appuser /dashboard/dist ./apps/dashboard/dist
+
+# Install sentinel package in editable/wheel mode
+RUN pip install --no-cache-dir -e .
+
+# Runtime directories and entrypoint permissions
 RUN mkdir -p /app/logs /app/data/artifacts && \
     sed -i 's/\r$//' /app/entrypoint.sh && \
     chmod +x /app/entrypoint.sh && \
-    chown -R sentinel:sentinel /app/logs /app/data /app/entrypoint.sh
+    chown -R appuser:appuser /app
 
-# Drop to non-root
-USER sentinel
+# Switch to non-root user
+USER appuser
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 ENTRYPOINT ["/bin/bash", "/app/entrypoint.sh"]

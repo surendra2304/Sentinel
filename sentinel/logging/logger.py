@@ -1,8 +1,9 @@
-"""Structured JSON logging with correlation ID tracing."""
+"""Structured, timestamped logging for Sentinel."""
 
 import contextvars
 import json
 import logging
+import os
 import sys
 import uuid
 from datetime import UTC, datetime
@@ -26,6 +27,25 @@ def get_correlation_id() -> str:
 def set_correlation_id(cid: str) -> None:
     """Set correlation ID for current context."""
     correlation_id_ctx.set(cid)
+
+
+class SentinelStructuredFormatter(logging.Formatter):
+    """Structured, timestamped Python logging: [%(asctime)s] [%(levelname)s] [sentinel]: %(message)s"""
+
+    def __init__(
+        self,
+        fmt: str = "[%(asctime)s] [%(levelname)s] [sentinel]: %(message)s",
+        datefmt: str = "%Y-%m-%d %H:%M:%S",
+    ):
+        super().__init__(fmt=fmt, datefmt=datefmt)
+
+    def format(self, record: logging.LogRecord) -> str:
+        # Prepend correlation ID to message if present and not already formatted
+        cid = correlation_id_ctx.get()
+        if cid and not getattr(record, "_cid_applied", False):
+            record.msg = f"[{cid}] {record.msg}"
+            record._cid_applied = True  # type: ignore[attr-defined]
+        return super().format(record)
 
 
 class JSONFormatter(logging.Formatter):
@@ -61,7 +81,7 @@ class JSONFormatter(logging.Formatter):
 
 
 def setup_logging(log_level: str = "INFO") -> None:
-    """Configure root logger with structured JSON streaming handler."""
+    """Configure root logger with structured, timestamped stream handler."""
     root_logger = logging.getLogger()
     root_logger.setLevel(getattr(logging, log_level.upper(), logging.INFO))
 
@@ -70,7 +90,10 @@ def setup_logging(log_level: str = "INFO") -> None:
         root_logger.removeHandler(handler)
 
     handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(JSONFormatter())
+    if os.getenv("SENTINEL_LOG_FORMAT", "").lower() == "json":
+        handler.setFormatter(JSONFormatter())
+    else:
+        handler.setFormatter(SentinelStructuredFormatter())
     root_logger.addHandler(handler)
 
 
