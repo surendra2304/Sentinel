@@ -1624,3 +1624,70 @@ async def get_public_key() -> dict[str, Any]:
 
 
 
+
+
+# ==============================================================================
+# Human-in-the-Loop Approval Endpoints (Telegram / Discord / Webhooks)
+# ==============================================================================
+from sentinel.gatekeeper.approval_dispatcher import approval_dispatcher
+
+class ApprovalRequestPayload(BaseModel):
+    agent_name: str
+    action: str
+    details: dict[str, Any] = Field(default_factory=dict)
+    risk_level: str = "GUARDED"
+    timeout_sec: float = 300.0
+
+@app.post("/api/v1/approvals/request", tags=["Human-in-the-Loop"])
+async def submit_approval_request(payload: ApprovalRequestPayload) -> dict[str, Any]:
+    pending = approval_dispatcher.submit_approval(
+        agent_name=payload.agent_name,
+        action=payload.action,
+        details=payload.details,
+        risk_level=payload.risk_level,
+        timeout_sec=payload.timeout_sec,
+    )
+    return pending.to_dict()
+
+@app.get("/api/v1/approvals/pending", tags=["Human-in-the-Loop"])
+async def list_pending_approvals() -> list[dict[str, Any]]:
+    return approval_dispatcher.get_pending_list()
+
+@app.get("/api/v1/approvals/{token}/status", tags=["Human-in-the-Loop"])
+async def get_approval_status(token: str) -> dict[str, Any]:
+    pending = approval_dispatcher._pending.get(token)
+    if not pending:
+        raise HTTPException(status_code=404, detail="Approval token not found")
+    return pending.to_dict()
+
+@app.get("/api/v1/approvals/{token}/approve", response_class=HTMLResponse, tags=["Human-in-the-Loop"])
+@app.post("/api/v1/approvals/{token}/approve", tags=["Human-in-the-Loop"])
+async def approve_action(token: str, request: Request) -> Any:
+    pending = approval_dispatcher.decide(token, approve=True)
+    if not pending:
+        raise HTTPException(status_code=404, detail="Approval token not found")
+    if "text/html" in request.headers.get("accept", "") or request.method == "GET":
+        return HTMLResponse(
+            f"<html><body style='font-family:system-ui;padding:40px;background:#0d1117;color:#58a6ff;text-align:center;'>"
+            f"<h1>✅ Action Approved</h1>"
+            f"<p style='color:#c9d1d9;'>Agent: <b>{pending.agent_name}</b> | Action: <b>{pending.action}</b></p>"
+            f"<p style='color:#3fb950;'>Authorization dispatched to execution engine.</p>"
+            f"</body></html>"
+        )
+    return {"status": "APPROVED", "action": pending.action, "agent": pending.agent_name}
+
+@app.get("/api/v1/approvals/{token}/deny", response_class=HTMLResponse, tags=["Human-in-the-Loop"])
+@app.post("/api/v1/approvals/{token}/deny", tags=["Human-in-the-Loop"])
+async def deny_action(token: str, request: Request, reason: str = Query("Denied by Surendra")) -> Any:
+    pending = approval_dispatcher.decide(token, approve=False, reason=reason)
+    if not pending:
+        raise HTTPException(status_code=404, detail="Approval token not found")
+    if "text/html" in request.headers.get("accept", "") or request.method == "GET":
+        return HTMLResponse(
+            f"<html><body style='font-family:system-ui;padding:40px;background:#0d1117;color:#f85149;text-align:center;'>"
+            f"<h1>❌ Action Denied</h1>"
+            f"<p style='color:#c9d1d9;'>Agent: <b>{pending.agent_name}</b> | Action: <b>{pending.action}</b></p>"
+            f"<p style='color:#f85149;'>Execution aborted and quarantined.</p>"
+            f"</body></html>"
+        )
+    return {"status": "DENIED", "action": pending.action, "agent": pending.agent_name}
