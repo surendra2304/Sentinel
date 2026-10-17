@@ -78,6 +78,7 @@ from sentinel.integrations.friday.models import (
     FridaySummarizer,
     OpenFindingsBySeverity,
 )
+from sentinel.gatekeeper.approval_dispatcher import approval_dispatcher
 from sentinel.intelligence.attack_paths.analyzer import attack_path_analyzer
 from sentinel.intelligence.recommendations.engine import recommendation_engine
 from sentinel.intelligence.reporting.generator import ReportType, report_generator
@@ -1629,7 +1630,6 @@ async def get_public_key() -> dict[str, Any]:
 # ==============================================================================
 # Human-in-the-Loop Approval Endpoints (Telegram / Discord / Webhooks)
 # ==============================================================================
-from sentinel.gatekeeper.approval_dispatcher import approval_dispatcher
 
 class ApprovalRequestPayload(BaseModel):
     agent_name: str
@@ -1650,7 +1650,7 @@ async def submit_approval_request(payload: ApprovalRequestPayload) -> dict[str, 
     return pending.to_dict()
 
 @app.get("/api/v1/approvals/pending", tags=["Human-in-the-Loop"])
-async def list_pending_approvals() -> list[dict[str, Any]]:
+async def list_gatekeeper_pending_approvals() -> list[dict[str, Any]]:
     return approval_dispatcher.get_pending_list()
 
 @app.get("/api/v1/approvals/{token}/status", tags=["Human-in-the-Loop"])
