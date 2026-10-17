@@ -10,6 +10,8 @@ from typing import Any
 
 import httpx
 
+
+from sentinel.core.tls_policy import tls_verification_enabled
 from sentinel.core.models import ActionRequest, ActionResult
 from sentinel.core.orchestrator.adapter import ToolAdapter
 
@@ -65,7 +67,7 @@ class BrowserAdapter(ToolAdapter):
         except Exception:
             # Graceful HTTP fallback
             try:
-                async with httpx.AsyncClient(verify=False, timeout=8.0) as client:
+                async with httpx.AsyncClient(verify=tls_verification_enabled(), timeout=8.0) as client:
                     res = await client.get(url)
                     data["title"] = f"HTTP Response: {res.status_code}"
                     data["dom_snapshot"] = res.text[:20000]
