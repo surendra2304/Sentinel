@@ -71,7 +71,7 @@ class PendingApproval:
 
 class ApprovalDispatcher:
     """Singleton dispatcher managing pending approvals and multi-channel notifications."""
-\n    _instance: ApprovalDispatcher | None = None
+    _instance: ApprovalDispatcher | None = None
 
     def __new__(cls) -> ApprovalDispatcher:
         if cls._instance is None:
@@ -89,11 +89,11 @@ class ApprovalDispatcher:
         return os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("SENTINEL_TELEGRAM_BOT_TOKEN")
 
     @property
-    def telegram_chat_id(self) -> Optional[str]:
+    def telegram_chat_id(self) -> str | None:
         return os.getenv("TELEGRAM_CHAT_ID") or os.getenv("SENTINEL_TELEGRAM_CHAT_ID")
 
     @property
-    def discord_webhook_url(self) -> Optional[str]:
+    def discord_webhook_url(self) -> str | None:
         return os.getenv("DISCORD_WEBHOOK_URL")
 
     def submit_approval(
@@ -107,7 +107,7 @@ class ApprovalDispatcher:
         """Create and dispatch a new approval request."""
         token = secrets.token_hex(16)
         req_id = f"appr_{secrets.token_hex(6)}"
-\n        pending = PendingApproval(
+        pending = PendingApproval(
             token=token,
             request_id=req_id,
             agent_name=agent_name.upper(),
