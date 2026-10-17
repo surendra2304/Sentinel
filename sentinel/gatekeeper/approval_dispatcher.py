@@ -71,10 +71,9 @@ class PendingApproval:
 
 class ApprovalDispatcher:
     """Singleton dispatcher managing pending approvals and multi-channel notifications."""
-    
-    _instance: ApprovalDispatcher | None = None
+\n    _instance: ApprovalDispatcher | None = None
 
-    def __new__(cls) -> "ApprovalDispatcher":
+    def __new__(cls) -> ApprovalDispatcher:
         if cls._instance is None:
             cls._instance = super().__new__(cls)
             cls._instance._pending: dict[str, PendingApproval] = {}
@@ -86,7 +85,7 @@ class ApprovalDispatcher:
         return os.getenv("FRIDAY_PUBLIC_URL", "http://friday-universe.duckdns.org/sentinel").rstrip("/")
 
     @property
-    def telegram_bot_token(self) -> Optional[str]:
+    def telegram_bot_token(self) -> str | None:
         return os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("SENTINEL_TELEGRAM_BOT_TOKEN")
 
     @property
@@ -108,8 +107,7 @@ class ApprovalDispatcher:
         """Create and dispatch a new approval request."""
         token = secrets.token_hex(16)
         req_id = f"appr_{secrets.token_hex(6)}"
-        
-        pending = PendingApproval(
+\n        pending = PendingApproval(
             token=token,
             request_id=req_id,
             agent_name=agent_name.upper(),
@@ -128,7 +126,7 @@ class ApprovalDispatcher:
         self._dispatch_notifications(pending)
         return pending
 
-    async def wait_for_decision(self, token: str, timeout_sec: Optional[float] = None) -> bool:
+    async def wait_for_decision(self, token: str, timeout_sec: float | None = None) -> bool:
         """Asynchronously wait until the approval is decided by Surendra or expires."""
         pending = self._pending.get(token)
         if not pending:
