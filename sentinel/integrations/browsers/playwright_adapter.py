@@ -9,8 +9,6 @@ import time
 from typing import Any
 
 import httpx
-
-
 from sentinel.core.tls_policy import tls_verification_enabled
 from sentinel.core.models import ActionRequest, ActionResult
 from sentinel.core.orchestrator.adapter import ToolAdapter
