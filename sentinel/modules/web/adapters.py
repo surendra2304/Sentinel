@@ -17,11 +17,11 @@ from typing import Any
 from urllib.parse import urljoin, urlparse
 
 import httpx
-from sentinel.core.tls_policy import tls_verification_enabled
 import yaml
 
 from sentinel.core.models import ActionRequest, ActionResult
 from sentinel.core.orchestrator.adapter import ToolAdapter
+from sentinel.core.tls_policy import tls_verification_enabled
 
 # ---------------------------------------------------------------------------
 # 1. Web Crawler Adapter
