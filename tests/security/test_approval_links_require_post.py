@@ -1,6 +1,7 @@
 """Human-in-the-loop approval links must be read-only on GET."""
 
 import pytest
+from fastapi import HTTPException
 
 from sentinel.apps.api.main import (
     approve_action,
@@ -8,8 +9,6 @@ from sentinel.apps.api.main import (
     get_approval_confirmation,
     get_denial_confirmation,
 )
-from fastapi import HTTPException
-
 from sentinel.gatekeeper.approval_dispatcher import ApprovalStatus, approval_dispatcher
 
 
