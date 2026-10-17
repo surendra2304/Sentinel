@@ -1,6 +1,7 @@
 """Sentinel Task Gateway & REST API Service."""
 
 import asyncio
+import html
 import json
 import os
 import signal
@@ -1661,33 +1662,74 @@ async def get_approval_status(token: str) -> dict[str, Any]:
     return pending.to_dict()
 
 @app.get("/api/v1/approvals/{token}/approve", response_class=HTMLResponse, tags=["Human-in-the-Loop"])
+async def get_approval_confirmation(token: str) -> HTMLResponse:
+    """Render a confirmation page without changing the approval state."""
+    pending = approval_dispatcher._pending.get(token)
+    if not pending:
+        raise HTTPException(status_code=404, detail="Approval token not found")
+    safe_agent = html.escape(pending.agent_name)
+    safe_action = html.escape(pending.action)
+    if pending.status.value != "PENDING" or pending.is_expired():
+        return HTMLResponse(
+            "<html><body><h1>Approval no longer pending</h1>"
+            f"<p>Agent: <b>{safe_agent}</b> | Action: <b>{safe_action}</b></p>"
+            f"<p>Status: {html.escape(pending.status.value)}</p></body></html>",
+            status_code=409,
+        )
+    return HTMLResponse(
+        "<html><body style='font-family:system-ui;padding:40px;text-align:center;'>"
+        "<h1>Confirm approval</h1>"
+        f"<p>Agent: <b>{safe_agent}</b> | Action: <b>{safe_action}</b></p>"
+        "<p>Opening this link did not approve the action.</p>"
+        "<form method='post' action=''>"
+        "<button type='submit'>Confirm approval</button>"
+        "</form></body></html>"
+    )
+
+
 @app.post("/api/v1/approvals/{token}/approve", tags=["Human-in-the-Loop"])
-async def approve_action(token: str, request: Request) -> Any:
+async def approve_action(token: str) -> dict[str, Any]:
+    """Approve only on an explicit POST from the confirmation form."""
     pending = approval_dispatcher.decide(token, approve=True)
     if not pending:
         raise HTTPException(status_code=404, detail="Approval token not found")
-    if "text/html" in request.headers.get("accept", "") or request.method == "GET":
-        return HTMLResponse(
-            f"<html><body style='font-family:system-ui;padding:40px;background:#0d1117;color:#58a6ff;text-align:center;'>"
-            f"<h1>✅ Action Approved</h1>"
-            f"<p style='color:#c9d1d9;'>Agent: <b>{pending.agent_name}</b> | Action: <b>{pending.action}</b></p>"
-            f"<p style='color:#3fb950;'>Authorization dispatched to execution engine.</p>"
-            f"</body></html>"
-        )
+    if pending.status.value != "APPROVED":
+        raise HTTPException(status_code=409, detail=f"Approval could not be granted: {pending.status.value}")
     return {"status": "APPROVED", "action": pending.action, "agent": pending.agent_name}
 
+
 @app.get("/api/v1/approvals/{token}/deny", response_class=HTMLResponse, tags=["Human-in-the-Loop"])
+async def get_denial_confirmation(token: str) -> HTMLResponse:
+    """Render a denial confirmation page without changing the approval state."""
+    pending = approval_dispatcher._pending.get(token)
+    if not pending:
+        raise HTTPException(status_code=404, detail="Approval token not found")
+    safe_agent = html.escape(pending.agent_name)
+    safe_action = html.escape(pending.action)
+    if pending.status.value != "PENDING" or pending.is_expired():
+        return HTMLResponse(
+            "<html><body><h1>Approval no longer pending</h1>"
+            f"<p>Agent: <b>{safe_agent}</b> | Action: <b>{safe_action}</b></p>"
+            f"<p>Status: {html.escape(pending.status.value)}</p></body></html>",
+            status_code=409,
+        )
+    return HTMLResponse(
+        "<html><body style='font-family:system-ui;padding:40px;text-align:center;'>"
+        "<h1>Confirm denial</h1>"
+        f"<p>Agent: <b>{safe_agent}</b> | Action: <b>{safe_action}</b></p>"
+        "<p>Opening this link did not deny the action.</p>"
+        "<form method='post' action=''>"
+        "<button type='submit'>Confirm denial</button>"
+        "</form></body></html>"
+    )
+
+
 @app.post("/api/v1/approvals/{token}/deny", tags=["Human-in-the-Loop"])
-async def deny_action(token: str, request: Request, reason: str = Query("Denied by Surendra")) -> Any:
+async def deny_action(token: str, reason: str = Query("Denied by Surendra")) -> dict[str, Any]:
+    """Deny only on an explicit POST from the confirmation form."""
     pending = approval_dispatcher.decide(token, approve=False, reason=reason)
     if not pending:
         raise HTTPException(status_code=404, detail="Approval token not found")
-    if "text/html" in request.headers.get("accept", "") or request.method == "GET":
-        return HTMLResponse(
-            f"<html><body style='font-family:system-ui;padding:40px;background:#0d1117;color:#f85149;text-align:center;'>"
-            f"<h1>❌ Action Denied</h1>"
-            f"<p style='color:#c9d1d9;'>Agent: <b>{pending.agent_name}</b> | Action: <b>{pending.action}</b></p>"
-            f"<p style='color:#f85149;'>Execution aborted and quarantined.</p>"
-            f"</body></html>"
-        )
+    if pending.status.value != "DENIED":
+        raise HTTPException(status_code=409, detail=f"Denial could not be recorded: {pending.status.value}")
     return {"status": "DENIED", "action": pending.action, "agent": pending.agent_name}
