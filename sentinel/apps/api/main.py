@@ -63,6 +63,7 @@ from sentinel.core.security.crypto_gatekeeper import (
     canonicalize_payload,
     crypto_gatekeeper,
 )
+from sentinel.gatekeeper.approval_dispatcher import approval_dispatcher
 from sentinel.integrations.friday.models import (
     BlockedActionRecord,
     BlockedTargetRecord,
@@ -78,7 +79,6 @@ from sentinel.integrations.friday.models import (
     FridaySummarizer,
     OpenFindingsBySeverity,
 )
-from sentinel.gatekeeper.approval_dispatcher import approval_dispatcher
 from sentinel.intelligence.attack_paths.analyzer import attack_path_analyzer
 from sentinel.intelligence.recommendations.engine import recommendation_engine
 from sentinel.intelligence.reporting.generator import ReportType, report_generator
