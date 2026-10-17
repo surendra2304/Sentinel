@@ -8,6 +8,8 @@ from sentinel.apps.api.main import (
     get_approval_confirmation,
     get_denial_confirmation,
 )
+from fastapi import HTTPException
+
 from sentinel.gatekeeper.approval_dispatcher import ApprovalStatus, approval_dispatcher
 
 
@@ -56,6 +58,7 @@ async def test_expired_approval_link_does_not_create_a_decision(pending_approval
     assert page.status_code == 409
     assert pending_approval.status is ApprovalStatus.PENDING
 
-    result = await approve_action(pending_approval.token)
-    assert result["status"] == "EXPIRED"
+    with pytest.raises(HTTPException) as exc:
+        await approve_action(pending_approval.token)
+    assert exc.value.status_code == 409
     assert pending_approval.status is ApprovalStatus.EXPIRED
