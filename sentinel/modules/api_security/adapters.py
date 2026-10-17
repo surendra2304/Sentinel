@@ -16,11 +16,11 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from sentinel.core.tls_policy import tls_verification_enabled
 import yaml
 
 from sentinel.core.models import ActionRequest, ActionResult
 from sentinel.core.orchestrator.adapter import ToolAdapter
+from sentinel.core.tls_policy import tls_verification_enabled
 
 # ---------------------------------------------------------------------------
 # 1. API Discovery & Spec Locator Adapter
