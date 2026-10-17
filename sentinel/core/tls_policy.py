@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import os
 
-
 _TRUE = {"1", "true", "yes", "on"}
 _FALSE = {"0", "false", "no", "off"}
 
@@ -29,6 +28,4 @@ def tls_verification_enabled() -> bool:
     break_glass = os.getenv(
         "SENTINEL_ALLOW_INSECURE_TLS_PRODUCTION", "false"
     ).strip().lower() in _TRUE
-    if environment == "production" and not break_glass:
-        return True
-    return False
+    return environment == "production" and not break_glass
