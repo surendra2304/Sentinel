@@ -16,7 +16,6 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-
 from sentinel.core.tls_policy import tls_verification_enabled
 import yaml
 
