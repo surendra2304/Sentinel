@@ -1366,7 +1366,7 @@ async def evaluate_vyralx_publish_policy(payload: VyralXPublishPolicyRequest) ->
     if payload.privacy_status == "unlisted" and not settings.youtube_publish_allow_unlisted:
         return deny("Unlisted YouTube publishing is disabled in Sentinel policy configuration.")
     if payload.privacy_status == "public" and not settings.youtube_publish_allow_public:
-        return deny("Public YouTube publishing requires an explicit Sentinel policy opt-in.")
+        return deny("Public YouTube publishing is disabled without an explicit Sentinel policy opt-in.")
 
     scheduled_at = payload.scheduled_at.strip()
     if scheduled_at:
