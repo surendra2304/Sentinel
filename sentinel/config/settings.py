@@ -134,6 +134,11 @@ class Settings(BaseSettings):
 
     # Autonomy & Policy Gates
     kill_switch_active: bool = False
+    # VyralX publication is denied by default. The dedicated authenticated endpoint
+    # can allow only operator-reviewed jobs with explicit rights verification.
+    youtube_publish_enabled: bool = False
+    youtube_publish_allow_unlisted: bool = False
+    youtube_publish_allow_public: bool = False
     require_human_approval_for_offensive: bool = True
     global_rate_limit_rps: int = 50
     max_http_concurrency: int = Field(default=256, ge=1, le=10_000)
