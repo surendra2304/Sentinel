@@ -183,6 +183,69 @@ def test_publish_policy_audit_failure_cannot_become_an_allow(monkeypatch):
     assert "audit logging is unavailable" in response.json()["reason"]
 
 
+def test_publish_policy_accepts_bearer_authorization_header(monkeypatch):
+    _configure_gate(monkeypatch, enabled=True)
+    response = TestClient(api_main.app).post(
+        POLICY_URL,
+        headers={"X-Agent-Name": "vyralx", "Authorization": f"Bearer {API_KEY}"},
+        json=_payload(),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["allowed"] is True
+
+
+@pytest.mark.parametrize(
+    "headers, expected_status, expected_detail",
+    [
+        ({"X-Agent-Name": "vyralx"}, 401, "A Sentinel API key is required"),
+        (
+            {"X-Agent-Name": "vyralx", "X-API-Key": "not-the-configured-key"},
+            403,
+            "The Sentinel API key is invalid",
+        ),
+    ],
+)
+def test_publish_policy_rejects_missing_or_invalid_key(
+    monkeypatch, headers, expected_status, expected_detail
+):
+    _configure_gate(monkeypatch, enabled=True)
+    response = TestClient(api_main.app).post(POLICY_URL, headers=headers, json=_payload())
+
+    assert response.status_code == expected_status
+    assert expected_detail in response.json()["detail"]
+
+
+def test_publish_policy_falls_back_to_settings_key_when_environment_key_is_blank(monkeypatch):
+    _configure_gate(monkeypatch, enabled=True)
+    monkeypatch.setenv("SENTINEL_API_KEY", "")
+    response = TestClient(api_main.app).post(POLICY_URL, headers=_headers(), json=_payload())
+
+    assert response.status_code == 200
+    assert response.json()["allowed"] is True
+
+
+def test_publish_policy_allows_unlisted_only_with_explicit_configuration(monkeypatch):
+    _configure_gate(monkeypatch, enabled=True, allow_unlisted=True)
+    response = TestClient(api_main.app).post(
+        POLICY_URL, headers=_headers(), json=_payload(privacy_status="unlisted")
+    )
+
+    assert response.status_code == 200
+    assert response.json()["allowed"] is True
+
+
+def test_publish_policy_allows_valid_future_private_schedule(monkeypatch):
+    _configure_gate(monkeypatch, enabled=True)
+    scheduled_at = (datetime.now(UTC) + timedelta(days=1)).isoformat()
+    response = TestClient(api_main.app).post(
+        POLICY_URL, headers=_headers(), json=_payload(scheduled_at=scheduled_at)
+    )
+
+    assert response.status_code == 200
+    assert response.json()["allowed"] is True
+
+
 def test_publish_policy_flags_are_wired_as_default_deny_in_both_compose_files():
     import yaml
 
