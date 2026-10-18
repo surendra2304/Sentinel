@@ -181,3 +181,19 @@ def test_publish_policy_audit_failure_cannot_become_an_allow(monkeypatch):
     assert response.status_code == 200
     assert response.json()["allowed"] is False
     assert "audit logging is unavailable" in response.json()["reason"]
+
+
+def test_publish_policy_flags_are_wired_as_default_deny_in_both_compose_files():
+    import yaml
+
+    root = Path(__file__).resolve().parents[2]
+    expected = {
+        "SENTINEL_YOUTUBE_PUBLISH_ENABLED": "${SENTINEL_YOUTUBE_PUBLISH_ENABLED:-false}",
+        "SENTINEL_YOUTUBE_PUBLISH_ALLOW_UNLISTED": "${SENTINEL_YOUTUBE_PUBLISH_ALLOW_UNLISTED:-false}",
+        "SENTINEL_YOUTUBE_PUBLISH_ALLOW_PUBLIC": "${SENTINEL_YOUTUBE_PUBLISH_ALLOW_PUBLIC:-false}",
+    }
+    for filename, service in (("docker-compose.yml", "sentinel-api"), ("docker-compose.production.yml", "api")):
+        compose = yaml.safe_load((root / filename).read_text(encoding="utf-8"))
+        environment = compose["services"][service]["environment"]
+        for name, value in expected.items():
+            assert environment[name] == value
