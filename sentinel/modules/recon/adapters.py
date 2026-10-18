@@ -20,6 +20,7 @@ import httpx
 
 from sentinel.core.models import ActionRequest, ActionResult
 from sentinel.core.orchestrator.adapter import ToolAdapter
+from sentinel.core.tls_policy import tls_verification_enabled
 
 # ---------------------------------------------------------------------------
 # 1. Subdomain Enumeration Adapter
@@ -269,7 +270,7 @@ class CertificateInspectorAdapter(ToolAdapter):
 
         try:
             # Connect via HTTPX to inspect TLS stream
-            async with httpx.AsyncClient(verify=False, timeout=6.0) as client:
+            async with httpx.AsyncClient(verify=tls_verification_enabled(), timeout=6.0) as client:
                 res = await client.get(f"https://{host}:{port}")
                 data["has_certificate"] = True
                 data["protocol"] = res.http_version
@@ -333,7 +334,7 @@ class TechnologyFingerprintAdapter(ToolAdapter):
         }
 
         try:
-            async with httpx.AsyncClient(verify=False, follow_redirects=False, timeout=8.0) as client:
+            async with httpx.AsyncClient(verify=tls_verification_enabled(), follow_redirects=False, timeout=8.0) as client:
                 res = await client.get(url)
 
                 # 1. Server Header
@@ -426,7 +427,7 @@ class OSINTAdapter(ToolAdapter):
         }
 
         try:
-            async with httpx.AsyncClient(verify=False, follow_redirects=False, timeout=6.0) as client:
+            async with httpx.AsyncClient(verify=tls_verification_enabled(), follow_redirects=False, timeout=6.0) as client:
                 # 1. Fetch .well-known/security.txt
                 for path in ["/.well-known/security.txt", "/security.txt"]:
                     sec_res = await client.get(f"{base_url}{path}")

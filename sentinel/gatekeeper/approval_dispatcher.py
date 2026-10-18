@@ -15,22 +15,21 @@ Channels:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import secrets
 import time
-from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
-from enum import Enum
-from typing import Any, Dict, List, Optional
-import urllib.parse
 import urllib.request
-import json
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from enum import StrEnum
+from typing import Any
 
 logger = logging.getLogger("approval_dispatcher")
 
 
-class ApprovalStatus(str, Enum):
+class ApprovalStatus(StrEnum):
     PENDING = "PENDING"
     APPROVED = "APPROVED"
     DENIED = "DENIED"
@@ -44,17 +43,17 @@ class PendingApproval:
     agent_name: str
     action: str
     risk_level: str
-    details: Dict[str, Any]
+    details: dict[str, Any]
     created_at: float = field(default_factory=lambda: time.time())
     expires_at: float = field(default_factory=lambda: time.time() + 300.0)  # 5 min default
     status: ApprovalStatus = ApprovalStatus.PENDING
-    decision_reason: Optional[str] = None
-    decided_at: Optional[float] = None
+    decision_reason: str | None = None
+    decided_at: float | None = None
 
     def is_expired(self) -> bool:
         return self.status == ApprovalStatus.PENDING and time.time() > self.expires_at
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "token": self.token,
             "request_id": self.request_id,
@@ -62,24 +61,23 @@ class PendingApproval:
             "action": self.action,
             "risk_level": self.risk_level,
             "details": self.details,
-            "created_at": datetime.fromtimestamp(self.created_at, timezone.utc).isoformat(),
-            "expires_at": datetime.fromtimestamp(self.expires_at, timezone.utc).isoformat(),
+            "created_at": datetime.fromtimestamp(self.created_at, UTC).isoformat(),
+            "expires_at": datetime.fromtimestamp(self.expires_at, UTC).isoformat(),
             "status": self.status.value,
             "decision_reason": self.decision_reason,
-            "decided_at": datetime.fromtimestamp(self.decided_at, timezone.utc).isoformat() if self.decided_at else None,
+            "decided_at": datetime.fromtimestamp(self.decided_at, UTC).isoformat() if self.decided_at else None,
         }
 
 
 class ApprovalDispatcher:
     """Singleton dispatcher managing pending approvals and multi-channel notifications."""
-    
-    _instance: Optional["ApprovalDispatcher"] = None
+    _instance: ApprovalDispatcher | None = None
 
-    def __new__(cls) -> "ApprovalDispatcher":
+    def __new__(cls) -> ApprovalDispatcher:
         if cls._instance is None:
             cls._instance = super().__new__(cls)
-            cls._instance._pending: Dict[str, PendingApproval] = {}
-            cls._instance._events: Dict[str, asyncio.Event] = {}
+            cls._instance._pending: dict[str, PendingApproval] = {}
+            cls._instance._events: dict[str, asyncio.Event] = {}
         return cls._instance
 
     @property
@@ -87,29 +85,28 @@ class ApprovalDispatcher:
         return os.getenv("FRIDAY_PUBLIC_URL", "http://friday-universe.duckdns.org/sentinel").rstrip("/")
 
     @property
-    def telegram_bot_token(self) -> Optional[str]:
+    def telegram_bot_token(self) -> str | None:
         return os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("SENTINEL_TELEGRAM_BOT_TOKEN")
 
     @property
-    def telegram_chat_id(self) -> Optional[str]:
+    def telegram_chat_id(self) -> str | None:
         return os.getenv("TELEGRAM_CHAT_ID") or os.getenv("SENTINEL_TELEGRAM_CHAT_ID")
 
     @property
-    def discord_webhook_url(self) -> Optional[str]:
+    def discord_webhook_url(self) -> str | None:
         return os.getenv("DISCORD_WEBHOOK_URL")
 
     def submit_approval(
         self,
         agent_name: str,
         action: str,
-        details: Optional[Dict[str, Any]] = None,
+        details: dict[str, Any] | None = None,
         risk_level: str = "GUARDED",
         timeout_sec: float = 300.0,
     ) -> PendingApproval:
         """Create and dispatch a new approval request."""
         token = secrets.token_hex(16)
         req_id = f"appr_{secrets.token_hex(6)}"
-        
         pending = PendingApproval(
             token=token,
             request_id=req_id,
@@ -129,7 +126,7 @@ class ApprovalDispatcher:
         self._dispatch_notifications(pending)
         return pending
 
-    async def wait_for_decision(self, token: str, timeout_sec: Optional[float] = None) -> bool:
+    async def wait_for_decision(self, token: str, timeout_sec: float | None = None) -> bool:
         """Asynchronously wait until the approval is decided by Surendra or expires."""
         pending = self._pending.get(token)
         if not pending:
@@ -143,12 +140,12 @@ class ApprovalDispatcher:
         try:
             await asyncio.wait_for(event.wait(), timeout=timeout)
             return pending.status == ApprovalStatus.APPROVED
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pending.status = ApprovalStatus.EXPIRED
             pending.decision_reason = "Approval request timed out without response"
             return False
 
-    def decide(self, token: str, approve: bool, reason: str = "") -> Optional[PendingApproval]:
+    def decide(self, token: str, approve: bool, reason: str = "") -> PendingApproval | None:
         """Record decision (approve or deny) and awaken waiting agent."""
         pending = self._pending.get(token)
         if not pending:
@@ -166,10 +163,10 @@ class ApprovalDispatcher:
         if event:
             event.set()
 
-        logger.info(f"Approval {pending.request_id} ({pending.action}) -> {pending.status.value}")
+        logger.info("Approval %s (%s) -> %s", pending.request_id, pending.action, pending.status.value)
         return pending
 
-    def get_pending_list(self) -> List[Dict[str, Any]]:
+    def get_pending_list(self) -> list[dict[str, Any]]:
         """Return all non-expired pending approvals."""
         now = time.time()
         active = []
@@ -224,11 +221,11 @@ class ApprovalDispatcher:
             )
             urllib.request.urlopen(req, timeout=5.0)
         except Exception as e:
-            logger.warning(f"Telegram notification dispatch error: {e}")
+            logger.warning("Telegram notification dispatch error: %s", e)
 
     def _send_discord(self, pending: PendingApproval, approve_url: str, deny_url: str) -> None:
         payload = {
-            "content": f"🛡️ **SENTINEL GUARDED ACTION APPROVAL REQUIRED**",
+            "content": "🛡️ **SENTINEL GUARDED ACTION APPROVAL REQUIRED**",
             "embeds": [
                 {
                     "title": f"Action: {pending.action} ({pending.agent_name})",
@@ -249,7 +246,7 @@ class ApprovalDispatcher:
             )
             urllib.request.urlopen(req, timeout=5.0)
         except Exception as e:
-            logger.warning(f"Discord notification dispatch error: {e}")
+            logger.warning("Discord notification dispatch error: %s", e)
 
 
 # Global singleton instance

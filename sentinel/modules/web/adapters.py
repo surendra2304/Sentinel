@@ -21,6 +21,7 @@ import yaml
 
 from sentinel.core.models import ActionRequest, ActionResult
 from sentinel.core.orchestrator.adapter import ToolAdapter
+from sentinel.core.tls_policy import tls_verification_enabled
 
 # ---------------------------------------------------------------------------
 # 1. Web Crawler Adapter
@@ -63,7 +64,7 @@ class WebCrawlerAdapter(ToolAdapter):
         queue: deque[tuple[str, int]] = deque([(start_url, 0)])
         endpoints: list[dict[str, Any]] = []
 
-        async with httpx.AsyncClient(verify=False, follow_redirects=False, timeout=6.0) as client:
+        async with httpx.AsyncClient(verify=tls_verification_enabled(), follow_redirects=False, timeout=6.0) as client:
             while queue and len(visited) < max_endpoints:
                 current_url, depth = queue.popleft()
                 if current_url in visited or depth > max_depth:
@@ -153,7 +154,7 @@ class WebConfigAnalysisAdapter(ToolAdapter):
         cookies_analyzed: list[dict[str, Any]] = []
 
         try:
-            async with httpx.AsyncClient(verify=False, follow_redirects=False, timeout=8.0) as client:
+            async with httpx.AsyncClient(verify=tls_verification_enabled(), follow_redirects=False, timeout=8.0) as client:
                 res = await client.get(url)
 
                 # 1. Audit Security Headers against rules.yaml
@@ -272,7 +273,7 @@ class AuthSessionTestingAdapter(ToolAdapter):
         }
 
         try:
-            async with httpx.AsyncClient(verify=False, follow_redirects=False, timeout=6.0) as client:
+            async with httpx.AsyncClient(verify=tls_verification_enabled(), follow_redirects=False, timeout=6.0) as client:
                 res = await client.get(url)
                 body = res.text.lower()
 
@@ -349,7 +350,7 @@ class VulnerabilityValidatorAdapter(ToolAdapter):
 
         findings_list: list[dict[str, Any]] = []
 
-        async with httpx.AsyncClient(verify=False, follow_redirects=False, timeout=6.0) as client:
+        async with httpx.AsyncClient(verify=tls_verification_enabled(), follow_redirects=False, timeout=6.0) as client:
             # 1. Directory Listing Check
             for check_url in [target_path_url, f"{target_path_url}/"]:
                 try:

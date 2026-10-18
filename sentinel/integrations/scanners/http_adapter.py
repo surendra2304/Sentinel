@@ -14,6 +14,7 @@ import httpx
 
 from sentinel.core.models import ActionRequest, ActionResult
 from sentinel.core.orchestrator.adapter import ToolAdapter
+from sentinel.core.tls_policy import tls_verification_enabled
 
 
 class HTTPObserverAdapter(ToolAdapter):
@@ -53,7 +54,7 @@ class HTTPObserverAdapter(ToolAdapter):
         }
 
         try:
-            async with httpx.AsyncClient(verify=False, follow_redirects=False, timeout=10.0) as client:
+            async with httpx.AsyncClient(verify=tls_verification_enabled(), follow_redirects=False, timeout=10.0) as client:
                 res = await client.get(url)
                 data["http"] = {
                     "status_code": res.status_code,

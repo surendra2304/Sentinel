@@ -20,6 +20,7 @@ import yaml
 
 from sentinel.core.models import ActionRequest, ActionResult
 from sentinel.core.orchestrator.adapter import ToolAdapter
+from sentinel.core.tls_policy import tls_verification_enabled
 
 # ---------------------------------------------------------------------------
 # 1. API Discovery & Spec Locator Adapter
@@ -70,7 +71,7 @@ class APIDiscoveryAdapter(ToolAdapter):
 
         spec_paths = self.rules.get("well_known_specs", ["/openapi.json", "/swagger.json", "/docs", "/graphql"])
 
-        async with httpx.AsyncClient(verify=False, follow_redirects=False, timeout=6.0) as client:
+        async with httpx.AsyncClient(verify=tls_verification_enabled(), follow_redirects=False, timeout=6.0) as client:
             for path in spec_paths:
                 try:
                     probe_url = f"{url}{path}"
@@ -138,7 +139,7 @@ class OpenAPISchemaParserAdapter(ToolAdapter):
         spec_data = action.parameters.get("spec_json")
 
         if not spec_data and spec_url:
-            async with httpx.AsyncClient(verify=False, follow_redirects=False, timeout=8.0) as client:
+            async with httpx.AsyncClient(verify=tls_verification_enabled(), follow_redirects=False, timeout=8.0) as client:
                 try:
                     res = await client.get(spec_url)
                     if res.status_code == 200:
@@ -322,7 +323,7 @@ class InputValidationProbeAdapter(ToolAdapter):
         url = action.target_refs[0].strip()
         findings_list: list[dict[str, Any]] = []
 
-        async with httpx.AsyncClient(verify=False, timeout=6.0) as client:
+        async with httpx.AsyncClient(verify=tls_verification_enabled(), timeout=6.0) as client:
             # 1. Send invalid JSON type confusion payload (string instead of integer / object)
             try:
                 confuse_payload = {"id": "invalid_string_type_confusion_probe", "count": "not_a_number"}
@@ -401,7 +402,7 @@ class APIMisconfigAdapter(ToolAdapter):
         test_origin = "https://attacker-evil-origin.example.com"
         headers = {"Origin": test_origin}
 
-        async with httpx.AsyncClient(verify=False, timeout=6.0) as client:
+        async with httpx.AsyncClient(verify=tls_verification_enabled(), timeout=6.0) as client:
             try:
                 res = await client.get(url, headers=headers)
                 allow_origin = res.headers.get("access-control-allow-origin")
