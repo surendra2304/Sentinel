@@ -7,7 +7,6 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
-
 from sentinel.apps.api import main as api_main
 
 
