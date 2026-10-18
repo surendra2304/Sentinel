@@ -301,8 +301,11 @@ def test_json_schemas_exist():
         "policy.schema.json",
         "scope.schema.json",
     ]
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parent.parent.parent
     for schema_file in schemas:
-        path = os.path.join("sentinel", "contracts", schema_file)
+        path = os.path.join(str(repo_root), "sentinel", "contracts", schema_file)
         assert os.path.exists(path), f"Missing schema file: {path}"
         with open(path, encoding="utf-8") as f:
             data = json.load(f)

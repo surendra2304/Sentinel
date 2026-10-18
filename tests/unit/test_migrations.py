@@ -8,8 +8,12 @@ def test_alembic_upgrade_downgrade_sqlite(tmp_path):
     db_file = tmp_path / "test_migration.db"
     sqlite_url = f"sqlite:///{db_file}"
 
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parent.parent.parent
     # Setup temporary alembic config pointing to SQLite for migration test
-    alembic_cfg = Config("alembic.ini")
+    alembic_cfg = Config(str(repo_root / "alembic.ini"))
+    alembic_cfg.set_main_option("script_location", str(repo_root / "alembic"))
     alembic_cfg.set_main_option("sqlalchemy.url", sqlite_url)
 
     # Test upgrade to head

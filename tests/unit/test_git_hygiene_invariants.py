@@ -9,7 +9,10 @@ import subprocess
 
 
 def test_git_tree_cleanliness_and_ignore_rules():
-    result = subprocess.run(["git", "ls-files"], capture_output=True, text=True, check=True)
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    result = subprocess.run(["git", "ls-files"], cwd=str(repo_root), capture_output=True, text=True, check=True)
     tracked_files = result.stdout.splitlines()
 
     tracked_pyc = [f for f in tracked_files if f.endswith(".pyc") or "__pycache__" in f]

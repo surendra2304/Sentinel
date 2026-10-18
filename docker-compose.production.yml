@@ -55,14 +55,14 @@ services:
       - default
 
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${SENTINEL_DB_USER:-sentinel}
       POSTGRES_PASSWORD: ${SENTINEL_DB_PASSWORD:?SENTINEL_DB_PASSWORD is required}
       POSTGRES_DB: ${SENTINEL_DB_NAME:-sentinel_db}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s

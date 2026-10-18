@@ -426,11 +426,12 @@ async def test_http_observer_does_not_follow_out_of_scope_redirect():
 def test_assessment_adapters_do_not_enable_automatic_redirects():
     from pathlib import Path
 
+    repo_root = Path(__file__).resolve().parent.parent.parent
     adapter_paths = (
-        Path("sentinel/modules/web/adapters.py"),
-        Path("sentinel/modules/recon/adapters.py"),
-        Path("sentinel/modules/api_security/adapters.py"),
-        Path("sentinel/integrations/scanners/http_adapter.py"),
+        repo_root / "sentinel/modules/web/adapters.py",
+        repo_root / "sentinel/modules/recon/adapters.py",
+        repo_root / "sentinel/modules/api_security/adapters.py",
+        repo_root / "sentinel/integrations/scanners/http_adapter.py",
     )
     for path in adapter_paths:
         assert "follow_redirects=True" not in path.read_text(encoding="utf-8")

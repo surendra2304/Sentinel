@@ -5,8 +5,10 @@ import sys
 
 import pytest
 
-# Runtime components fail closed without an audit HMAC key; this deterministic,
-# test-only value is never used by deployment configuration.
+os.environ["SENTINEL_ENVIRONMENT"] = "development"
+os.environ["ENVIRONMENT"] = "development"
+os.environ["SENTINEL_STORAGE_BACKEND"] = "memory"
+os.environ.setdefault("SENTINEL_API_KEY", "sentinel_test_key_at_least_16_chars")
 os.environ.setdefault(
     "SENTINEL_AUDIT_SIGNING_KEY",
     "sentinel-pytest-audit-key-not-for-deployment",
