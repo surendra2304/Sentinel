@@ -1,8 +1,8 @@
 """Sentinel Task Gateway & REST API Service."""
 
 import asyncio
-import html
 import hmac
+import html
 import json
 import os
 import signal
