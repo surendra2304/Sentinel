@@ -4,8 +4,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-import pytest
 from fastapi.testclient import TestClient
+import pytest
 from pydantic import SecretStr
 
 from sentinel.apps.api import main as api_main
