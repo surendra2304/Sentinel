@@ -42,10 +42,18 @@ jobs:
         run: python verify_diary.py
 
       - name: Run Pytest Test Suite
+        id: pytest
         env:
           SENTINEL_AUDIT_SIGNING_KEY: sentinel-ci-audit-key-32characters-long
           SENTINEL_AUDIT_HMAC_KEY: sentinel-ci-audit-key-32characters-long
         run: pytest -v --tb=short --cov=sentinel --cov-fail-under=85
+
+      # pytest may report a below-threshold summary while a plugin/session hook
+      # leaves the process exit code green. Enforce the recorded coverage in a
+      # separate process so the release gate cannot be masked by pytest hooks.
+      - name: Independently enforce minimum coverage
+        if: steps.pytest.outcome == 'success'
+        run: python -m coverage report --fail-under=85
 
       - name: Setup Node.js for Dashboard Verification
         uses: actions/setup-node@v4
