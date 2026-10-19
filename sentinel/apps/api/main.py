@@ -1,6 +1,7 @@
 """Sentinel Task Gateway & REST API Service."""
 
 import asyncio
+import hmac
 import html
 import json
 import os
@@ -10,10 +11,10 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import (
     FileResponse,
@@ -1250,6 +1251,141 @@ async def get_global_kill_switch_status() -> dict[str, Any]:
 async def evaluate_security_gate_review(req: GatedReviewRequest) -> GatedReviewResult:
     """Automated pre-delivery and pre-deployment security review for Cortex and Forge."""
     return gated_security_reviewer.review(req)
+
+
+class VyralXPublishPolicyRequest(BaseModel):
+    """Bounded request from the VyralX worker before an approved YouTube upload."""
+
+    action: Literal["youtube.publish"]
+    job_id: int = Field(gt=0)
+    asset_id: int = Field(gt=0)
+    title: str = Field(min_length=1, max_length=100)
+    privacy_status: Literal["private", "unlisted", "public"] = "private"
+    scheduled_at: str = Field(default="", max_length=64)
+    operator_review_acknowledged: bool
+    rights_verified: bool
+
+
+def require_vyralx_publish_policy_auth(
+    x_agent_name: str | None = Header(default=None, alias="X-Agent-Name"),
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+    authorization: str | None = Header(default=None, alias="Authorization"),
+) -> None:
+    """Authenticate VyralX even when the general Sentinel API auth toggle is disabled."""
+    if (x_agent_name or "").strip().lower() != "vyralx":
+        raise HTTPException(status_code=403, detail="VyralX service identity is required.")
+
+    expected = (os.getenv("SENTINEL_API_KEY") or settings.api_key.get_secret_value()).strip()
+    if len(expected) < 32 or expected.lower() in {
+        "sentinel_api", "change-me", "changeme", "password", "secret",
+    }:
+        raise HTTPException(
+            status_code=503,
+            detail="VyralX publish policy is unavailable: configure a unique Sentinel API key.",
+        )
+
+    supplied = (x_api_key or "").strip()
+    if not supplied and authorization and authorization.lower().startswith("bearer "):
+        supplied = authorization[7:].strip()
+    if not supplied:
+        raise HTTPException(status_code=401, detail="A Sentinel API key is required.")
+    if not hmac.compare_digest(supplied.encode("utf-8"), expected.encode("utf-8")):
+        raise HTTPException(status_code=403, detail="The Sentinel API key is invalid.")
+
+
+def _publish_policy_decision(
+    *,
+    payload: VyralXPublishPolicyRequest,
+    allowed: bool,
+    reason: str,
+) -> dict[str, Any]:
+    """Append every decision to the signed audit chain; audit failure denies an allow."""
+    decision = "allow" if allowed else "deny"
+    audit_payload = {
+        "action_type": "youtube.publish",
+        "scope_policy": "vyralx-publish-policy-v1",
+        "decision": decision.upper(),
+        "target": f"youtube:asset:{payload.asset_id}",
+        "job_id": payload.job_id,
+        "asset_id": payload.asset_id,
+        "privacy_status": payload.privacy_status,
+        "is_scheduled": bool(payload.scheduled_at.strip()),
+        "operator_review_acknowledged": payload.operator_review_acknowledged,
+        "rights_verified_asserted_by_vyralx": payload.rights_verified,
+        "reason": reason,
+    }
+    try:
+        audit_logger.append(
+            event_type="publish_policy.decision",
+            actor_id="vyralx",
+            tenant_id="default",
+            action_id=f"youtube-publish-{payload.job_id}",
+            payload=audit_payload,
+        )
+    except Exception as exc:
+        logger.error(
+            "VyralX publish policy audit append failed job_id=%s error_type=%s",
+            payload.job_id,
+            type(exc).__name__,
+        )
+        allowed = False
+        decision = "deny"
+        reason = "Sentinel audit logging is unavailable; policy denied fail-closed."
+
+    return {
+        "allowed": allowed,
+        "decision": decision,
+        "reason": reason,
+        "policy": "vyralx-publish-policy-v1",
+        "job_id": payload.job_id,
+        "evaluated_at": datetime.now(UTC).isoformat(),
+    }
+
+
+@app.post(
+    f"{settings.api_prefix}/vyralx/publish-policy",
+    tags=["VyralX Publish Policy"],
+    dependencies=[Depends(require_vyralx_publish_policy_auth)],
+)
+async def evaluate_vyralx_publish_policy(payload: VyralXPublishPolicyRequest) -> dict[str, Any]:
+    """Default-deny publish gate; it never uploads media and is separate from the software-review gate."""
+    def deny(reason: str) -> dict[str, Any]:
+        return _publish_policy_decision(payload=payload, allowed=False, reason=reason)
+
+    if settings.kill_switch_active:
+        return deny("Sentinel's global kill switch is active.")
+    if not settings.youtube_publish_enabled:
+        return deny("YouTube publishing is disabled in Sentinel policy configuration.")
+    if not payload.operator_review_acknowledged:
+        return deny("A VyralX operator review acknowledgment is required.")
+    if not payload.rights_verified:
+        return deny("VyralX did not assert that the montage sources passed its rights checks.")
+    if not payload.title.strip():
+        return deny("A non-empty YouTube title is required.")
+
+    if payload.privacy_status == "unlisted" and not settings.youtube_publish_allow_unlisted:
+        return deny("Unlisted YouTube publishing is disabled in Sentinel policy configuration.")
+    if payload.privacy_status == "public" and not settings.youtube_publish_allow_public:
+        return deny("Public YouTube publishing is disabled without an explicit Sentinel policy opt-in.")
+
+    scheduled_at = payload.scheduled_at.strip()
+    if scheduled_at:
+        try:
+            schedule_time = datetime.fromisoformat(scheduled_at.replace("Z", "+00:00"))
+        except ValueError:
+            return deny("scheduled_at must be a valid ISO-8601 timestamp.")
+        if schedule_time.tzinfo is None or schedule_time.utcoffset() is None:
+            return deny("scheduled_at must include an explicit timezone.")
+        if schedule_time <= datetime.now(UTC):
+            return deny("scheduled_at must be in the future.")
+        if payload.privacy_status != "private":
+            return deny("Scheduled YouTube publishing must use private privacy until publication.")
+
+    return _publish_policy_decision(
+        payload=payload,
+        allowed=True,
+        reason="Publish policy gates passed; VyralX operator review and rights checks were asserted.",
+    )
 
 
 # IntelX Threat Research Integration Endpoints
