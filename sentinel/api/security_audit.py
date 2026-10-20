@@ -208,7 +208,7 @@ async def evaluate_security_audit(req: SecurityAuditRequest) -> SecurityAuditRes
                     SecurityAuditFinding(
                         category="secret",
                         rule_id=s.rule_id,
-                        severity=s.severity.value,
+                        severity=s.severity.value.upper(),
                         title=f"Hardcoded Secret: {s.name}",
                         description=f"Secret detected on line {s.line_number} of {s.file_path or 'diff'}: {s.redacted_value}",
                         file_path=s.file_path,
@@ -225,7 +225,7 @@ async def evaluate_security_audit(req: SecurityAuditRequest) -> SecurityAuditRes
                     SecurityAuditFinding(
                         category="secret",
                         rule_id=s.rule_id,
-                        severity=s.severity.value,
+                        severity=s.severity.value.upper(),
                         title=f"Hardcoded Secret: {s.name}",
                         description=f"Secret detected in {s.file_path} on line {s.line_number}: {s.redacted_value}",
                         file_path=s.file_path,
@@ -338,8 +338,8 @@ async def evaluate_security_audit(req: SecurityAuditRequest) -> SecurityAuditRes
                 )
 
         # 7. Decision Determination
-        crit_count = sum(1 for f in findings if f.severity == "CRITICAL")
-        high_count = sum(1 for f in findings if f.severity == "HIGH")
+        crit_count = sum(1 for f in findings if f.severity.upper() == "CRITICAL")
+        high_count = sum(1 for f in findings if f.severity.upper() == "HIGH")
 
         veto = crit_count > 0 or high_count > 0
         decision = "VETO" if veto else "PASS"
