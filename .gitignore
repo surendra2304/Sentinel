@@ -44,3 +44,5 @@ dist/
 # Agent Scratch & Workspaces
 .agents/
 
+
+*.zip

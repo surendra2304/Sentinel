@@ -28,6 +28,7 @@ from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
 from sentinel.api.metrics import router as metrics_router
+from sentinel.api.security_audit import router as security_audit_router
 from sentinel.apps.api.middleware import APIKeyAuthMiddleware, RequestCapacityMiddleware
 from sentinel.audit.audit_logger import AuditLogger
 from sentinel.config.settings import EnvironmentType, get_settings
@@ -1592,6 +1593,7 @@ async def verify_capability_token(req: VerifyCapabilityRequest) -> dict[str, Any
 # deep_security_upgrades_installed
 # Include Metrics Router
 app.include_router(metrics_router, prefix=settings.api_prefix)
+app.include_router(security_audit_router)
 
 
 class SentinelInferenceRequest(BaseModel):

@@ -60,7 +60,7 @@ def _configured_remote_api_request(
     """Call the operator-configured API; return None when remote mode is disabled."""
     settings = get_settings()
     api_url = (os.getenv("SENTINEL_API_URL") or settings.api_url).strip().rstrip("/")
-    api_key = (os.getenv("SENTINEL_API_KEY") or settings.api_key.get_secret_value()).strip()
+    api_key = os.getenv("SENTINEL_API_KEY", "").strip() or (settings.api_key.get_secret_value().strip() if api_url else "")
     if not api_url and not api_key:
         return None
     if not api_url or not api_key:
@@ -243,7 +243,7 @@ def task_submit(
     # Remote submission is opt-in and uses only an operator-configured endpoint/key.
     settings = get_settings()
     api_url = (os.getenv("SENTINEL_API_URL") or settings.api_url).strip().rstrip("/")
-    api_key = (os.getenv("SENTINEL_API_KEY") or settings.api_key.get_secret_value()).strip()
+    api_key = os.getenv("SENTINEL_API_KEY", "").strip() or (settings.api_key.get_secret_value().strip() if api_url else "")
     if bool(api_url) != bool(api_key):
         console.print("[bold red]Set both SENTINEL_API_URL and SENTINEL_API_KEY for remote submission.[/bold red]")
         raise typer.Exit(code=1)

@@ -3,10 +3,13 @@
 from abc import ABC, abstractmethod
 from typing import Any
 
+from sentinel.audit.audit_logger import AuditEntry
 from sentinel.core.models import (
     Evidence,
     Finding,
     FindingStatus,
+    Risk,
+    RiskTier,
     SeverityLevel,
     Task,
     TaskStatus,
@@ -102,3 +105,44 @@ class ApprovalRepository(ABC):
         task_id: str | None = None,
         status: str | None = None,
     ) -> list[ApprovalRecord]: ...
+
+
+class RiskRepository(ABC):
+    """Abstract interface for Risk score persistence."""
+
+    @abstractmethod
+    async def save_risk(self, risk: Risk) -> Risk: ...
+
+    @abstractmethod
+    async def get_risk(self, risk_id: str) -> Risk | None: ...
+
+    @abstractmethod
+    async def list_risks(
+        self,
+        task_id: str | None = None,
+        finding_id: str | None = None,
+        risk_tier: RiskTier | None = None,
+    ) -> list[Risk]: ...
+
+
+class AuditRepository(ABC):
+    """Abstract interface for Cryptographic Audit Ledger persistence."""
+
+    @abstractmethod
+    async def save_audit_entry(self, entry: AuditEntry) -> AuditEntry: ...
+
+    @abstractmethod
+    async def get_audit_entry(self, entry_id: str) -> AuditEntry | None: ...
+
+    @abstractmethod
+    async def get_last_entry(self) -> AuditEntry | None: ...
+
+    @abstractmethod
+    async def list_audit_entries(
+        self,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[AuditEntry]: ...
+
+    @abstractmethod
+    async def verify_audit_chain(self) -> tuple[bool, str]: ...

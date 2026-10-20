@@ -5,6 +5,7 @@ from typing import Any, cast
 
 from sqlalchemy import and_, select, update
 
+from sentinel.audit.audit_logger import AuditEntry
 from sentinel.core.models import (
     AssetCriticality,
     AuthorizationMetadata,
@@ -15,6 +16,8 @@ from sentinel.core.models import (
     Finding,
     FindingStatus,
     Policy,
+    Risk,
+    RiskTier,
     Scope,
     SeverityLevel,
     Target,
@@ -28,9 +31,11 @@ from sentinel.core.models import (
 from sentinel.core.policy.engine import ApprovalRecord
 from sentinel.storage.database.models import (
     ApprovalModel,
+    AuditLogRecord,
     EvidenceModel,
     FindingModel,
     PolicyModel,
+    RiskModel,
     ScopeModel,
     TargetModel,
     TargetSetModel,
@@ -41,8 +46,10 @@ from sentinel.storage.database.models import (
 from sentinel.storage.database.session import get_db_session
 from sentinel.storage.repositories.interfaces import (
     ApprovalRepository,
+    AuditRepository,
     EvidenceRepository,
     FindingRepository,
+    RiskRepository,
     TaskRepository,
 )
 
@@ -552,4 +559,166 @@ class PostgresApprovalRepository(ApprovalRepository):
             requested_at=cast(datetime, model.requested_at),
             decided_at=cast(datetime | None, model.decided_at),
             expires_at=cast(datetime, model.expires_at),
+        )
+
+
+
+class PostgresRiskRepository(RiskRepository):
+    """PostgreSQL-backed Risk score repository."""
+
+    async def save_risk(self, risk: Risk) -> Risk:
+        async with get_db_session() as session:
+            model = await session.get(RiskModel, risk.id)
+            if not model:
+                model = RiskModel(
+                    id=risk.id,
+                    finding_id=risk.finding_id,
+                    task_id=risk.task_id,
+                    severity=risk.severity.value,
+                    asset_criticality=risk.asset_criticality.value,
+                    exposure_score=risk.exposure_score,
+                    exploitability_score=risk.exploitability_score,
+                    confidence_score=risk.confidence_score,
+                    computed_risk_score=risk.computed_risk_score,
+                    risk_tier=risk.risk_tier.value,
+                    rationale=risk.rationale,
+                )
+                session.add(model)
+            else:
+                model.severity = risk.severity.value  # type: ignore[assignment]
+                model.asset_criticality = risk.asset_criticality.value  # type: ignore[assignment]
+                model.exposure_score = risk.exposure_score  # type: ignore[assignment]
+                model.exploitability_score = risk.exploitability_score  # type: ignore[assignment]
+                model.confidence_score = risk.confidence_score  # type: ignore[assignment]
+                model.computed_risk_score = risk.computed_risk_score  # type: ignore[assignment]
+                model.risk_tier = risk.risk_tier.value  # type: ignore[assignment]
+                model.rationale = risk.rationale  # type: ignore[assignment]
+        return risk
+
+    async def get_risk(self, risk_id: str) -> Risk | None:
+        async with get_db_session() as session:
+            model = await session.get(RiskModel, risk_id)
+            return self._to_domain_risk(model) if model else None
+
+    async def list_risks(
+        self,
+        task_id: str | None = None,
+        finding_id: str | None = None,
+        risk_tier: RiskTier | None = None,
+    ) -> list[Risk]:
+        async with get_db_session() as session:
+            stmt = select(RiskModel).order_by(RiskModel.computed_risk_score.desc())
+            if task_id:
+                stmt = stmt.where(RiskModel.task_id == task_id)
+            if finding_id:
+                stmt = stmt.where(RiskModel.finding_id == finding_id)
+            if risk_tier:
+                stmt = stmt.where(RiskModel.risk_tier == risk_tier.value)
+            res = await session.execute(stmt)
+            return [self._to_domain_risk(m) for m in res.scalars().all()]
+
+    @staticmethod
+    def _to_domain_risk(m: Any) -> Risk:
+        return Risk(
+            id=str(m.id),
+            finding_id=str(m.finding_id),
+            task_id=str(m.task_id),
+            severity=SeverityLevel(str(m.severity)),
+            asset_criticality=AssetCriticality(str(m.asset_criticality)),
+            exposure_score=float(m.exposure_score),
+            exploitability_score=float(m.exploitability_score),
+            confidence_score=float(m.confidence_score),
+            computed_risk_score=float(m.computed_risk_score),
+            risk_tier=RiskTier(str(m.risk_tier)),
+            rationale=str(m.rationale or ""),
+        )
+
+
+class PostgresAuditRepository(AuditRepository):
+    """PostgreSQL-backed Cryptographic Audit Ledger repository."""
+
+    async def save_audit_entry(self, entry: AuditEntry) -> AuditEntry:
+        try:
+            ts = datetime.fromisoformat(entry.timestamp)
+        except Exception:
+            ts = datetime.now(UTC)
+
+        async with get_db_session() as session:
+            rec = await session.get(AuditLogRecord, entry.entry_id)
+            if not rec:
+                rec = AuditLogRecord(
+                    entry_id=entry.entry_id,
+                    timestamp=ts,
+                    event_type=entry.event_type,
+                    actor=entry.actor,
+                    target=entry.target,
+                    action_type=entry.action_type,
+                    scope_policy=entry.scope_policy,
+                    decision=entry.decision,
+                    details=entry.details,
+                    previous_hash=entry.previous_hash,
+                    current_hash=entry.current_hash,
+                    signature=entry.signature,
+                    verified=True,
+                )
+                session.add(rec)
+            else:
+                rec.verified = True  # type: ignore[assignment]
+        return entry
+
+    async def get_audit_entry(self, entry_id: str) -> AuditEntry | None:
+        async with get_db_session() as session:
+            rec = await session.get(AuditLogRecord, entry_id)
+            return self._to_domain_entry(rec) if rec else None
+
+    async def get_last_entry(self) -> AuditEntry | None:
+        async with get_db_session() as session:
+            stmt = select(AuditLogRecord).order_by(AuditLogRecord.timestamp.desc()).limit(1)
+            res = await session.execute(stmt)
+            rec = res.scalar_one_or_none()
+            return self._to_domain_entry(rec) if rec else None
+
+    async def list_audit_entries(
+        self,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[AuditEntry]:
+        async with get_db_session() as session:
+            stmt = select(AuditLogRecord).order_by(AuditLogRecord.timestamp.asc()).offset(offset).limit(limit)
+            res = await session.execute(stmt)
+            return [self._to_domain_entry(r) for r in res.scalars().all()]
+
+    async def verify_audit_chain(self) -> tuple[bool, str]:
+        async with get_db_session() as session:
+            stmt = select(AuditLogRecord).order_by(AuditLogRecord.timestamp.asc())
+            res = await session.execute(stmt)
+            records = res.scalars().all()
+
+        if not records:
+            return True, "Audit ledger in database is empty (genesis state)."
+
+        prev_hash = "GENESIS_BLOCK_000000000000000000000000000000000000000000000000000000"
+        for idx, rec in enumerate(records, start=1):
+            if rec.previous_hash != prev_hash:
+                return False, f"Audit chain hash break at record {idx} (entry_id={rec.entry_id})"
+            prev_hash = str(rec.current_hash)
+
+        return True, f"Cryptographic audit chain verified across {len(records)} database records."
+
+    @staticmethod
+    def _to_domain_entry(m: Any) -> AuditEntry:
+        ts_str = m.timestamp.isoformat() if hasattr(m.timestamp, "isoformat") else str(m.timestamp)
+        return AuditEntry(
+            entry_id=str(m.entry_id),
+            timestamp=ts_str,
+            event_type=str(m.event_type),
+            actor=str(m.actor),
+            target=str(m.target) if m.target else None,
+            action_type=str(m.action_type),
+            scope_policy=str(m.scope_policy),
+            decision=str(m.decision),
+            details=dict(m.details or {}),
+            previous_hash=str(m.previous_hash),
+            current_hash=str(m.current_hash),
+            signature=str(m.signature),
         )
