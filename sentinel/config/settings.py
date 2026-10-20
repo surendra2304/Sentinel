@@ -25,12 +25,16 @@ class LogLevel(StrEnum):
 
 class DatabaseSettings(BaseSettings):
     """PostgreSQL Async Database configuration."""
-    model_config = SettingsConfigDict(env_prefix="SENTINEL_DB_")
+    model_config = SettingsConfigDict(
+        env_prefix="SENTINEL_DB_",
+        env_file=".env",
+        extra="ignore",
+    )
 
-    host: str = "localhost"
+    host: str = "dokploy-postgres"
     port: int = 5432
-    user: str = "sentinel"
-    password: str = ""
+    user: str = "sentinel_user"
+    password: str = "uyNl63UsjQqe1tI16G68fylb"
     name: str = "sentinel_db"
     echo: bool = False
     pool_size: int = 20
@@ -38,10 +42,22 @@ class DatabaseSettings(BaseSettings):
 
     @property
     def async_url(self) -> str:
+        url = os.environ.get("SENTINEL_DATABASE_URL") or os.environ.get("DATABASE_URL")
+        if url:
+            if url.startswith("postgres://"):
+                url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+            elif url.startswith("postgresql://") and not url.startswith("postgresql+asyncpg://"):
+                url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            return url
         return f"postgresql+asyncpg://{self.user}:{self.password}@{self.host}:{self.port}/{self.name}"
 
     @property
     def sync_url(self) -> str:
+        url = os.environ.get("SENTINEL_DATABASE_URL") or os.environ.get("DATABASE_URL")
+        if url:
+            if url.startswith("postgresql+asyncpg://"):
+                url = url.replace("postgresql+asyncpg://", "postgresql://", 1)
+            return url
         return f"postgresql://{self.user}:{self.password}@{self.host}:{self.port}/{self.name}"
 
 
@@ -157,4 +173,3 @@ def get_settings() -> Settings:
 
 
 SentinelSettings = Settings
-

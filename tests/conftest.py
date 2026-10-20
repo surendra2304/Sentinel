@@ -5,7 +5,7 @@ import sys
 
 import pytest
 
-os.environ["SENTINEL_ENVIRONMENT"] = "development"
+os.environ["SENTINEL_ENVIRONMENT"] = "testing"
 os.environ["ENVIRONMENT"] = "development"
 os.environ["SENTINEL_STORAGE_BACKEND"] = "memory"
 os.environ.setdefault("SENTINEL_API_KEY", "sentinel_test_key_at_least_16_chars")
@@ -35,6 +35,8 @@ def clean_test_audit_log():
     repo_factory._finding_repo = None
     repo_factory._evidence_repo = None
     repo_factory._approval_repo = None
+    repo_factory._risk_repo = None
+    repo_factory._audit_repo = None
     db_session_module._engine = None
     db_session_module._session_factory = None
 
@@ -48,6 +50,8 @@ def clean_test_audit_log():
     repo_factory._finding_repo = None
     repo_factory._evidence_repo = None
     repo_factory._approval_repo = None
+    repo_factory._risk_repo = None
+    repo_factory._audit_repo = None
     db_session_module._engine = None
     db_session_module._session_factory = None
 

@@ -4,10 +4,13 @@ from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Any
 
+from sentinel.audit.audit_logger import AuditEntry
 from sentinel.core.models import (
     Evidence,
     Finding,
     FindingStatus,
+    Risk,
+    RiskTier,
     SeverityLevel,
     Task,
     TaskStatus,
@@ -15,8 +18,10 @@ from sentinel.core.models import (
 from sentinel.core.policy.engine import ApprovalRecord
 from sentinel.storage.repositories.interfaces import (
     ApprovalRepository,
+    AuditRepository,
     EvidenceRepository,
     FindingRepository,
+    RiskRepository,
     TaskRepository,
 )
 
@@ -173,3 +178,71 @@ class InMemoryApprovalRepository(ApprovalRepository):
                 continue
             results.append(a.model_copy(deep=True))
         return results
+
+
+class InMemoryRiskRepository(RiskRepository):
+    def __init__(self) -> None:
+        self._risks: dict[str, Risk] = {}
+
+    async def save_risk(self, risk: Risk) -> Risk:
+        self._risks[risk.id] = risk.model_copy(deep=True)
+        return self._risks[risk.id]
+
+    async def get_risk(self, risk_id: str) -> Risk | None:
+        r = self._risks.get(risk_id)
+        return r.model_copy(deep=True) if r else None
+
+    async def list_risks(
+        self,
+        task_id: str | None = None,
+        finding_id: str | None = None,
+        risk_tier: RiskTier | None = None,
+    ) -> list[Risk]:
+        results = []
+        for r in self._risks.values():
+            if task_id and r.task_id != task_id:
+                continue
+            if finding_id and r.finding_id != finding_id:
+                continue
+            if risk_tier and r.risk_tier != risk_tier:
+                continue
+            results.append(r.model_copy(deep=True))
+        return results
+
+
+class InMemoryAuditRepository(AuditRepository):
+    def __init__(self) -> None:
+        self._entries: list[AuditEntry] = []
+        self._by_id: dict[str, AuditEntry] = {}
+
+    async def save_audit_entry(self, entry: AuditEntry) -> AuditEntry:
+        copied = entry.model_copy(deep=True)
+        self._entries.append(copied)
+        self._by_id[entry.entry_id] = copied
+        return copied
+
+    async def get_audit_entry(self, entry_id: str) -> AuditEntry | None:
+        e = self._by_id.get(entry_id)
+        return e.model_copy(deep=True) if e else None
+
+    async def get_last_entry(self) -> AuditEntry | None:
+        if not self._entries:
+            return None
+        return self._entries[-1].model_copy(deep=True)
+
+    async def list_audit_entries(
+        self,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[AuditEntry]:
+        return [e.model_copy(deep=True) for e in self._entries[offset : offset + limit]]
+
+    async def verify_audit_chain(self) -> tuple[bool, str]:
+        if not self._entries:
+            return True, "Audit ledger is empty (genesis state)."
+        prev_hash = "GENESIS_BLOCK_000000000000000000000000000000000000000000000000000000"
+        for idx, entry in enumerate(self._entries, start=1):
+            if entry.previous_hash != prev_hash:
+                return False, f"Hash chain broken at entry {idx} (entry_id={entry.entry_id})"
+            prev_hash = entry.current_hash
+        return True, f"Audit chain valid across {len(self._entries)} entries."

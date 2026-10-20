@@ -169,7 +169,10 @@ class CryptoGatekeeper:
                     pub = serialization.load_pem_public_key(public_key_pem.encode("utf-8"))
                 else:
                     pub = self._ecdsa_private_key.public_key()
-                pub.verify(sig_bytes, payload_bytes, ec.ECDSA(hashes.SHA256()))  # type: ignore[union-attr]
+                if isinstance(pub, ec.EllipticCurvePublicKey):
+                    pub.verify(sig_bytes, payload_bytes, ec.ECDSA(hashes.SHA256()))
+                else:
+                    return (False, "Loaded public key is not an EllipticCurvePublicKey.")
                 res = (True, None)
             except InvalidSignature:
                 res = (False, "Invalid ECDSA signature verification failed.")

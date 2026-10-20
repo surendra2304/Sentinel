@@ -268,6 +268,41 @@ class AuditLogger:
             self._last_hash = curr_hash
             return entry
 
+    async def log_event_durable(
+        self,
+        entry_id: str,
+        event_type: str,
+        actor: str,
+        action_type: str,
+        scope_policy: str,
+        decision: str,
+        target: str | None = None,
+        tenant_id: str = "default",
+        action_id: str | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> AuditEntry:
+        """Log event synchronously to cryptographic file ledger, then persist to database AuditRepository."""
+        entry = self.log_event(
+            entry_id=entry_id,
+            event_type=event_type,
+            actor=actor,
+            action_type=action_type,
+            scope_policy=scope_policy,
+            decision=decision,
+            target=target,
+            tenant_id=tenant_id,
+            action_id=action_id,
+            details=details,
+        )
+        try:
+            from sentinel.storage.repositories.factory import get_audit_repository
+            repo = get_audit_repository()
+            await repo.save_audit_entry(entry)
+        except Exception:
+            if self.fail_closed:
+                raise
+        return entry
+
     def verify_integrity(self) -> bool:
         """Verify the cryptographic hash chain and HMAC signatures across all entries."""
         if not os.path.exists(self.log_path):

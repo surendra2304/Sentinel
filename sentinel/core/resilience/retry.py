@@ -21,9 +21,9 @@ def calculate_backoff(
     jitter: bool = True,
 ) -> float:
     """Calculate exponential backoff duration with full jitter."""
-    calculated = min(max_delay, base_delay * (2 ** attempt))
+    calculated = float(min(max_delay, base_delay * (2 ** attempt)))
     if jitter:
-        return random.uniform(0.0, calculated)
+        return float(random.uniform(0.0, calculated))
     return calculated
 
 

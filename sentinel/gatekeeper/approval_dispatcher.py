@@ -72,12 +72,14 @@ class PendingApproval:
 class ApprovalDispatcher:
     """Singleton dispatcher managing pending approvals and multi-channel notifications."""
     _instance: ApprovalDispatcher | None = None
+    _pending: dict[str, PendingApproval]
+    _events: dict[str, asyncio.Event]
 
     def __new__(cls) -> ApprovalDispatcher:
         if cls._instance is None:
             cls._instance = super().__new__(cls)
-            cls._instance._pending: dict[str, PendingApproval] = {}
-            cls._instance._events: dict[str, asyncio.Event] = {}
+            cls._instance._pending = {}
+            cls._instance._events = {}
         return cls._instance
 
     @property
@@ -237,6 +239,8 @@ class ApprovalDispatcher:
                 }
             ]
         }
+        if not self.discord_webhook_url:
+            return
         try:
             req = urllib.request.Request(
                 self.discord_webhook_url,

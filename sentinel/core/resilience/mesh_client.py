@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlparse
 
 import httpx
@@ -75,7 +75,8 @@ class ResilientMeshClient:
             )
 
         try:
-            return await _guarded()
+            res = await _guarded()
+            return cast(dict[str, Any], res if isinstance(res, dict) else {"data": res})
         except CircuitBreakerOpenError as exc:
             logger.warning(f"Upstream circuit breaker open for {url}: {exc}")
             if fallback is not None:
