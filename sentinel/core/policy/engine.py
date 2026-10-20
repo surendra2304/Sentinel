@@ -344,8 +344,16 @@ class PolicyEngine:
         # -------------------------------------------------------------------
         # Dimension 8: Rate Limits (Task and Per-Target Sliding Windows)
         # -------------------------------------------------------------------
-        # Check task rate limit (sliding window actions per minute)
-        if not self._check_rate_limit(task.id, eff_policy.rate_limit_rps):
+        # Reserve task and per-target quota together so a rejected multi-target
+        # action does not consume budget on targets checked earlier.
+        target_rpm = getattr(eff_scope, "rate_limit", eff_policy.rate_limit_rps)
+        rate_limit_failure = self._reserve_rate_limits(
+            task.id,
+            eff_policy.rate_limit_rps,
+            action.target_refs,
+            target_rpm,
+        )
+        if rate_limit_failure is not None and rate_limit_failure[0] == "task":
             return self._record_and_return_decision(
                 action=action,
                 task=task,
@@ -353,18 +361,15 @@ class PolicyEngine:
                 reason=f"Rate limit exceeded: Task {task.id} exceeded {eff_policy.rate_limit_rps} actions per minute limit.",
                 actor=actor,
             )
-
-        # Check per-target rate limit
-        target_rpm = getattr(eff_scope, "rate_limit", eff_policy.rate_limit_rps)
-        for target_ref in action.target_refs:
-            if not self._check_target_rate_limit(target_ref, target_rpm):
-                return self._record_and_return_decision(
-                    action=action,
-                    task=task,
-                    decision_type=PolicyDecisionType.DENY,
-                    reason=f"Rate limit exceeded: Target '{target_ref}' exceeded {target_rpm} actions per minute limit.",
-                    actor=actor,
-                )
+        if rate_limit_failure is not None:
+            failed_target = rate_limit_failure[1]
+            return self._record_and_return_decision(
+                action=action,
+                task=task,
+                decision_type=PolicyDecisionType.DENY,
+                reason=f"Rate limit exceeded: Target '{failed_target}' exceeded {target_rpm} actions per minute limit.",
+                actor=actor,
+            )
 
         # -------------------------------------------------------------------
         # Decision: ALLOW
@@ -386,28 +391,46 @@ class PolicyEngine:
             return action_type.startswith(prefix)
         return False
 
-    def _check_rate_limit(self, task_id: str, limit_rpm: int) -> bool:
+    def _reserve_rate_limits(
+        self,
+        task_id: str,
+        task_limit_rpm: int,
+        targets: list[str],
+        target_limit_rpm: int,
+    ) -> tuple[str, str | None] | None:
         now = time.time()
         window_start = now - 60.0
-        self._action_rate_windows[task_id] = [
-            t for t in self._action_rate_windows[task_id] if t > window_start
+        task_window = [
+            timestamp
+            for timestamp in self._action_rate_windows[task_id]
+            if timestamp > window_start
         ]
-        if len(self._action_rate_windows[task_id]) >= limit_rpm:
-            return False
-        self._action_rate_windows[task_id].append(now)
-        return True
+        self._action_rate_windows[task_id] = task_window
+        if len(task_window) >= task_limit_rpm:
+            return ("task", None)
 
-    def _check_target_rate_limit(self, target: str, limit_rpm: int) -> bool:
-        now = time.time()
-        window_start = now - 60.0
-        norm = target.lower().strip()
-        self._target_rate_windows[norm] = [
-            t for t in self._target_rate_windows[norm] if t > window_start
-        ]
-        if len(self._target_rate_windows[norm]) >= limit_rpm:
-            return False
-        self._target_rate_windows[norm].append(now)
-        return True
+        normalized_targets = dict.fromkeys(target.lower().strip() for target in targets)
+        target_windows: dict[str, list[float]] = {}
+        for target in normalized_targets:
+            window = [
+                timestamp
+                for timestamp in self._target_rate_windows[target]
+                if timestamp > window_start
+            ]
+            self._target_rate_windows[target] = window
+            target_windows[target] = window
+            if len(window) >= target_limit_rpm:
+                failed_target = next(
+                    original
+                    for original in targets
+                    if original.lower().strip() == target
+                )
+                return ("target", failed_target)
+
+        self._action_rate_windows[task_id].append(now)
+        for window in target_windows.values():
+            window.append(now)
+        return None
 
     @property
     def approval_repository(self) -> Any:

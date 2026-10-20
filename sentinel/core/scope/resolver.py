@@ -90,7 +90,10 @@ class ScopeResolver:
             )
         else:
             self.scope = scope
-        self._cache: TTLLRUCache[str, tuple[bool, ScopeVerdict, str]] = TTLLRUCache(maxsize=500, ttl_seconds=60.0)
+        self._cache: TTLLRUCache[
+            tuple[str, str, tuple[str, ...], tuple[str, ...], tuple[str, ...]],
+            tuple[bool, ScopeVerdict, str],
+        ] = TTLLRUCache(maxsize=500, ttl_seconds=60.0)
 
     @classmethod
     def normalize_target(
@@ -174,22 +177,25 @@ class ScopeResolver:
 
     def is_target_in_scope(self, target: Target | str) -> tuple[bool, ScopeVerdict, str]:
         """Check if a target satisfies all scope rules, exclusions, and allowlists with caching."""
-        cache_key = target if isinstance(target, str) else target.value
-        cached = self._cache.get(cache_key)
-        if cached is not None:
-            return cached
-
         if isinstance(target, str):
             try:
                 target_obj = self.normalize_target(target)
             except TargetResolutionError as e:
-                res = (False, ScopeVerdict.INVALID_TARGET, str(e))
-                self._cache.set(cache_key, res)
-                return res
+                return False, ScopeVerdict.INVALID_TARGET, str(e)
         else:
             target_obj = target
 
         target_val = target_obj.value
+        cache_key = (
+            target_obj.type.value,
+            target_val,
+            tuple(self.scope.allowed_targets),
+            tuple(self.scope.in_scope_declarations),
+            tuple(self.scope.out_of_scope_declarations),
+        )
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
 
         # 1. Check Explicit Out-of-Scope / Excluded Declarations
         for excluded in self.scope.out_of_scope_declarations:

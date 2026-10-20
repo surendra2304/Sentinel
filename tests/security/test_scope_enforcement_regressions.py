@@ -26,7 +26,7 @@ from sentinel.core.models import (
 )
 from sentinel.core.planner.heuristic import HeuristicPlanner
 from sentinel.core.policy.engine import PolicyDecisionType, PolicyEngine
-from sentinel.core.scope.resolver import ScopeResolver
+from sentinel.core.scope.resolver import ScopeResolver, ScopeVerdict
 from sentinel.integrations.scanners.http_adapter import HTTPObserverAdapter
 
 
@@ -44,6 +44,35 @@ def test_ipv6_cidr_containment_and_mixed_address_families():
     assert resolver.is_target_in_scope("2001:db8:1::/48")[0] is True
     assert resolver.is_target_in_scope("2001:db9::/32")[0] is False
     assert resolver.is_target_in_scope("192.0.2.0/24")[0] is False
+
+
+def test_scope_cache_tracks_mutated_allowlists_and_exclusions():
+    scope = Scope(id="mutable-cache", name="mutable cache", allowed_targets=["authorized.invalid"])
+    resolver = ScopeResolver(scope)
+
+    assert resolver.is_target_in_scope("authorized.invalid")[0] is True
+
+    scope.out_of_scope_declarations.append("authorized.invalid")
+    excluded, verdict, _ = resolver.is_target_in_scope("authorized.invalid")
+    assert excluded is False
+    assert verdict == ScopeVerdict.EXPLICITLY_EXCLUDED
+
+    scope.out_of_scope_declarations.clear()
+    scope.allowed_targets.clear()
+    assert resolver.is_target_in_scope("authorized.invalid")[0] is False
+
+    scope.allowed_targets.append("authorized.invalid")
+    assert resolver.is_target_in_scope("authorized.invalid")[0] is True
+
+
+def test_scope_cache_distinguishes_target_types():
+    resolver = ScopeResolver(
+        Scope(id="typed-cache", name="typed cache", allowed_targets=["192.0.2.0/24"])
+    )
+
+    assert resolver.is_target_in_scope("192.0.2.1")[0] is True
+    mismatched_type = Target(id="domain-target", type=TargetType.DOMAIN, value="192.0.2.1")
+    assert resolver.is_target_in_scope(mismatched_type)[0] is False
 
 
 def test_url_scope_uses_scheme_port_and_normalized_path_segments():

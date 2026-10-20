@@ -262,6 +262,56 @@ async def test_policy_engine_all_dimensions(tmp_path):
     assert "Kill Switch" in dec7.reason
 
 
+@pytest.mark.asyncio
+async def test_multi_target_rate_limit_reservation_is_atomic(tmp_path):
+    engine = PolicyEngine(
+        audit_logger=AuditLogger(
+            log_path=str(tmp_path / "audit_rate_limit.jsonl"),
+            signing_key="test-key",
+        )
+    )
+    scope = Scope(
+        id="scope-rate-atomic",
+        name="Atomic rate limit scope",
+        allowed_targets=["first.internal", "second.internal"],
+        rate_limit=1,
+    )
+    policy = Policy(
+        id="policy-rate-atomic",
+        name="Atomic rate limit policy",
+        allowed_action_classes=["*"],
+        rate_limit_rps=2,
+    )
+    task = Task(
+        id="task-rate-atomic",
+        objective="Verify atomic rate-limit reservations",
+        target_set=TargetSet(id="target-set-rate-atomic", name="Targets"),
+        scope=scope,
+        policy=policy,
+        correlation_id="correlation-rate-atomic",
+    )
+
+    async def evaluate(action_id: str, targets: list[str]):
+        action = ActionRequest(
+            id=action_id,
+            task_id=task.id,
+            agent="recon_agent",
+            action_type="recon.dns",
+            target_refs=targets,
+        )
+        return await engine.evaluate_action(action, task)
+
+    assert (await evaluate("rate-first", ["second.internal"])).decision == PolicyDecisionType.ALLOW
+    denied = await evaluate("rate-multi", ["first.internal", "second.internal"])
+    assert denied.decision == PolicyDecisionType.DENY
+    assert "second.internal" in denied.reason
+
+    # The denied multi-target request must not charge either the first target
+    # or the task budget, leaving this next single-target request eligible.
+    follow_up = await evaluate("rate-follow-up", ["first.internal"])
+    assert follow_up.decision == PolicyDecisionType.ALLOW
+
+
 # ---------------------------------------------------------------------------
 # 3. Human Approval Workflow Tests
 # ---------------------------------------------------------------------------
