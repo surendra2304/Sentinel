@@ -36,11 +36,11 @@ SECRET_PATTERNS: Final[list[SecretPattern]] = [
         description="Hardcoded cryptographic private key header detected.",
         min_entropy=0.0,
     ),
-    # 2. Google Cloud / Gemini API Keys
+    # 2. Google Cloud / Gemini API Keys (typically AIza followed by 35 alphanumeric characters)
     SecretPattern(
         rule_id="SEC-GOOGLE-API",
         name="Google API Key",
-        pattern=re.compile(r"\bAIza[0-9A-Za-z\-_]{35}\b"),
+        pattern=re.compile(r"\bAIza[0-9A-Za-z\-_]{35,40}\b"),
         severity=SeverityLevel.CRITICAL,
         description="Google Cloud / Gemini API key detected.",
         min_entropy=3.0,
@@ -68,7 +68,7 @@ SECRET_PATTERNS: Final[list[SecretPattern]] = [
         rule_id="SEC-GITHUB-PAT",
         name="GitHub Personal Access Token",
         pattern=re.compile(
-            r"\b(?:ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{82}|gho_[A-Za-z0-9]{36}|ghu_[A-Za-z0-9]{36}|ghs_[A-Za-z0-9]{36}|ghr_[A-Za-z0-9]{36})\b"
+            r"\b(?:ghp_[A-Za-z0-9]{36,40}|github_pat_[A-Za-z0-9_]{80,90}|gho_[A-Za-z0-9]{36,40}|ghu_[A-Za-z0-9]{36,40}|ghs_[A-Za-z0-9]{36,40}|ghr_[A-Za-z0-9]{36,40})\b"
         ),
         severity=SeverityLevel.CRITICAL,
         description="GitHub personal access token or OAuth secret detected.",

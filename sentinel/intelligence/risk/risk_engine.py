@@ -65,6 +65,13 @@ class RiskEngine:
 
         self._risks[finding.id] = risk
 
+        try:
+            from sentinel.storage.repositories.factory import get_risk_repository
+            repo = get_risk_repository()
+            await repo.save_risk(risk)
+        except Exception:
+            pass
+
         await emit_event(
             event_type=EventType.ALERT,
             topic="risk.updated",
