@@ -1,10 +1,8 @@
 """Unit tests for Sentinel's continuous secret and credential scanner."""
 
-import pytest
 
 from sentinel.core.models import SeverityLevel
 from sentinel.modules.secret_scanner import (
-    SecretFinding,
     SecretScanner,
     calculate_shannon_entropy,
 )

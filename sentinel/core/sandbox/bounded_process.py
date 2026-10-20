@@ -67,7 +67,7 @@ async def _kill_and_reap(
 ) -> None:
     if process_group and os.name != "nt" and termination_grace_seconds > 0:
         with contextlib.suppress(ProcessLookupError):
-            os.killpg(proc.pid, signal.SIGTERM)
+            os.killpg(proc.pid, signal.SIGTERM)  # type: ignore[attr-defined]
         try:
             await asyncio.wait_for(proc.wait(), timeout=termination_grace_seconds)
         except TimeoutError:
@@ -77,7 +77,7 @@ async def _kill_and_reap(
 
     if process_group and os.name != "nt":
         with contextlib.suppress(ProcessLookupError):
-            os.killpg(proc.pid, signal.SIGKILL)
+            os.killpg(proc.pid, signal.SIGKILL)  # type: ignore[attr-defined]
     elif proc.returncode is None:
         with contextlib.suppress(ProcessLookupError):
             proc.kill()

@@ -16,7 +16,6 @@ from sentinel.core.models import (
 from sentinel.storage.database.models import Base
 from sentinel.storage.repositories.factory import (
     get_audit_repository,
-    get_finding_repository,
     get_risk_repository,
 )
 from sentinel.storage.repositories.postgres import (
@@ -118,9 +117,20 @@ async def test_postgres_risk_repository_persistence(async_db):
     assert fetched.computed_risk_score > 70.0
     assert fetched.risk_tier == RiskTier.CRITICAL
 
-    # List by task_id
+    # Update existing risk
+    risk1.exposure_score = 0.5
+    risk1.rationale = "Mitigated exposure with WAF"
+    await repo.save_risk(risk1)
+    updated_risk = await repo.get_risk(risk1.id)
+    assert updated_risk is not None
+    assert updated_risk.exposure_score == 0.5
+
+    # List by task_id and finding_id
     all_risks = await repo.list_risks(task_id="task-db-test-01")
     assert len(all_risks) == 2
+
+    finding_risks = await repo.list_risks(finding_id="find-db-test-01")
+    assert len(finding_risks) == 1
 
     # List by risk_tier
     crit_risks = await repo.list_risks(task_id="task-db-test-01", risk_tier=RiskTier.CRITICAL)
@@ -131,6 +141,11 @@ async def test_postgres_risk_repository_persistence(async_db):
 @pytest.mark.asyncio
 async def test_postgres_audit_repository_hash_chain(async_db):
     repo = PostgresAuditRepository()
+
+    # Empty chain check
+    empty_valid, empty_msg = await repo.verify_audit_chain()
+    assert empty_valid is True
+    assert "empty" in empty_msg.lower()
 
     # Genesis entry
     genesis_hash = "GENESIS_BLOCK_000000000000000000000000000000000000000000000000000000"
@@ -161,6 +176,8 @@ async def test_postgres_audit_repository_hash_chain(async_db):
         decision="PASS",
     )
 
+    await repo.save_audit_entry(entry1)
+    # Save again to verify update branch
     await repo.save_audit_entry(entry1)
     await repo.save_audit_entry(entry2)
 
@@ -200,7 +217,6 @@ async def test_postgres_audit_repository_hash_chain(async_db):
 
 @pytest.mark.asyncio
 async def test_factory_switching_and_retrieval(monkeypatch):
-    from sentinel.config.settings import Settings
     import sentinel.storage.repositories.factory as factory
 
     # Default to memory

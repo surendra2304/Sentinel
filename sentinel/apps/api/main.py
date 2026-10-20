@@ -143,7 +143,7 @@ async def lifespan(app: FastAPI):
 
     for sig in (signal.SIGTERM, signal.SIGINT):
         with suppress(NotImplementedError, RuntimeError):
-            loop.add_signal_handler(sig, lambda s=sig.name: _sig_handler(s))
+            loop.add_signal_handler(sig, lambda s=sig.name: _sig_handler(s))  # type: ignore[misc]
 
     try:
         yield

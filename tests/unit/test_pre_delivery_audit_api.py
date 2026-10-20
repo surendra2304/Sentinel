@@ -3,6 +3,7 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from sentinel.api.security_audit import SecurityAuditRequest, evaluate_security_audit
 from sentinel.apps.api.main import app
 from sentinel.storage.repositories.factory import get_audit_repository
 
@@ -117,7 +118,8 @@ async def test_pre_delivery_audit_high_cve_dependency_veto():
         payload = {
             "source_service": "forge",
             "task_id": "task-vulnerable-deps",
-            "dependencies": ["event-stream==3.3.6", "requests==2.31.0"],
+            "files": {"requirements.txt": "requests==2.31.0\nevent-stream==3.3.6\n"},
+            "dependencies": ["event-stream==3.3.6"],
         }
         res = await client.post("/v1/security/audit", json=payload)
         assert res.status_code == 200
@@ -150,7 +152,25 @@ async def test_pre_delivery_audit_vyralx_media_clearance():
         assert data["veto"] is True
         assert any(f["rule_id"] == "MEDIA-RIGHTS-UNVERIFIED" for f in data["findings"])
 
-        # 2. Verified media -> PASS
+        # 2. NSFW media -> VETO
+        nsfw_payload = {
+            "source_service": "vyralx",
+            "task_id": "vyralx-job-nsfw",
+            "media_metadata": {
+                "video_id": "vid-nsfw",
+                "copyright_cleared": True,
+                "rights_verified": True,
+                "nsfw_flag": True,
+            },
+        }
+        res_nsfw = await client.post("/v1/security/audit", json=nsfw_payload)
+        assert res_nsfw.status_code == 200
+        data_nsfw = res_nsfw.json()
+        assert data_nsfw["decision"] == "VETO"
+        assert data_nsfw["veto"] is True
+        assert any(f["rule_id"] == "MEDIA-NSFW-FLAGGED" for f in data_nsfw["findings"])
+
+        # 3. Verified media -> PASS
         verified_payload = {
             "source_service": "vyralx",
             "task_id": "vyralx-job-102",
@@ -176,7 +196,7 @@ async def test_pre_delivery_audit_scope_enforcement():
         payload = {
             "source_service": "forge",
             "task_id": "task-scope-test",
-            "declared_targets": ["unauthorized-external-victim.com"],
+            "declared_targets": ["https://unauthorized-external-victim.com/api", "192.168.1.50"],
         }
         res = await client.post("/v1/security/audit", json=payload)
         assert res.status_code == 200
@@ -184,6 +204,37 @@ async def test_pre_delivery_audit_scope_enforcement():
         assert data["decision"] == "VETO"
         assert data["veto"] is True
         assert any(f["rule_id"] == "SCOPE-UNAUTHORIZED-TARGET" for f in data["findings"])
+
+        # Authorized mesh targets -> PASS
+        valid_payload = {
+            "source_service": "forge",
+            "task_id": "task-scope-authorized",
+            "declared_targets": ["friday-universe.duckdns.org", "http://localhost:8000"],
+        }
+        res_auth = await client.post("/v1/security/audit", json=valid_payload)
+        assert res_auth.status_code == 200
+        data_auth = res_auth.json()
+        assert data_auth["decision"] == "PASS"
+        assert data_auth["veto"] is False
+
+
+@pytest.mark.asyncio
+async def test_pre_delivery_audit_fail_closed_posture(monkeypatch):
+    # Simulate unexpected runtime exception during evaluation
+    def crash_scanner(*args, **kwargs):
+        raise RuntimeError("Simulated scanner memory fault")
+
+    from sentinel.api import security_audit
+    monkeypatch.setattr(security_audit, "SecretScanner", crash_scanner)
+
+    req = SecurityAuditRequest(source_service="forge", task_id="task-fail-closed")
+    res = await evaluate_security_audit(req)
+
+    assert res.decision == "VETO"
+    assert res.veto is True
+    assert res.verdict == "BLOCKED"
+    assert "Fail-Closed Veto" in res.reason
+    assert any(f.rule_id == "SYS-FAIL-CLOSED" for f in res.findings)
 
 
 @pytest.mark.asyncio

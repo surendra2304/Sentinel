@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
-from typing import Sequence
+from collections.abc import Sequence
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from sentinel.core.models import SeverityLevel
 from sentinel.modules.secret_scanner.entropy import calculate_shannon_entropy

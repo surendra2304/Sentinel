@@ -11,21 +11,17 @@ All decisions are cryptographically signed and written to the audit ledger.
 from __future__ import annotations
 
 import hashlib
-import json
 import re
 import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from sentinel.audit.audit_logger import AuditLogger
 from sentinel.config.settings import get_settings
-from sentinel.core.models import SeverityLevel
-from sentinel.core.scope.resolver import ScopeResolver
 from sentinel.modules.secret_scanner import SecretScanner
-from sentinel.storage.repositories.factory import get_audit_repository
 
 router = APIRouter(tags=["Pre-Delivery Security Audit"])
 
@@ -129,17 +125,20 @@ async def check_targets_in_scope(targets: list[str]) -> list[str]:
     if getattr(settings, "storage_backend", "memory") == "postgres":
         try:
             from sqlalchemy import select
+
             from sentinel.storage.database.models import ScopeModel
             from sentinel.storage.database.session import get_db_session
 
             async with get_db_session() as session:
                 now = datetime.now(UTC)
-                stmt = select(ScopeModel).where(ScopeModel.time_window_end >= now)
+                stmt = select(ScopeModel).where((ScopeModel.expiry.is_(None)) | (ScopeModel.expiry >= now))
                 res = await session.execute(stmt)
                 scopes = res.scalars().all()
                 for s in scopes:
-                    for t in (s.allowed_targets or []):
-                        allowed_patterns.add(str(t).strip().lower())
+                    raw_targets = getattr(s, "allowed_targets", None)
+                    if isinstance(raw_targets, list):
+                        for t in raw_targets:
+                            allowed_patterns.add(str(t).strip().lower())
         except Exception:
             pass
 
