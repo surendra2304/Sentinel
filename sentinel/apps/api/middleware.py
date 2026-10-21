@@ -2,7 +2,7 @@ import hmac
 import math
 import os
 import time
-from collections import OrderedDict, defaultdict
+from collections import OrderedDict
 from threading import Lock
 from typing import ClassVar
 
@@ -117,33 +117,105 @@ class ReplayProtector:
 
 
 class RateLimiter:
-    """In-memory sliding window rate limiter per API key / IP with window duration."""
+    """Bounded in-memory sliding-window limiter keyed by API identity or source IP.
+
+    Stale identity buckets are swept periodically and when the map reaches its
+    capacity. Active buckets are not evicted to create slots for new identities;
+    new identities are rejected until a bucket expires. The limiter is local to
+    this process, so a multi-worker deployment still needs a shared store for a
+    deployment-wide quota.
+    """
 
     def __init__(
         self,
         requests_per_window: int = 120,
         window_seconds: float = 60.0,
         requests_per_minute: int | None = None,
-    ):
-        self.limit = requests_per_minute if requests_per_minute is not None else requests_per_window
-        self.window = window_seconds
-        self.hits: dict[str, list[float]] = defaultdict(list)
+        max_identities: int = 10_000,
+        cleanup_interval_seconds: float = 30.0,
+    ) -> None:
+        limit = requests_per_minute if requests_per_minute is not None else requests_per_window
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+            raise ValueError("Rate limit must be a positive integer.")
+        if not math.isfinite(window_seconds) or window_seconds <= 0:
+            raise ValueError("window_seconds must be finite and positive.")
+        if isinstance(max_identities, bool) or not isinstance(max_identities, int) or max_identities < 1:
+            raise ValueError("max_identities must be a positive integer.")
+        if not math.isfinite(cleanup_interval_seconds) or cleanup_interval_seconds <= 0:
+            raise ValueError("cleanup_interval_seconds must be finite and positive.")
 
-    def is_allowed(self, identifier: str, max_requests: int | None = None, window: float | None = None) -> bool:
+        self.limit = limit
+        self.window = window_seconds
+        self.max_identities = max_identities
+        self.cleanup_interval_seconds = cleanup_interval_seconds
+        self.hits: OrderedDict[str, list[float]] = OrderedDict()
+        self._identity_windows: dict[str, float] = {}
+        self._last_cleanup = time.monotonic()
+        self._last_capacity_sweep = float("-inf")
+        self._lock = Lock()
+
+    def _purge_expired_locked(self, now: float) -> None:
+        """Remove only identities whose most recent allowed hit has expired."""
+        expired: list[str] = []
+        for identity, timestamps in self.hits.items():
+            identity_window = self._identity_windows.get(identity, self.window)
+            if not timestamps or now - timestamps[-1] >= identity_window:
+                expired.append(identity)
+        for identity in expired:
+            self.hits.pop(identity, None)
+            self._identity_windows.pop(identity, None)
+
+    def is_allowed(
+        self,
+        identifier: str,
+        max_requests: int | None = None,
+        window: float | None = None,
+    ) -> bool:
         limit = max_requests if max_requests is not None else self.limit
         win = window if window is not None else self.window
+        if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
+            raise ValueError("max_requests must be a positive integer.")
+        if not math.isfinite(win) or win <= 0:
+            raise ValueError("window must be finite and positive.")
 
-        now = time.time()
-        window_start = now - win
+        now = time.monotonic()
+        with self._lock:
+            is_new_identity = identifier not in self.hits
+            capacity_sweep = (
+                is_new_identity
+                and len(self.hits) >= self.max_identities
+                and now - self._last_capacity_sweep >= self.cleanup_interval_seconds
+            )
+            periodic_sweep = now - self._last_cleanup >= self.cleanup_interval_seconds
+            if capacity_sweep or periodic_sweep:
+                self._purge_expired_locked(now)
+                self._last_cleanup = now
+                if capacity_sweep:
+                    self._last_capacity_sweep = now
 
-        # Purge expired hits
-        self.hits[identifier] = [t for t in self.hits[identifier] if t > window_start]
+            timestamps = self.hits.get(identifier)
+            if timestamps is None:
+                # Never evict active identities under attacker-controlled key
+                # churn: fail closed when all buckets are still live.
+                if len(self.hits) >= self.max_identities:
+                    return False
+                timestamps = []
+                self.hits[identifier] = timestamps
+                self._identity_windows[identifier] = win
+            else:
+                self.hits.move_to_end(identifier)
+                self._identity_windows[identifier] = max(
+                    self._identity_windows.get(identifier, win),
+                    win,
+                )
 
-        if len(self.hits[identifier]) >= limit:
-            return False
+            window_start = now - win
+            timestamps[:] = [timestamp for timestamp in timestamps if timestamp > window_start]
+            if len(timestamps) >= limit:
+                return False
 
-        self.hits[identifier].append(now)
-        return True
+            timestamps.append(now)
+            return True
 
 
 replay_protector = ReplayProtector()
