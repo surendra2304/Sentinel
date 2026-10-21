@@ -1,7 +1,7 @@
 """Capacity, expiry, and ingress tests for replay-protection nonce storage."""
 
-from concurrent.futures import ThreadPoolExecutor
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import httpx
 import pytest
