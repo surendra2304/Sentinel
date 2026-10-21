@@ -120,6 +120,9 @@ async def check_targets_in_scope(targets: list[str]) -> list[str]:
     if not targets:
         return []
 
+    from sentinel.core.scope import SOVEREIGN_PRODUCTION_SCOPE, ScopeResolver
+
+    sovereign_resolver = ScopeResolver(SOVEREIGN_PRODUCTION_SCOPE)
     settings = get_settings()
     allowed_patterns: set[str] = set()
 
@@ -144,27 +147,14 @@ async def check_targets_in_scope(targets: list[str]) -> list[str]:
         except Exception:
             pass
 
-    # Built-in authorized ecosystem mesh targets
-    authorized_mesh_targets = {
-        "localhost",
-        "127.0.0.1",
-        "::1",
-        "friday-universe.duckdns.org",
-        "sentinel",
-        "forge",
-        "vyralx",
-        "cortex",
-        "friday",
-        "inference",
-        "memora",
-        "stratex",
-        "intelx",
-        "futuris",
-    }
-    allowed_patterns.update(authorized_mesh_targets)
-
     unauthorized: list[str] = []
     for raw_target in targets:
+        # Check against Sovereign Production Scope
+        in_scope, verdict, _ = sovereign_resolver.is_target_in_scope(raw_target)
+        if in_scope:
+            continue
+
+        # Check against dynamic database patterns
         t = raw_target.strip().lower()
         if t.startswith("http://") or t.startswith("https://"):
             from urllib.parse import urlparse

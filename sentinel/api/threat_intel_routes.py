@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from contextlib import suppress
 from typing import Any
 
@@ -12,6 +13,7 @@ from sentinel.modules.threat_intel import (
     IOCType,
     MitreMapper,
     ThreatIntelEngine,
+    external_threat_enricher,
     extract_iocs,
 )
 
@@ -38,6 +40,11 @@ class ReputationCheckRequest(BaseModel):
 
 class ThreatAnalysisRequest(BaseModel):
     text: str = Field(..., min_length=1)
+
+
+class ThreatEnrichmentRequest(BaseModel):
+    indicator: str = Field(..., min_length=1, description="Target IP, File Hash (MD5/SHA256), or CVE identifier")
+    indicator_type: str = Field(default="auto", description="ip | hash | cve | auto")
 
 
 @threat_intel_router.post("/v1/intel/extract-iocs")
@@ -95,3 +102,35 @@ async def analyze_threat(req: ThreatAnalysisRequest) -> dict[str, Any]:
     """Execute end-to-end threat intelligence assessment (IOC extraction, MITRE mapping, actor correlation)."""
     report = _engine.analyze_text(req.text)
     return {"report": report.model_dump()}
+
+
+@threat_intel_router.post("/v1/intel/enrich")
+@threat_intel_router.post("/api/v1/intel/enrich")
+async def enrich_threat_indicator(req: ThreatEnrichmentRequest) -> dict[str, Any]:
+    """Enrich an indicator via external intelligence providers (Shodan, VirusTotal, NVD)."""
+    ind = req.indicator.strip()
+    itype = req.indicator_type.lower()
+
+    if itype == "auto":
+        if ind.upper().startswith("CVE-"):
+            itype = "cve"
+        elif re.match(r"^[a-fA-F0-9]{32,64}$", ind):
+            itype = "hash"
+        elif re.match(r"^\d{1,3}(?:\.\d{1,3}){3}$", ind):
+            itype = "ip"
+        else:
+            itype = "domain"
+
+    if itype == "ip":
+        result = await external_threat_enricher.enrich_ip_shodan(ind)
+    elif itype in ("hash", "file_hash"):
+        result = await external_threat_enricher.enrich_hash_virustotal(ind)
+    elif itype == "cve":
+        result = await external_threat_enricher.enrich_cve_nvd(ind)
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported enrichment indicator_type '{itype}'. Supported: ip, hash, cve",
+        )
+
+    return {"enrichment": result.model_dump()}

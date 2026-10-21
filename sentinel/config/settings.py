@@ -4,7 +4,7 @@ import os
 from enum import StrEnum
 from functools import lru_cache
 
-from pydantic import Field, SecretStr
+from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -148,8 +148,34 @@ class Settings(BaseSettings):
     # Persistence Backend: "memory" (fast tests/dev) | "postgres" (durable production)
     storage_backend: str = "memory"
 
+    # External Threat Intelligence Feeds
+    shodan_api_key: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias=AliasChoices("SENTINEL_SHODAN_API_KEY", "SHODAN_API_KEY"),
+    )
+    nvd_api_key: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias=AliasChoices("SENTINEL_NVD_API_KEY", "NVD_API_KEY"),
+    )
+    virustotal_api_key: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias=AliasChoices("SENTINEL_VIRUSTOTAL_API_KEY", "VIRUSTOTAL_API_KEY"),
+    )
+
     # Autonomy & Policy Gates
     kill_switch_active: bool = False
+    block_on_medium_cves: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("SENTINEL_BLOCK_ON_MEDIUM_CVES", "BLOCK_ON_MEDIUM_CVES"),
+    )
+    auto_kill_switch_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("SENTINEL_AUTO_KILL_SWITCH_ENABLED", "AUTO_KILL_SWITCH_ENABLED"),
+    )
+    docker_socket_path: str = Field(
+        default="/var/run/docker.sock",
+        validation_alias=AliasChoices("SENTINEL_DOCKER_SOCKET_PATH", "DOCKER_SOCKET_PATH"),
+    )
     # VyralX publication is denied by default. The dedicated authenticated endpoint
     # can allow only operator-reviewed jobs with explicit rights verification.
     youtube_publish_enabled: bool = False

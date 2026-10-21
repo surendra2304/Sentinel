@@ -1,6 +1,11 @@
 """Threat intelligence aggregation (MISP, AlienVault, MITRE ATT&CK) and IOC extraction."""
 
 from sentinel.modules.threat_intel.adapters import ThreatIntelAdapter
+from sentinel.modules.threat_intel.external_enrichment import (
+    ExternalEnrichmentResult,
+    ExternalThreatIntelEnricher,
+    external_threat_enricher,
+)
 from sentinel.modules.threat_intel.ioc_extractor import (
     defang_ioc,
     extract_iocs,
@@ -24,6 +29,8 @@ __version__ = "0.1.0"
 
 __all__ = [
     "ENTERPRISE_TACTICS",
+    "ExternalEnrichmentResult",
+    "ExternalThreatIntelEnricher",
     "IOCItem",
     "IOCType",
     "KNOWN_THREAT_ACTORS",
@@ -36,6 +43,7 @@ __all__ = [
     "ThreatIntelEngine",
     "ThreatIntelReport",
     "defang_ioc",
+    "external_threat_enricher",
     "extract_iocs",
     "is_valid_ipv4",
     "is_valid_ipv6",

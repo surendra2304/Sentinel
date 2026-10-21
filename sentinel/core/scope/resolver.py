@@ -153,6 +153,10 @@ class ScopeResolver:
         if val.startswith("file://") or val.startswith("/") or re.match(r"^[a-zA-Z]:\\", val):
             return Target(id=tid, type=TargetType.FILE, value=val, metadata=meta)
 
+        # 8. Code Repository or Package Slug (e.g. owner/repo, owner/*)
+        if re.match(r"^[a-zA-Z0-9_.-]+/(?:\*|[a-zA-Z0-9_.-]+)$", val):
+            return Target(id=tid, type=TargetType.OTHER, value=val, metadata=meta)
+
         raise TargetResolutionError(f"Ambiguous or unresolvable target format: '{raw_target}'")
 
     @classmethod
@@ -224,6 +228,12 @@ class ScopeResolver:
         if t_val.lower() == rule_str.lower():
             return True
 
+        # Repository wildcard match: owner/* matches owner/repo
+        if rule_str.endswith("/*"):
+            prefix = rule_str[:-1].lower()
+            if t_val.lower().startswith(prefix):
+                return True
+
         # Wildcard Domain match: *.example.com matches sub.example.com, but NOT example.com or other.com
         if rule_str.startswith("*."):
             base_domain = rule_str[2:].lower()
@@ -252,7 +262,7 @@ class ScopeResolver:
                 host = (target_url.hostname or "").lower()
                 domain_rule = rule_str.lower().rstrip(".")
                 port = target_url.port or {"http": 80, "https": 443}.get(target_url.scheme.lower())
-                if port in {80, 443} and (host == domain_rule or host.endswith("." + domain_rule)):
+                if (port in {80, 443} or domain_rule in {"localhost", "127.0.0.1"}) and (host == domain_rule or host.endswith("." + domain_rule)):
                     return True
             except ValueError:
                 pass

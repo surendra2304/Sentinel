@@ -30,6 +30,7 @@ from sse_starlette.sse import EventSourceResponse
 from sentinel.api.incident_routes import incident_router
 from sentinel.api.metrics import router as metrics_router
 from sentinel.api.security_audit import router as security_audit_router
+from sentinel.api.telemetry_routes import telemetry_router
 from sentinel.api.threat_intel_routes import threat_intel_router
 from sentinel.apps.api.middleware import APIKeyAuthMiddleware, RequestCapacityMiddleware
 from sentinel.audit.audit_logger import AuditLogger
@@ -59,6 +60,7 @@ from sentinel.core.review.gated_reviewer import (
     GatedReviewResult,
     gated_security_reviewer,
 )
+from sentinel.core.scope import seed_sovereign_scope_into_database
 from sentinel.core.scope.resolver import (
     MissingScopeError,
     ScopeResolver,
@@ -119,6 +121,10 @@ async def lifespan(app: FastAPI):
     recovered = await lifecycle_manager.recover_tasks_on_startup()
     if recovered > 0:
         logger.warning(f"Recovered pending tasks during startup: {recovered}")
+
+    # Seed authoritative sovereign scope into sentinel_scopes database
+    with suppress(Exception):
+        await seed_sovereign_scope_into_database()
 
     memora_task = None
     enabled = os.getenv("SENTINEL_MEMORA_EVENTS_ENABLED", "false").strip().lower() in {
@@ -1633,6 +1639,7 @@ app.include_router(metrics_router, prefix=settings.api_prefix)
 app.include_router(security_audit_router)
 app.include_router(threat_intel_router)
 app.include_router(incident_router)
+app.include_router(telemetry_router)
 
 
 class SentinelInferenceRequest(BaseModel):
