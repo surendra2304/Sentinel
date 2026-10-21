@@ -58,19 +58,29 @@ def test_nonce_store_uses_monotonic_expiry_and_reclaims_only_expired_entries(mon
 
 
 def test_nonce_size_and_constructor_bounds_are_validated():
-    with pytest.raises(ValueError, match="max_nonces"):
-        ReplayProtector(max_nonces=0)
-    with pytest.raises(ValueError, match="max_nonce_length"):
-        ReplayProtector(max_nonce_length=0)
+    with pytest.raises(ValueError, match="max_skew_seconds"):
+        ReplayProtector(max_skew_seconds=-1)
+    with pytest.raises(ValueError, match="max_skew_seconds"):
+        ReplayProtector(max_skew_seconds=float("nan"))
     with pytest.raises(ValueError, match="nonce_ttl_seconds"):
         ReplayProtector(nonce_ttl_seconds=0)
+    with pytest.raises(ValueError, match="nonce_ttl_seconds"):
+        ReplayProtector(nonce_ttl_seconds=float("inf"))
+    with pytest.raises(ValueError, match="max_nonces"):
+        ReplayProtector(max_nonces=0)
+    with pytest.raises(ValueError, match="max_nonces"):
+        ReplayProtector(max_nonces=True)
+    with pytest.raises(ValueError, match="max_nonce_length"):
+        ReplayProtector(max_nonce_length=0)
+    with pytest.raises(ValueError, match="max_nonce_length"):
+        ReplayProtector(max_nonce_length=True)
 
     protector = ReplayProtector(max_nonce_length=8)
     allowed, reason = protector.validate_and_record("nonce-too-long", None)
     assert allowed is False
     assert "maximum length" in reason
 
-    allowed, reason = protector.validate_and_record("bad\x00nonce", None)
+    allowed, reason = protector.validate_and_record("x\x00y", None)
     assert allowed is False
     assert "control characters" in reason
     assert len(protector._seen_nonces) == 0
@@ -124,3 +134,24 @@ async def test_nonce_capacity_returns_retryable_503_from_ingress(monkeypatch):
         assert second.json()["error"] == "replay_protection_overloaded"
     finally:
         middleware.get_settings.cache_clear()
+
+def test_malformed_timestamps_and_blank_nonces_are_rejected_without_storage():
+    protector = ReplayProtector()
+
+    allowed, reason = protector.validate_and_record("nonce-not-stored", "not-a-timestamp")
+    assert allowed is False
+    assert "Invalid timestamp format" in reason
+    assert len(protector._seen_nonces) == 0
+
+    allowed, reason = protector.validate_and_record("   ", None)
+    assert allowed is False
+    assert "must not be blank" in reason
+    assert len(protector._seen_nonces) == 0
+
+
+def test_timestamp_without_a_nonce_remains_supported():
+    protector = ReplayProtector()
+    allowed, reason = protector.validate_and_record(None, str(time.time()))
+    assert allowed is True
+    assert reason is None
+    assert len(protector._seen_nonces) == 0
