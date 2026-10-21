@@ -93,6 +93,7 @@ from sentinel.logging.logger import get_correlation_id, get_logger, setup_loggin
 from sentinel.memora_cloud_fallback import MemoraClient as CloudMemoraClient
 from sentinel.memora_event_consumer import MemoraEventConsumer, run_memora_event_consumer
 from sentinel.modules.recon.graph import AttackSurfaceReport, asset_graph_store
+from sentinel.monitoring.tls_dns_daemon import tls_dns_daemon
 from sentinel.storage.database.session import close_async_engine
 from sentinel.storage.evidence.store import evidence_store
 
@@ -137,6 +138,14 @@ async def lifespan(app: FastAPI):
     elif enabled:
         logger.error("Memora advisory consumer is enabled but SENTINEL_API_KEY is missing")
 
+    tls_daemon_enabled = os.getenv("SENTINEL_TLS_DNS_DAEMON_ENABLED", "true").strip().lower() in {
+        "1", "true", "yes", "on"
+    }
+    is_testing = os.getenv("SENTINEL_ENVIRONMENT", "").strip().lower() == "testing"
+    if tls_daemon_enabled and not is_testing:
+        tls_dns_daemon.start()
+        logger.info("Continuous TLS Certificate & DNS drift daemon started")
+
     # Clean signal handling for SIGTERM and SIGINT
     loop = asyncio.get_running_loop()
 
@@ -157,6 +166,9 @@ async def lifespan(app: FastAPI):
                 with suppress(asyncio.CancelledError):
                     await memora_task
                 logger.info("Memora security advisory consumer stopped cleanly.")
+            if tls_dns_daemon.is_running:
+                await tls_dns_daemon.stop()
+                logger.info("Continuous TLS Certificate & DNS drift daemon stopped cleanly.")
             global _sentinel_inf_client
             if _sentinel_inf_client is not None and not _sentinel_inf_client.is_closed:
                 await _sentinel_inf_client.aclose()

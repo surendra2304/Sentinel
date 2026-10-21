@@ -91,6 +91,17 @@ class QuarantineManager:
             )
             return rec
 
+    def get(self, subject: str) -> QuarantineRecord | None:
+        """Retrieve active quarantine record for a subject, evicting if expired."""
+        with self._lock:
+            rec = self._items.get(subject)
+            if not rec:
+                return None
+            if rec.is_expired:
+                self._items.pop(subject, None)
+                return None
+            return rec
+
     def is_quarantined(self, subject: str) -> bool:
         """Check if subject is actively quarantined (auto-evicting if expired)."""
         with self._lock:

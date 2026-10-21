@@ -96,6 +96,30 @@ class IncidentManager:
         )
         return incident
 
+    def get(self, incident_id: str) -> Incident | None:
+        """Retrieve an incident by ID."""
+        return self.incidents.get(incident_id)
+
+    def create(
+        self,
+        id: str,
+        tenant_id: str,
+        title: str,
+        severity: RiskLevel,
+        reason: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> Incident:
+        """Construct, open, and record a new incident."""
+        inc = Incident(
+            id=id,
+            tenant_id=tenant_id,
+            title=title,
+            severity=severity,
+            reason=reason,
+            metadata=metadata or {},
+        )
+        return self.open(inc)
+
     def triage(self, incident_id: str, assigned_to: str, notes: str = "") -> Incident | None:
         """Transition incident to TRIAGED state and assign ownership."""
         inc = self.incidents.get(incident_id)

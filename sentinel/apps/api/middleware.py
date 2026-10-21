@@ -262,11 +262,10 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
             api_key = api_key[7:]
 
         is_render = os.getenv("RENDER", "").strip().lower() in {"1", "true", "yes"}
+        env_auth_req = os.getenv("SENTINEL_API_AUTH_REQUIRED", "").strip().lower() in {"1", "true", "yes"}
         settings = get_settings()
-        auth_required = is_render or settings.api_auth_required
-        configured_key = (
-            os.getenv("SENTINEL_API_KEY") or settings.api_key.get_secret_value()
-        ).strip()
+        auth_required = is_render or env_auth_req or settings.api_auth_required
+        configured_key = os.getenv("SENTINEL_API_KEY", "").strip()
         if is_render or auth_required:
             if len(configured_key) < 32 or configured_key.lower() in {
                 "sentinel_api", "change-me", "changeme", "password", "secret",

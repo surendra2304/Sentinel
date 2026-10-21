@@ -69,6 +69,8 @@ class SecurityAuditResponse(BaseModel):
     evidence_hash: str
     evaluated_at: str
     ledger_entry_id: str | None = None
+    incident_id: str | None = None
+    playbook_status: str | None = None
 
 
 # Dangerous Code Patterns
@@ -344,11 +346,28 @@ async def evaluate_security_audit(req: SecurityAuditRequest) -> SecurityAuditRes
         decision = "VETO" if veto else "PASS"
         verdict = "BLOCKED" if veto else "PASSED"
 
+        incident_id: str | None = None
+        playbook_status: str | None = None
         if veto:
             reason = (
                 f"Pre-delivery delivery VETOED by Sentinel. "
                 f"Discovered {crit_count} Critical and {high_count} High security findings."
             )
+            try:
+                from sentinel.core.playbooks.cross_agent_defense import cross_agent_defense_playbook
+                pb_report = await cross_agent_defense_playbook.execute_audit_veto_containment(
+                    audit_id=audit_id,
+                    task_id=req.task_id,
+                    source_service=req.source_service,
+                    operator=req.operator,
+                    findings=[f.model_dump() for f in findings],
+                    declared_targets=req.declared_targets,
+                    workspace_diff=req.workspace_diff,
+                )
+                incident_id = pb_report.incident_id
+                playbook_status = pb_report.status
+            except Exception:
+                playbook_status = "FAILED"
         else:
             reason = "Security gate passed all pre-delivery checks. Delivery authorized."
 
@@ -407,6 +426,8 @@ async def evaluate_security_audit(req: SecurityAuditRequest) -> SecurityAuditRes
             evidence_hash=evidence_hash,
             evaluated_at=now_iso,
             ledger_entry_id=audit_entry_id,
+            incident_id=incident_id,
+            playbook_status=playbook_status,
         )
 
     except Exception as exc:
