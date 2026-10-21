@@ -976,7 +976,7 @@ async def stream_friday_task_events(task_id: str, request: Request) -> EventSour
                     sse_item = _map_friday_stream_event(event, task.id)
 
                     yield {
-                        "event": evt_type,
+                        "event": sse_item.event_type,
                         "data": sse_item.model_dump_json(),
                     }
                 except TimeoutError:
