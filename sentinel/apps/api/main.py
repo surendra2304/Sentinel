@@ -882,6 +882,54 @@ async def friday_delegate(fr: FridayDelegationRequest) -> FridayDelegationRespon
     )
 
 
+def _map_friday_stream_event(event: Event, task_id: str) -> FridaySSEEvent:
+    """Map internal bus events to FRIDAY's stable task-stream contract.
+
+    Overflow is a recoverable telemetry condition, not a task failure. Consumers
+    are directed to refresh task snapshots instead of receiving a misleading
+    generic phase-change event.
+    """
+    if event.topic == "stream.overflow":
+        dropped = int(event.payload.get("dropped_events", 0) or 0)
+        return FridaySSEEvent(
+            event_type="stream_overflow",
+            task_id=task_id,
+            phase=str(event.payload.get("phase", "ASSESSMENT")),
+            reason=(
+                f"The live stream dropped {dropped} event(s) due to consumer backpressure. "
+                "Refresh task status, findings, and report for a current snapshot."
+            ),
+            summary="Some live updates were omitted; task execution status is unchanged by this notice.",
+        )
+
+    event_type = "phase_changed"
+    finding_data = None
+    approval_data = None
+    reason_data = None
+
+    if "finding" in event.topic:
+        event_type = "finding_detected"
+        finding_data = event.payload
+    elif "approval" in event.topic:
+        event_type = "approval_required"
+        approval_data = event.payload
+    elif "complete" in event.topic or event.payload.get("status") == "complete":
+        event_type = "task_completed"
+    elif "fail" in event.topic or "cancel" in event.topic:
+        event_type = "task_failed"
+        reason_data = event.payload.get("reason", "Task failed or cancelled")
+
+    return FridaySSEEvent(
+        event_type=event_type,
+        task_id=task_id,
+        phase=str(event.payload.get("phase", "ASSESSMENT")),
+        finding=finding_data,
+        approval=approval_data,
+        reason=reason_data,
+        summary=event.payload.get("summary"),
+    )
+
+
 @app.get(f"{settings.api_prefix}/friday/events/{{task_id}}", tags=["FRIDAY Integration"])
 async def stream_friday_task_events(task_id: str, request: Request) -> EventSourceResponse:
     """Stream live Server-Sent Events (SSE) structured for FRIDAY delegation consumers."""
@@ -925,32 +973,7 @@ async def stream_friday_task_events(task_id: str, request: Request) -> EventSour
                     break
                 try:
                     event: Event = await asyncio.wait_for(queue.get(), timeout=1.0)
-                    evt_type = "phase_changed"
-                    f_data = None
-                    appr_data = None
-                    reason_data = None
-
-                    if "finding" in event.topic:
-                        evt_type = "finding_detected"
-                        f_data = event.payload
-                    elif "approval" in event.topic:
-                        evt_type = "approval_required"
-                        appr_data = event.payload
-                    elif "complete" in event.topic or (event.payload.get("status") == "complete"):
-                        evt_type = "task_completed"
-                    elif "fail" in event.topic or "cancel" in event.topic:
-                        evt_type = "task_failed"
-                        reason_data = event.payload.get("reason", "Task failed or cancelled")
-
-                    sse_item = FridaySSEEvent(
-                        event_type=evt_type,
-                        task_id=task.id,
-                        phase=event.payload.get("phase", "ASSESSMENT"),
-                        finding=f_data,
-                        approval=appr_data,
-                        reason=reason_data,
-                        summary=event.payload.get("summary"),
-                    )
+                    sse_item = _map_friday_stream_event(event, task.id)
 
                     yield {
                         "event": evt_type,
