@@ -7,6 +7,8 @@ import sentinel.storage.database.session as session_module
 from sentinel.audit.audit_logger import AuditEntry
 from sentinel.core.models import (
     AssetCriticality,
+    Event,
+    EventType,
     Finding,
     FindingStatus,
     Risk,
@@ -16,10 +18,12 @@ from sentinel.core.models import (
 from sentinel.storage.database.models import Base
 from sentinel.storage.repositories.factory import (
     get_audit_repository,
+    get_event_repository,
     get_risk_repository,
 )
 from sentinel.storage.repositories.postgres import (
     PostgresAuditRepository,
+    PostgresEventRepository,
     PostgresFindingRepository,
     PostgresRiskRepository,
 )
@@ -230,11 +234,59 @@ async def test_factory_switching_and_retrieval(monkeypatch):
     # Switch to postgres
     factory._risk_repo = None
     factory._audit_repo = None
+    factory._event_repo = None
     monkeypatch.setenv("SENTINEL_STORAGE_BACKEND", "postgres")
     from sentinel.config.settings import get_settings
     get_settings.cache_clear()
 
     pg_risk_repo = get_risk_repository()
     pg_audit_repo = get_audit_repository()
+    pg_event_repo = get_event_repository()
     assert "Postgres" in type(pg_risk_repo).__name__
     assert "Postgres" in type(pg_audit_repo).__name__
+    assert "Postgres" in type(pg_event_repo).__name__
+
+
+@pytest.mark.asyncio
+async def test_postgres_event_repository_persistence(async_db):
+    repo = PostgresEventRepository()
+
+    event1 = Event(
+        event_id="evt-db-001",
+        event_type=EventType.TASK,
+        topic="task.created",
+        source="sentinel-orchestrator",
+        payload={"task_id": "tsk-001", "mode": "active_recon"},
+        correlation_id="corr-12345",
+    )
+    event2 = Event(
+        event_id="evt-db-002",
+        event_type=EventType.ALERT,
+        topic="alert.critical",
+        source="sentinel-threat-intel",
+        payload={"threat": "C2 activity detected", "ip": "198.51.100.200"},
+        correlation_id="corr-12345",
+    )
+
+    await repo.save_event(event1)
+    await repo.save_event(event2)
+
+    # Fetch by ID
+    fetched1 = await repo.get_event("evt-db-001")
+    assert fetched1 is not None
+    assert fetched1.event_type == EventType.TASK
+    assert fetched1.topic == "task.created"
+    assert fetched1.payload["mode"] == "active_recon"
+
+    # List by correlation_id
+    corr_events = await repo.list_events(correlation_id="corr-12345")
+    assert len(corr_events) == 2
+
+    # List by topic
+    alert_events = await repo.list_events(topic="alert.critical")
+    assert len(alert_events) == 1
+    assert alert_events[0].event_id == "evt-db-002"
+
+    # Non-existent event
+    missing = await repo.get_event("evt-nonexistent")
+    assert missing is None

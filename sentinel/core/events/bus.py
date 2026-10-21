@@ -80,6 +80,18 @@ class InMemoryEventBus(EventBus):
             for q in self._queues[event.correlation_id]:
                 await q.put(event)
 
+        # Asynchronously record in durable EventRepository
+        asyncio.create_task(self._safe_persist(event))
+
+    async def _safe_persist(self, event: Event) -> None:
+        try:
+            from sentinel.storage.repositories.factory import get_event_repository
+
+            repo = get_event_repository()
+            await repo.save_event(event)
+        except Exception as exc:
+            logger.debug("Event persistence omitted or failed: %s", exc)
+
     async def _safe_dispatch(self, listener: EventListener, event: Event) -> None:
         try:
             await listener(event)

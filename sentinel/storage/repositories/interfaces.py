@@ -5,6 +5,7 @@ from typing import Any
 
 from sentinel.audit.audit_logger import AuditEntry
 from sentinel.core.models import (
+    Event,
     Evidence,
     Finding,
     FindingStatus,
@@ -146,3 +147,23 @@ class AuditRepository(ABC):
 
     @abstractmethod
     async def verify_audit_chain(self) -> tuple[bool, str]: ...
+
+
+class EventRepository(ABC):
+    """Abstract interface for System Event persistence."""
+
+    @abstractmethod
+    async def save_event(self, event: Event) -> Event: ...
+
+    @abstractmethod
+    async def get_event(self, event_id: str) -> Event | None: ...
+
+    @abstractmethod
+    async def list_events(
+        self,
+        topic: str | None = None,
+        event_type: str | None = None,
+        correlation_id: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[Event]: ...

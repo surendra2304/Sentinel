@@ -74,6 +74,7 @@ from sentinel.modules.recon.adapters import (
     SubdomainEnumAdapter,
     TechnologyFingerprintAdapter,
 )
+from sentinel.modules.threat_intel import ThreatIntelAdapter
 from sentinel.modules.vulnerability.correlation import VulnerabilityCorrelationAdapter
 from sentinel.modules.web.adapters import (
     AuthSessionTestingAdapter,
@@ -348,6 +349,7 @@ adapter_registry.register(AzureCloudAdapter())
 adapter_registry.register(GCPCloudAdapter())
 
 # Register Vulnerability & Threat Intel adapters
+adapter_registry.register(ThreatIntelAdapter())
 adapter_registry.register(VulnerabilityCorrelationAdapter())
 adapter_registry.register(CISAKEVFeedAdapter())
 adapter_registry.register(AbuseIPFeedAdapter())

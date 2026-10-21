@@ -37,6 +37,7 @@ def clean_test_audit_log():
     repo_factory._approval_repo = None
     repo_factory._risk_repo = None
     repo_factory._audit_repo = None
+    repo_factory._event_repo = None
     db_session_module._engine = None
     db_session_module._session_factory = None
 
@@ -52,6 +53,6 @@ def clean_test_audit_log():
     repo_factory._approval_repo = None
     repo_factory._risk_repo = None
     repo_factory._audit_repo = None
+    repo_factory._event_repo = None
     db_session_module._engine = None
     db_session_module._session_factory = None
-

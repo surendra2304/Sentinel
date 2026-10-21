@@ -6,6 +6,7 @@ from typing import Any
 
 from sentinel.audit.audit_logger import AuditEntry
 from sentinel.core.models import (
+    Event,
     Evidence,
     Finding,
     FindingStatus,
@@ -19,6 +20,7 @@ from sentinel.core.policy.engine import ApprovalRecord
 from sentinel.storage.repositories.interfaces import (
     ApprovalRepository,
     AuditRepository,
+    EventRepository,
     EvidenceRepository,
     FindingRepository,
     RiskRepository,
@@ -246,3 +248,40 @@ class InMemoryAuditRepository(AuditRepository):
                 return False, f"Hash chain broken at entry {idx} (entry_id={entry.entry_id})"
             prev_hash = entry.current_hash
         return True, f"Audit chain valid across {len(self._entries)} entries."
+
+
+class InMemoryEventRepository(EventRepository):
+    """Fast in-memory System Event repository."""
+
+    def __init__(self) -> None:
+        self._events: dict[str, Event] = {}
+
+    async def save_event(self, event: Event) -> Event:
+        self._events[event.event_id] = event.model_copy(deep=True)
+        return self._events[event.event_id]
+
+    async def get_event(self, event_id: str) -> Event | None:
+        ev = self._events.get(event_id)
+        return ev.model_copy(deep=True) if ev else None
+
+    async def list_events(
+        self,
+        topic: str | None = None,
+        event_type: str | None = None,
+        correlation_id: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[Event]:
+        events = list(self._events.values())
+        if topic:
+            events = [e for e in events if e.topic == topic]
+        if event_type:
+            events = [
+                e for e in events
+                if str(e.event_type) == event_type or (hasattr(e.event_type, "value") and e.event_type.value == event_type)
+            ]
+        if correlation_id:
+            events = [e for e in events if e.correlation_id == correlation_id]
+
+        events.sort(key=lambda e: e.timestamp, reverse=True)
+        return [e.model_copy(deep=True) for e in events[offset : offset + limit]]

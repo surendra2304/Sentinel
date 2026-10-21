@@ -12,6 +12,8 @@ from sentinel.core.models import (
     AuthorizationType,
     ChainOfCustodyEvent,
     EnvironmentLabel,
+    Event,
+    EventType,
     Evidence,
     Finding,
     FindingStatus,
@@ -32,6 +34,7 @@ from sentinel.core.policy.engine import ApprovalRecord
 from sentinel.storage.database.models import (
     ApprovalModel,
     AuditLogRecord,
+    EventModel,
     EvidenceModel,
     FindingModel,
     PolicyModel,
@@ -47,6 +50,7 @@ from sentinel.storage.database.session import get_db_session
 from sentinel.storage.repositories.interfaces import (
     ApprovalRepository,
     AuditRepository,
+    EventRepository,
     EvidenceRepository,
     FindingRepository,
     RiskRepository,
@@ -721,4 +725,79 @@ class PostgresAuditRepository(AuditRepository):
             previous_hash=str(m.previous_hash),
             current_hash=str(m.current_hash),
             signature=str(m.signature),
+        )
+
+
+class PostgresEventRepository(EventRepository):
+    """PostgreSQL-backed System Event repository."""
+
+    async def save_event(self, event: Event) -> Event:
+        async with get_db_session() as session:
+            rec = await session.get(EventModel, event.event_id)
+            ts = event.timestamp
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=UTC)
+
+            ev_type_str = event.event_type.value if hasattr(event.event_type, "value") else str(event.event_type)
+
+            if not rec:
+                rec = EventModel(
+                    event_id=event.event_id,
+                    event_type=ev_type_str,
+                    topic=event.topic,
+                    source=event.source,
+                    payload=event.payload,
+                    correlation_id=event.correlation_id,
+                    timestamp=ts,
+                )
+                session.add(rec)
+            else:
+                rec.payload = event.payload  # type: ignore[assignment]
+                rec.timestamp = ts  # type: ignore[assignment]
+        return event
+
+    async def get_event(self, event_id: str) -> Event | None:
+        async with get_db_session() as session:
+            rec = await session.get(EventModel, event_id)
+            return self._to_domain_event(rec) if rec else None
+
+    async def list_events(
+        self,
+        topic: str | None = None,
+        event_type: str | None = None,
+        correlation_id: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[Event]:
+        async with get_db_session() as session:
+            stmt = select(EventModel).order_by(EventModel.timestamp.desc()).offset(offset).limit(limit)
+            if topic:
+                stmt = stmt.where(EventModel.topic == topic)
+            if event_type:
+                stmt = stmt.where(EventModel.event_type == event_type)
+            if correlation_id:
+                stmt = stmt.where(EventModel.correlation_id == correlation_id)
+            res = await session.execute(stmt)
+            return [self._to_domain_event(r) for r in res.scalars().all()]
+
+    @staticmethod
+    def _to_domain_event(m: Any) -> Event:
+        ev_type_str = str(m.event_type)
+        try:
+            ev_type = EventType(ev_type_str)
+        except ValueError:
+            ev_type = ev_type_str  # type: ignore[assignment]
+
+        ts = m.timestamp
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=UTC)
+
+        return Event(
+            event_id=str(m.event_id),
+            event_type=ev_type,
+            topic=str(m.topic),
+            source=str(m.source),
+            payload=dict(m.payload or {}),
+            correlation_id=str(m.correlation_id),
+            timestamp=ts,
         )
