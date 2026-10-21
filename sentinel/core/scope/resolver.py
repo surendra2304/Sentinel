@@ -166,12 +166,28 @@ class ScopeResolver:
             if not parsed.netloc:
                 raise TargetResolutionError(f"URL missing hostname: {raw_url}")
 
-            # Normalize hostname to lowercase and punycode
+            # Accessing .port raises ValueError for malformed/out-of-range ports.
+            # An empty explicit port is ambiguous and must not collapse to the host-only URL.
+            if parsed.netloc.endswith(":"):
+                raise TargetResolutionError(f"URL has an empty port: {raw_url}")
+            parsed_port = parsed.port
+            scheme = parsed.scheme.lower()
+
+            # urlparse().hostname omits brackets for IPv6 literals; restore them before
+            # rebuilding the authority so distinct hosts and ports remain unambiguous.
             host = parsed.hostname.lower() if parsed.hostname else ""
-            port = f":{parsed.port}" if parsed.port and parsed.port not in (80, 443) else ""
+            if ":" in host and not host.startswith("["):
+                host = f"[{host}]"
+
+            default_port = 80 if scheme == "http" else 443
+            port = (
+                f":{parsed_port}"
+                if parsed_port is not None and parsed_port != default_port
+                else ""
+            )
             path = unquote(parsed.path) or "/"
 
-            normalized_url = f"{parsed.scheme.lower()}://{host}{port}{path}"
+            normalized_url = f"{scheme}://{host}{port}{path}"
             return Target(id=target_id, type=TargetType.URL, value=normalized_url, metadata=metadata)
         except Exception as e:
             raise TargetResolutionError(f"Failed to parse and normalize URL '{raw_url}': {e}") from e
