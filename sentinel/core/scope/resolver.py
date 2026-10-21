@@ -164,7 +164,11 @@ class ScopeResolver:
 
             # Normalize hostname to lowercase and punycode
             host = parsed.hostname.lower() if parsed.hostname else ""
-            port = f":{parsed.port}" if parsed.port and parsed.port not in (80, 443) else ""
+            parsed_port = parsed.port  # Accessing this also rejects malformed/out-of-range ports.
+            if parsed_port is not None and not 1 <= parsed_port <= 65535:
+                raise TargetResolutionError(f"Invalid URL port: {parsed_port}")
+            default_port = {"http": 80, "https": 443}.get(parsed.scheme.lower())
+            port = f":{parsed_port}" if parsed_port is not None and parsed_port != default_port else ""
             path = unquote(parsed.path) or "/"
 
             normalized_url = f"{parsed.scheme.lower()}://{host}{port}{path}"
