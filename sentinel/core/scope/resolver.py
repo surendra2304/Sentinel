@@ -164,6 +164,9 @@ class ScopeResolver:
 
             # Normalize hostname to lowercase and punycode
             host = parsed.hostname.lower() if parsed.hostname else ""
+            if ":" in host and not host.startswith("["):
+                # urlparse.hostname removes IPv6 brackets; restore them when rebuilding the authority.
+                host = f"[{host}]"
             parsed_port = parsed.port  # Accessing this also rejects malformed/out-of-range ports.
             if parsed_port is not None and not 1 <= parsed_port <= 65535:
                 raise TargetResolutionError(f"Invalid URL port: {parsed_port}")

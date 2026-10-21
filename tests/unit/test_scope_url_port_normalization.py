@@ -28,3 +28,13 @@ def test_non_default_ports_are_preserved(url, expected):
 def test_port_zero_is_rejected():
     with pytest.raises(TargetResolutionError):
         ScopeResolver.normalize_target("http://example.test:0/health")
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("http://[::1]:80/health", "http://[::1]/health"),
+        ("https://[2001:db8::1]:8443/health", "https://[2001:db8::1]:8443/health"),
+    ],
+)
+def test_ipv6_authority_preserves_brackets_and_scheme_port(url, expected):
+    assert ScopeResolver.normalize_target(url).value == expected
