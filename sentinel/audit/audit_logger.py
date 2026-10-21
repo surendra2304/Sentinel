@@ -187,12 +187,12 @@ class AuditLogger:
 
     def log_event(
         self,
-        entry_id: str,
-        event_type: str,
-        actor: str,
-        action_type: str,
-        scope_policy: str,
-        decision: str,
+        entry_id: str | None = None,
+        event_type: str = "SYSTEM",
+        actor: str = "sentinel",
+        action_type: str = "SYSTEM",
+        scope_policy: str = "DEFAULT",
+        decision: str = "ALLOWED",
         target: str | None = None,
         tenant_id: str = "default",
         action_id: str | None = None,
@@ -200,6 +200,8 @@ class AuditLogger:
     ) -> AuditEntry:
         """Create, redact, hash, sign, and write an immutable audit log entry."""
         with self._lock:
+            if not entry_id:
+                entry_id = f"audit-{int(time.time()*1000)}-{self._seq + 1}"
             if os.path.exists(self.log_path):
                 try:
                     with open(self.log_path, encoding="utf-8") as f:
@@ -270,12 +272,12 @@ class AuditLogger:
 
     async def log_event_durable(
         self,
-        entry_id: str,
-        event_type: str,
-        actor: str,
-        action_type: str,
-        scope_policy: str,
-        decision: str,
+        entry_id: str | None = None,
+        event_type: str = "SYSTEM",
+        actor: str = "sentinel",
+        action_type: str = "SYSTEM",
+        scope_policy: str = "DEFAULT",
+        decision: str = "ALLOWED",
         target: str | None = None,
         tenant_id: str = "default",
         action_id: str | None = None,
@@ -352,3 +354,29 @@ def _redact_dict(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return [_redact_dict(v) for v in value]
     return value
+
+
+_global_audit_logger: AuditLogger | None = None
+
+
+def get_audit_logger(log_path: str = "logs/audit.jsonl", signing_key: str | None = None) -> AuditLogger:
+    global _global_audit_logger
+    if _global_audit_logger is None:
+        key = (
+            signing_key
+            or os.environ.get("SENTINEL_AUDIT_HMAC_KEY")
+            or os.environ.get("SENTINEL_AUDIT_SIGNING_KEY")
+            or "sentinel-default-fallback-audit-key"
+        )
+        _global_audit_logger = AuditLogger(log_path=log_path, signing_key=key, fail_closed=False)
+    return _global_audit_logger
+
+
+class _AuditLoggerProxy:
+    """Lazy proxy dispatching calls to global singleton AuditLogger."""
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(get_audit_logger(), name)
+
+
+audit_logger = _AuditLoggerProxy()

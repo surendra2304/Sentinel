@@ -4,6 +4,7 @@ from sentinel.config.settings import get_settings
 from sentinel.storage.repositories.in_memory import (
     InMemoryApprovalRepository,
     InMemoryAuditRepository,
+    InMemoryEventRepository,
     InMemoryEvidenceRepository,
     InMemoryFindingRepository,
     InMemoryRiskRepository,
@@ -12,6 +13,7 @@ from sentinel.storage.repositories.in_memory import (
 from sentinel.storage.repositories.interfaces import (
     ApprovalRepository,
     AuditRepository,
+    EventRepository,
     EvidenceRepository,
     FindingRepository,
     RiskRepository,
@@ -20,6 +22,7 @@ from sentinel.storage.repositories.interfaces import (
 from sentinel.storage.repositories.postgres import (
     PostgresApprovalRepository,
     PostgresAuditRepository,
+    PostgresEventRepository,
     PostgresEvidenceRepository,
     PostgresFindingRepository,
     PostgresRiskRepository,
@@ -32,6 +35,7 @@ _evidence_repo: EvidenceRepository | None = None
 _approval_repo: ApprovalRepository | None = None
 _risk_repo: RiskRepository | None = None
 _audit_repo: AuditRepository | None = None
+_event_repo: EventRepository | None = None
 
 
 def get_task_repository() -> TaskRepository:
@@ -98,3 +102,14 @@ def get_audit_repository() -> AuditRepository:
         else:
             _audit_repo = InMemoryAuditRepository()
     return _audit_repo
+
+
+def get_event_repository() -> EventRepository:
+    global _event_repo
+    if _event_repo is None:
+        settings = get_settings()
+        if getattr(settings, "storage_backend", "memory") == "postgres":
+            _event_repo = PostgresEventRepository()
+        else:
+            _event_repo = InMemoryEventRepository()
+    return _event_repo

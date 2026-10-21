@@ -27,8 +27,10 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
+from sentinel.api.incident_routes import incident_router
 from sentinel.api.metrics import router as metrics_router
 from sentinel.api.security_audit import router as security_audit_router
+from sentinel.api.threat_intel_routes import threat_intel_router
 from sentinel.apps.api.middleware import APIKeyAuthMiddleware, RequestCapacityMiddleware
 from sentinel.audit.audit_logger import AuditLogger
 from sentinel.config.settings import EnvironmentType, get_settings
@@ -1594,6 +1596,8 @@ async def verify_capability_token(req: VerifyCapabilityRequest) -> dict[str, Any
 # Include Metrics Router
 app.include_router(metrics_router, prefix=settings.api_prefix)
 app.include_router(security_audit_router)
+app.include_router(threat_intel_router)
+app.include_router(incident_router)
 
 
 class SentinelInferenceRequest(BaseModel):
