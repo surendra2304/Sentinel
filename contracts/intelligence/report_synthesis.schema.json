@@ -1,0 +1,11 @@
+﻿{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ReportSynthesisResponse",
+  "type": "object",
+  "required": ["executive_prose", "key_risk_statements", "remediation_roadmap_summary"],
+  "properties": {
+    "executive_prose": {"type": "string"},
+    "key_risk_statements": {"type": "array", "items": {"type": "string"}},
+    "remediation_roadmap_summary": {"type": "string"}
+  }
+}

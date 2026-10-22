@@ -1,0 +1,48 @@
+# Python & Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual Environments
+env/
+venv/
+.venv/
+ENV/
+
+# Testing & Coverage
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Artifacts, Storage & Logs
+data/artifacts/
+logs/
+*.log
+*.jsonl
+
+# Keys & Secrets (Strictly Excluded)
+.env
+.env.production
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Node & Frontend Build
+node_modules/
+dist/
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Agent Scratch & Workspaces
+.agents/
+
+
+*.zip

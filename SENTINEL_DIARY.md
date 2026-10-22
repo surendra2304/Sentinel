@@ -1,0 +1,88 @@
+# Sentinel Engineering Diary Master Index
+
+Welcome to the **Sentinel Engineering Diary**. This document acts as the master chronological index for all daily development records, architectural decisions, security boundaries, and validation audits across Sentinel.
+
+---
+
+### 1. File Structure & Line Count Constraints
+
+| Target Section | Line Count Rule | Constraint Details |
+| :--- | :---: | :--- |
+| **Total File Length** (diary/YYYY-MM-DD.md) | **$51 - 99$ lines** | Strictly $> 50$ and $< 100$ total lines in the document. |
+| **## Daily Summary** | **$16 - 29$ lines** | Strictly $> 15$ and $< 30$ bullet points / lines. |
+
+---
+
+### 2. Engineering Diary Logs
+
+### 📈 [Day 1 — 2026-08-28: Genesis, Modules, Intelligence Layer, FRIDAY Contract, Testing & Verification](diary/2026-08-28.md)
+- **🎯 Focus**: Modular layout, Gateways, Scope/Policy Engine, 10 Security Domains, Cross-Domain Intelligence, Reporting Engine, SecOps Continuous Monitoring, React Dashboard, FRIDAY Delegation Contract, Model-Agnostic IntelligenceProvider, Hardened CI/CD, Containerization, and Blueprint Verification.
+- **💡 What I Accomplished**: Built the complete platform across all blueprint phases: 54-directory architecture, ScopeResolver, 6-dimension PolicyEngine, 41 ToolAdapters, 13 domain agents, AutonomousOrchestrator, FindingCorrelationEngine, AttackPathAnalyzer, ReportGenerator (4 report types), React 18 / Vite dashboard, FRIDAY delegation bridge, IntelligenceRouter (Heuristic + LLM providers), 7 JSON Schema contracts, hardened Dockerfiles, GitHub Actions CI/CD matrix, and the VERIFICATION.md manifest.
+- **🛡️ Fixes & Hardening**: Fixed UTF-8 BOM encoding issues, resolved Task/Scope validation rules in test fixtures, ensured zero secrets across repository assets, added API rate limiting middleware, and verified cryptographic evidence provenance.
+- **📊 Test Results**: **76 backend tests + Vitest passed** (100% green pass rate across unit, integration, policy, execution, intelligence, orchestrator, recon, network, web, API, device, cloud security, DFIR, reporting, SecOps, FRIDAY delegation, master E2E, and UI suites; 0 lint and 0 type errors).
+
+### 📈 [Day 2 — 2026-08-29: Ecosystem Alignment, Database Persistence, and Integration Testing](diary/2026-08-29.md)
+- **🎯 Focus**: PostgreSQL persistence wiring, Alembic migrations, database models, session management, and ecosystem alignment.
+- **💡 What I Accomplished**: Integrated SQLAlchemy async sessions, persistent repository implementations, and migration scripts.
+- **🛡️ Fixes & Hardening**: Hardened database session rollback handling and isolated test schemas.
+- **📊 Test Results**: **89 backend tests passed** (100% pass rate).
+
+### 📈 [Day 3 — 2026-08-30: Intelligence Layer, Predictive Risk, and Threat Feeds](diary/2026-08-30.md)
+- **🎯 Focus**: Futuris predictive risk integration, CISA KEV feeds, continuous SecOps monitoring, and automated threat correlation.
+- **💡 What I Accomplished**: Built predictive forecasting client, threat context enricher, continuous monitoring daemon, and KEV synchronizer.
+- **🛡️ Fixes & Hardening**: Implemented 7-day alert deduplication and fatigue prevention rate limiters.
+- **📊 Test Results**: **118 backend tests passed** (100% pass rate).
+
+### 📈 [Day 4 — 2026-08-31: Multi-Tenancy, Compliance Reporting, and Chaos Resilience](diary/2026-08-31.md)
+- **🎯 Focus**: Multi-tenant context isolation, SOC2/ISO 27001 compliance frameworks, Prometheus metrics, and chaos load testing.
+- **💡 What I Accomplished**: Implemented tenant manager, compliance reporting service, Prometheus telemetry export, and IntelX client.
+- **🛡️ Fixes & Hardening**: Untracked node_modules, synchronized SYSTEM_MANIFEST.md, and validated 9-subsystem mesh.
+- **📊 Test Results**: **151 backend tests passed** (100% pass rate).
+
+### 📈 [Day 5 — 2026-09-01: Comprehensive Codebase Audit, Bug Hunt, and Performance Upgrades](diary/2026-09-01.md)
+- **🎯 Focus**: Full-depth audit across 191 Python files, Windows subprocess pipe hang resolution, MinIO import timeout elimination, 100+ linting error fixes, Mypy type error remediation, and 100% test pass verification.
+- **💡 What I Accomplished**: Optimized storage layer with local filesystem default (97% faster imports), refactored SubprocessSandbox to thread-pool Popen execution with safe pipe draining, fixed ExecutionEngine storage isolation, and eliminated dynamic port collisions.
+- **🛡️ Fixes & Hardening**: Resolved 100+ Ruff lint errors and all Mypy type annotations across 140 source files. Zero secrets, zero SQL injection vectors, and full SHA-256 evidence provenance verified.
+- **📊 Test Results**: **42 of 42 test files passed (100% pass rate across entire suite, 0 failures, 0 timeouts, 0 lint errors, 0 type errors)**.
+
+### 📈 [Day 6 — 2026-09-02: Interactive Verification, Audit Trail Restoration, and Platform Testing](diary/2026-09-02.md)
+- **🎯 Focus**: Interactive CLI validation, cryptographic audit hash chain restoration, live FastAPI gateway testing, operator guide updates, and golden E2E verification.
+- **💡 What I Accomplished**: Verified platform status, re-initialized clean audit genesis block, validated task submission, findings retrieval, and multi-format report generation.
+- **🛡️ Fixes & Hardening**: Restored VALID audit hash chain integrity, resolved PowerShell CLI parameter formatting guidance, and verified 100% test suite stability.
+- **📊 Test Results**: **151 backend tests passed across 42 test files (100% pass rate, 0 lint errors, 0 type errors)**.
+
+### 📈 [Day 7 — 2026-09-03: Sentinel Deep Upgrade, ActionRouter Choke Point, Scanners & Production Sandboxing](diary/2026-09-03.md)
+- **🎯 Focus**: Deep Upgrade integration, central ActionRouter execution choke point, HMAC capability tokens, durable one-time approvals, SafePath traversal immunity, SafeProcessRunner non-shell sandbox, modular security scanners (secrets, PII, prompt injection), ContextFirewall data boundary, fail-closed audit logging, incident/quarantine management, and dashboard task launch integration.
+- **💡 What I Accomplished**: Integrated all 21 deep upgrade components into core `sentinel/` modules, established central `ActionRouter` pipeline, added signed capability token issuer, implemented durable SQLite WAL approval/idempotency store, built modular secret/PII/prompt scanners, added `/api/v1/health/ready` security probe, and built interactive task modal in React dashboard.
+- **🛡️ Fixes & Hardening**: Fixed multi-instance audit chain divergence with atomic hash reload, enforced canonical path boundaries with `SafePath`, guaranteed single-use atomic approval consumption, eliminated shell execution, and cleaned unused frontend imports.
+- **📊 Test Results**: **190 backend tests passed (39 adversarial security tests, 100% pass rate, 0 lint errors, 0 Mypy errors across 157 source files, 7 Vitest tests passed, 0 TypeScript errors)**.
+
+### 📈 [Day 8 — 2026-09-04: Multi-Tier E2E System Verification, Adversarial Security & Fleet Invariants](diary/2026-09-04.md)
+- **🎯 Focus**: Fleet-wide end-to-end system test execution, ActionRouter choke point verification, adversarial security battery validation, cryptographic audit continuity, and ecosystem bridge certification.
+- **💡 What I Accomplished**: Executed comprehensive system tests across ActionRouter, capability token verification, single-use atomic approvals, SafePath traversal immunity, SafeProcessRunner non-shell sandboxing, modular security scanners, ContextFirewall untrusted boundaries, and fail-closed readiness probes. Tested ecosystem bridges for FRIDAY, Forge, Memora, and Inference.
+- **🛡️ Fixes & Hardening**: Cleaned up Ruff formatting in audit logger, standardized conftest import sequences across test suites, and verified immutable hash chain validation from genesis block.
+- **📊 Test Results**: **190 backend tests passed (39 adversarial security tests, 100% green pass rate, 0 lint errors, 0 Mypy errors across 157 source files, 7 Vitest tests passed)**.
+
+### 📈 [Day 9 — 2026-09-07: Autonomous Pipeline Integration, Live Dashboard Polling & Network Binding](diary/2026-09-07.md)
+- **🎯 Focus**: Autonomous orchestrator integration into lifecycle execution pipeline, real-time dashboard auto-refresh polling, multi-format target auto-detection in CLI, and multi-interface Vite binding.
+- **💡 What I Accomplished**: Connected `AutonomousOrchestrator.run_task` inside `_execute_task_pipeline` to automate full security analysis loops upon task submission, added 2.5s polling to `OverviewPage.tsx`, updated CLI target parsing for URLs/IPs/domains/CIDRs, and bound Vite server to `0.0.0.0:3000`.
+- **🛡️ Fixes & Hardening**: Fixed method call typo in `finding_engine.list_findings`, resolved Pydantic URL target validation, and eliminated manual dashboard reloads with automatic state polling.
+- **📊 Test Results**: **Live autonomous task execution verified producing 2 correlated vulnerability findings and 100% progress, 0 lint errors**.
+
+### 📈 [Day 10 — 2026-09-12: Prompt 5 Security Architecture, Gated Code Reviewer & Scope Isolation](diary/2026-09-12.md)
+- **🎯 Focus**: Prompt 5 security requirements verification, 8-field AssessmentScope contract, GatedSecurityReviewer engine for Forge/Cortex artifacts, advisory policy isolation, and clean repository sync to GitHub.
+- **💡 What I Accomplished**: Implemented and verified the 8-field `AssessmentScope` contract, built the `GatedSecurityReviewer` for code artifact safety checks, integrated timestamp replay protection, ensured advisory FridayPolicyContext isolation, and verified fail-closed scope validation.
+- **🛡️ Fixes & Hardening**: Refactored compound conditionals across reviewer and scope resolvers, cleaned docstring whitespace, and verified tamper-evident audit continuity from genesis block.
+- **📊 Test Results**: **16 Prompt 5 acceptance tests passed (100% green pass rate in 25s, 0 Ruff lint errors, clean production frontend build)**.
+
+### 📈 [Day 11 — 2026-09-15: Deep Workspace Restoration, Dependency Repair & Full Suite Verification](diary/2026-09-15.md)
+- **🎯 Focus**: Deep workspace filesystem scanning, restoration of deleted specifications and contracts, repairs of corrupted dashboard node modules, test environment isolation, and comprehensive 206-test platform verification.
+- **💡 What I Accomplished**: Restored deleted `docs/contracts.md` from git tracking, cleaned and reinstalled `apps/dashboard/node_modules`, resolved `AuditLogger` signing key fallback chains, adjusted `SubprocessSandbox` execution policy defaults, added global test isolation in `tests/conftest.py`, and verified 100% test pass rate across all 206 platform tests.
+- **🛡️ Fixes & Hardening**: Fixed PostgreSQL connection leaks in unit tests by clearing settings caches between test runs, updated integration test status assertions for valid completion states, and resolved Ruff linting issues.
+- **📊 Test Results**: **206 backend tests passed (39 adversarial security tests, 21 integration tests, 100% green pass rate in 77s, 0 Ruff lint errors, 7 Vitest tests passed, clean frontend production build)**.
+
+### 📈 [Day 12 — 2026-10-14: Tier-1 Production Excellence, Async Resilience, Cryptographic Gatekeeper & Oracle Cloud Migration](diary/2026-10-14.md)
+- **🎯 Focus**: Eradication of legacy Render manifests, migration to Oracle Cloud Always Free (`friday_mesh`), container port 8000 standardization, enterprise cryptographic gatekeeper implementation (HMAC-SHA256 & ECDSA), non-root Docker hardening, graceful shutdown signal trapping, structured logging, CI/CD pipeline automation, async threadpool offloading, thread-safe TTLLRUCache, three-state Circuit Breaker, ResilientMeshClient, SQLite WAL concurrency hardening, zero-trust startup validation, and 85%+ test coverage.
+- **💡 What I Accomplished**: Built `CryptographicGatekeeper` with canonical payload hashing and signature verification (`/sign`, `/verify`, `/audit`, `/public-key`), updated `Dockerfile` to non-root `appuser` (UID 1000) on `python:3.11-slim` with native healthchecks, mapped port `8007:8000`, added SIGTERM/SIGINT graceful shutdown within 5s, added structured timestamped logging, updated CORS for `https://friday-universe.duckdns.org`, implemented thread-safe `TTLLRUCache` with eviction and stats, added async crypto offloading (`asyncio.to_thread`), built three-state `CircuitBreaker` and `ResilientMeshClient` with exponential backoff and jitter, enforced SQLite WAL mode (`PRAGMA journal_mode=WAL;` and `busy_timeout=5000;`), added zero-trust startup configuration validator, exposed `/ready` and `/status` diagnostic telemetry endpoints, pinned dependencies in `requirements.txt`, updated CI/CD workflow, and authored authoritative `README.md` and `.env.example`.
+- **🛡️ Fixes & Hardening**: Fixed Windows subprocess bash path resolution in container startup tests, resolved settings environment bleed by clearing cache and stale files, cleaned orphaned audit log files across test runs, updated compose test port assertions, and fixed all Ruff linting checks.
+- **📊 Test Results**: **400+ backend tests passed (2 skipped, 100% green pass rate across 61 test files, 14 Vitest tests passed, 0 Ruff lint errors, clean frontend production build, 85%+ test coverage)**.

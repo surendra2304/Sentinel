@@ -1,0 +1,22 @@
+﻿{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CorrelationResponse",
+  "type": "object",
+  "required": ["clusters"],
+  "properties": {
+    "clusters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["cluster_id", "finding_ids", "narrative", "shared_assets"],
+        "properties": {
+          "cluster_id": {"type": "string"},
+          "finding_ids": {"type": "array", "items": {"type": "string"}},
+          "narrative": {"type": "string"},
+          "shared_assets": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "total_findings_correlated": {"type": "integer"}
+  }
+}

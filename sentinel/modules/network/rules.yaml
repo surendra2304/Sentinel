@@ -1,0 +1,52 @@
+﻿# Sentinel Network Security Exposure & Config Baseline Rules
+version: "1.0.0"
+
+# Unexpected or High-Risk Exposed Services
+unexpected_services:
+  - port: 3306
+    service: "MySQL Database"
+    severity: "HIGH"
+    description: "Database listener directly exposed without network isolation."
+    remediation: "Bind MySQL to localhost or internal network interface only."
+  - port: 5432
+    service: "PostgreSQL Database"
+    severity: "HIGH"
+    description: "PostgreSQL database port exposed to accessible network."
+    remediation: "Restrict pg_hba.conf and bind address to internal subnets."
+  - port: 6379
+    service: "Redis In-Memory Store"
+    severity: "CRITICAL"
+    description: "Unauthenticated Redis port exposed, vulnerable to RCE."
+    remediation: "Enable requirepass authentication and bind to 127.0.0.1."
+  - port: 27017
+    service: "MongoDB Database"
+    severity: "HIGH"
+    description: "MongoDB port exposed."
+    remediation: "Enforce network segmentation and bind to internal interfaces."
+  - port: 22
+    service: "SSH Remote Management"
+    severity: "LOW"
+    description: "SSH administration plane exposed."
+    remediation: "Enforce key-based authentication and IP allowlisting."
+  - port: 23
+    service: "Telnet Plaintext Protocol"
+    severity: "CRITICAL"
+    description: "Unencrypted plaintext Telnet protocol active."
+    remediation: "Disable telnetd and migrate to SSHv2."
+
+# Firewall & Security Group Ruleset Baseline Checks
+firewall_baseline:
+  - id: "FW-001"
+    name: "Overly Permissive Inbound Any/Any Rule"
+    severity: "HIGH"
+    pattern: "0.0.0.0/0"
+    ports: "ALL"
+    description: "Security group or firewall contains Ingress 0.0.0.0/0 on all ports."
+    remediation: "Restrict inbound CIDR ranges to explicit authorized subnets."
+  - id: "FW-002"
+    name: "Direct Management Port Ingress from Any"
+    severity: "HIGH"
+    ports: [22, 3389, 445]
+    source_cidr: "0.0.0.0/0"
+    description: "Administrative access (SSH/RDP/SMB) exposed to entire Internet (0.0.0.0/0)."
+    remediation: "Place management plane behind a VPN or bastion host."

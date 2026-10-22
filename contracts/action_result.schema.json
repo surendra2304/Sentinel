@@ -1,0 +1,70 @@
+{
+  "description": "Structured execution result of an ActionRequest.",
+  "properties": {
+    "schema_version": {
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "action_id": {
+      "title": "Action Id",
+      "type": "string"
+    },
+    "task_id": {
+      "title": "Task Id",
+      "type": "string"
+    },
+    "success": {
+      "title": "Success",
+      "type": "boolean"
+    },
+    "output_summary": {
+      "title": "Output Summary",
+      "type": "string"
+    },
+    "raw_output_uri": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Raw Output Uri"
+    },
+    "duration_seconds": {
+      "minimum": 0.0,
+      "title": "Duration Seconds",
+      "type": "number"
+    },
+    "error_info": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error Info"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "action_id",
+    "task_id",
+    "success",
+    "output_summary",
+    "duration_seconds"
+  ],
+  "title": "ActionResult",
+  "type": "object"
+}

@@ -1,0 +1,366 @@
+import asyncio
+from datetime import UTC, datetime, timedelta
+
+import pytest
+from httpx import ASGITransport, AsyncClient
+from typer.testing import CliRunner
+
+from sentinel.apps.api import main as api_main
+from sentinel.apps.api.main import app
+from sentinel.apps.cli import main as cli_main
+from sentinel.apps.cli.main import app as cli_app
+from sentinel.config.settings import EnvironmentType
+from sentinel.core.events.bus import InMemoryEventBus
+from sentinel.core.models import (
+    Event,
+    EventType,
+    Policy,
+    Scope,
+    Target,
+    TargetSet,
+    TargetType,
+    Task,
+    TaskMode,
+    TaskStatus,
+    TimeWindow,
+)
+from sentinel.core.orchestrator.lifecycle import TaskLifecycleManager
+
+# ---------------------------------------------------------------------------
+# 1. API Integration Tests (Submit -> Status -> Cancel -> Telemetry)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_api_task_gateway_lifecycle(monkeypatch):
+    monkeypatch.setattr(api_main.settings, "environment", EnvironmentType.PRODUCTION)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # 1. Health and Readiness checks
+        res_health = await client.get("/health")
+        assert res_health.status_code == 200
+        health = res_health.json()
+        assert health["status"] == "ok"
+        assert health["evidence_class"] == "process_liveness"
+        assert health["observed_at"]
+
+        res_ready = await client.get("/ready")
+        assert res_ready.status_code == 200
+        ready = res_ready.json()
+        # Readiness must agree with its own reported checks; with the in-memory
+        # backend in production the durable-audit check fails, so DEGRADED is the
+        # truthful answer and READY must not be hard-coded past it.
+        _checks = ready["checks"]
+        assert ready["status"] == ("READY" if all(_checks.values()) else "DEGRADED")
+        assert ready["ready"] is all(_checks.values())
+        assert _checks["audit_durable"] is False
+        assert ready["evidence_class"] == "local_readiness_checks"
+        assert ready["observed_at"]
+        assert ready["peer_connectivity"] == "not_checked"
+
+        security_ready = await client.get("/api/v1/health/ready")
+        assert security_ready.status_code == 503
+        readiness_detail = security_ready.json()["detail"]
+        assert readiness_detail["persistence_evidence"] == "unverified_no_durable_store_probe"
+        assert readiness_detail["checks"]["persistence"] is False
+
+        # 2. Submit Task
+        now = datetime.now(UTC)
+        payload = {
+            "objective": "Comprehensive perimeter security scan",
+            "targets": [
+                {"type": "domain", "value": "api.sentinel.security"},
+                {"type": "ip", "value": "192.168.1.100"},
+            ],
+            "scope": {
+                "id": "scope-gateway-integration",
+                "name": "Gateway integration scope",
+                "owner": "test-operator",
+                "written_authorization_reference": "CHG-TEST-1001",
+                "allowed_targets": ["api.sentinel.security", "192.168.1.100"],
+                "allowed_methods": ["passive_recon", "discovery", "validation"],
+                "time_window": {
+                    "start_time": (now - timedelta(minutes=1)).isoformat(),
+                    "end_time": (now + timedelta(hours=2)).isoformat(),
+                },
+                "rate_limit": 50,
+                "maximum_impact": "low",
+            },
+            "mode": "assessment",
+            "requested_output": "comprehensive_report",
+        }
+        res_submit = await client.post("/api/v1/tasks", json=payload)
+        assert res_submit.status_code == 201
+        data = res_submit.json()
+        task_id = data["task_id"]
+        assert task_id.startswith("task-")
+        assert data["target_count"] == 2
+
+        # 3. Get Task List and Status
+        res_list = await client.get("/api/v1/tasks")
+        assert res_list.status_code == 200
+        task_ids = [t["task_id"] for t in res_list.json()]
+        assert task_id in task_ids
+
+        res_get = await client.get(f"/api/v1/tasks/{task_id}")
+        assert res_get.status_code == 200
+        assert res_get.json()["id"] == task_id
+
+        # 4. Check Stubs (Findings, Evidence, Report)
+        res_findings = await client.get(f"/api/v1/tasks/{task_id}/findings")
+        assert res_findings.status_code == 200
+        assert "findings" in res_findings.json()
+
+        res_evidence = await client.get(f"/api/v1/tasks/{task_id}/evidence")
+        assert res_evidence.status_code == 200
+        assert "evidence" in res_evidence.json()
+
+        res_report = await client.get(f"/api/v1/tasks/{task_id}/report")
+        assert res_report.status_code == 200
+        assert res_report.json()["status"] in ["submitted", "planning", "executing", "reporting", "complete", "cancelled"]
+
+        # 5. Cancel Task (Kill Switch)
+        res_cancel = await client.post(f"/api/v1/tasks/{task_id}/cancel?reason=TestOperatorHalt")
+        assert res_cancel.status_code == 200
+        assert res_cancel.json()["status"] == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_capability_routes_fail_closed_without_configured_signing_secret(monkeypatch):
+    monkeypatch.setattr(api_main, "capability_issuer", None)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/capabilities/issue",
+            json={"actor_id": "test", "actions": ["read"], "resources": ["report"]},
+        )
+    assert response.status_code == 503
+    assert "SENTINEL_CAPABILITY_SIGNING_KEY" in response.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# 2. CLI Integration Tests
+# ---------------------------------------------------------------------------
+
+def test_cli_operations(monkeypatch):
+    runner = CliRunner()
+    monkeypatch.delenv("SENTINEL_API_URL", raising=False)
+    monkeypatch.delenv("SENTINEL_API_KEY", raising=False)
+
+    def reject_unconfigured_remote(*_args, **_kwargs):
+        raise AssertionError("CLI must not contact an unconfigured remote API")
+
+    monkeypatch.setattr(cli_main.httpx, "Client", reject_unconfigured_remote)
+
+    async def create_local_task_without_starting_assessment(**kwargs):
+        now = datetime.now(UTC)
+        target = Target(
+            id="cli-ops-target",
+            type=TargetType.IP,
+            value=kwargs["targets"][0]["value"],
+        )
+        scope = Scope(
+            id="cli-ops-scope",
+            name="CLI test scope",
+            allowed_targets=[target.value],
+            owner=kwargs["scope_data"]["owner"],
+            written_authorization_reference=kwargs["scope_data"]["written_authorization_reference"],
+            allowed_methods=["passive_recon", "discovery", "validation"],
+            time_window=TimeWindow(
+                start_time=now - timedelta(minutes=1),
+                end_time=now + timedelta(hours=1),
+            ),
+        )
+        task = Task(
+            id="task-cli-operations",
+            objective=kwargs["objective"],
+            target_set=TargetSet(id="ts-cli-operations", name="CLI test targets", targets=[target]),
+            scope=scope,
+            policy=Policy(id="policy-cli-operations", name="CLI test policy"),
+            mode=TaskMode.PASSIVE_RECON,
+            status=TaskStatus.SUBMITTED,
+            correlation_id="corr-cli-operations",
+        )
+        await cli_main.lifecycle_manager.repo.create_task(task)
+        return task
+
+    monkeypatch.setattr(
+        cli_main.lifecycle_manager,
+        "create_and_submit_task",
+        create_local_task_without_starting_assessment,
+    )
+
+    # 1. CLI Status
+    result_status = runner.invoke(cli_app, ["status"])
+    assert result_status.exit_code == 0
+    assert "CYBERSECURITY PLATFORM" in result_status.output
+
+    # 2. CLI Task Submit
+    result_submit = runner.invoke(
+        cli_app,
+        [
+            "task", "submit",
+            "--objective", "Audit internal host",
+            "--target", "10.0.0.50",
+            "--mode", "passive_recon",
+            "--authorization-reference", "CHG-CLI-OPS-1001",
+            "--authorized-by", "cli-operator@example.invalid",
+        ],
+    )
+    assert result_submit.exit_code == 0
+    assert "Task submitted successfully" in result_submit.output
+
+    # Extract task id from output
+    lines = result_submit.output.split("\n")
+    task_id = ""
+    for line in lines:
+        if "Task ID:" in line:
+            task_id = line.split("Task ID:")[1].strip()
+            break
+    assert task_id != ""
+
+    # 3. CLI Task Status
+    result_task_status = runner.invoke(cli_app, ["task", "status", task_id])
+    assert result_task_status.exit_code == 0
+    assert task_id in result_task_status.output
+
+    # 4. CLI Task Findings
+    result_findings = runner.invoke(cli_app, ["task", "findings", task_id])
+    assert result_findings.exit_code == 0
+
+    # 5. CLI Report
+    result_report = runner.invoke(cli_app, ["report", task_id])
+    assert result_report.exit_code == 0
+
+    # 6. CLI Cancel
+    result_cancel = runner.invoke(cli_app, ["task", "cancel", task_id, "--reason", "CLI test cancel"])
+    assert result_cancel.exit_code == 0
+    assert "HALTED" in result_cancel.output
+
+
+# ---------------------------------------------------------------------------
+# 3. Event Bus Multi-Subscriber Tests
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_event_bus_pub_sub_multiple_subscribers():
+    bus = InMemoryEventBus()
+    received_events_1: list[Event] = []
+    received_events_2: list[Event] = []
+    received_events_wildcard: list[Event] = []
+
+    async def sub1(evt: Event):
+        received_events_1.append(evt)
+
+    async def sub2(evt: Event):
+        received_events_2.append(evt)
+
+    async def sub_wildcard(evt: Event):
+        received_events_wildcard.append(evt)
+
+    await bus.subscribe("task.created", sub1)
+    await bus.subscribe("task.created", sub2)
+    await bus.subscribe("task.*", sub_wildcard)
+
+    event = Event(
+        event_id="evt-101",
+        event_type=EventType.TASK,
+        topic="task.created",
+        source="sentinel.test",
+        payload={"task_id": "task-test-01"},
+        correlation_id="corr-test",
+    )
+
+    await bus.publish(event)
+    await asyncio.sleep(0.05)  # Allow async dispatch to yield
+
+    assert len(received_events_1) == 1
+    assert len(received_events_2) == 1
+    assert len(received_events_wildcard) == 1
+    assert received_events_1[0].event_id == "evt-101"
+
+    # Test unsubscribe
+    await bus.unsubscribe("task.created", sub1)
+    event2 = Event(
+        event_id="evt-102",
+        event_type=EventType.STATUS,
+        topic="task.created",
+        source="sentinel.test",
+        payload={"task_id": "task-test-02"},
+        correlation_id="corr-test",
+    )
+    await bus.publish(event2)
+    await asyncio.sleep(0.05)
+
+    assert len(received_events_1) == 1  # Unsubscribed, no increase
+    assert len(received_events_2) == 2
+    assert len(received_events_wildcard) == 2
+
+
+@pytest.mark.asyncio
+async def test_event_bus_logs_failed_listener_without_blocking_other_subscribers(caplog):
+    bus = InMemoryEventBus()
+    received = []
+
+    async def broken_listener(_event: Event):
+        raise RuntimeError("sensitive event payload must not be logged")
+
+    async def healthy_listener(event: Event):
+        received.append(event.event_id)
+
+    await bus.subscribe("risk.updated", broken_listener)
+    await bus.subscribe("risk.updated", healthy_listener)
+    event = Event(
+        event_id="evt-risk-delivery-test",
+        event_type=EventType.ALERT,
+        topic="risk.updated",
+        source="sentinel.test",
+        payload={"secret": "must not appear in the failure log"},
+        correlation_id="corr-risk-delivery-test",
+    )
+
+    await bus.publish(event)
+    await asyncio.sleep(0.05)
+
+    assert received == [event.event_id]
+    failure = next(
+        record for record in caplog.records
+        if record.message == "Event listener failed; delivery was not confirmed"
+    )
+    assert failure.event_id == event.event_id
+    assert failure.event_topic == event.topic
+    assert failure.error_type == "RuntimeError"
+    assert "sensitive event payload" not in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# 4. Crash Recovery Lifecycle Tests
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_task_crash_recovery():
+    manager = TaskLifecycleManager()
+    target = Target(id="crash-recovery-target", type=TargetType.DOMAIN, value="test.recovery.internal")
+    task = Task(
+        id="task-crash-recovery-no-checkpoint",
+        objective="Crash recovery resilience test",
+        target_set=TargetSet(id="ts-crash-recovery", name="crash recovery fixture", targets=[target]),
+        scope=Scope(
+            id="scope-crash-recovery",
+            name="crash recovery fixture scope",
+            owner="crash-test-operator",
+            written_authorization_reference="CHG-CRASH-1001",
+            allowed_targets=[target.value],
+        ),
+        policy=Policy(id="policy-crash-recovery", name="crash recovery fixture policy"),
+        mode=TaskMode.ASSESSMENT,
+        status=TaskStatus.EXECUTING,
+        correlation_id="corr-crash-recovery",
+    )
+    # Persist an interrupted task without a checkpoint to exercise fail-closed recovery.
+    await manager.repo.create_task(task)
+
+    recovered_count = await manager.recover_tasks_on_startup()
+    assert recovered_count == 1
+    updated_task = await manager.repo.get_task(task.id)
+    assert updated_task is not None
+    assert updated_task.status == task.status.__class__.FAILED

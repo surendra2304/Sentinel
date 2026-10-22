@@ -1,0 +1,41 @@
+﻿# Sentinel Cloud Security Posture Rules (AWS, Azure, GCP)
+version: "1.0.0"
+
+# AWS Cloud Posture Rules
+aws_rules:
+  - id: "AWS-S3-001"
+    name: "S3 Bucket Public Read Access Enabled"
+    severity: "CRITICAL"
+    resource_type: "AWS::S3::Bucket"
+    description: "S3 bucket has BlockPublicAcls/BlockPublicPolicy disabled and allows public read access."
+    remediation: "Enable 'Block Public Access' on the S3 bucket."
+  - id: "AWS-IAM-001"
+    name: "IAM Policy Contains Full Admin Wildcard (*:*)"
+    severity: "HIGH"
+    resource_type: "AWS::IAM::Policy"
+    description: "IAM policy grants unrestricted Action: '*' on Resource: '*'."
+    remediation: "Apply least-privilege permissions and remove '*:*' wildcards."
+  - id: "AWS-CT-001"
+    name: "Multi-Region CloudTrail Disabled"
+    severity: "HIGH"
+    resource_type: "AWS::CloudTrail::Trail"
+    description: "CloudTrail audit logging is disabled or not configured across all regions."
+    remediation: "Enable multi-region CloudTrail with KMS encryption."
+
+# Azure Cloud Posture Rules
+azure_rules:
+  - id: "AZ-BLOB-001"
+    name: "Azure Storage Account Allows Public Blob Access"
+    severity: "HIGH"
+    resource_type: "Microsoft.Storage/storageAccounts"
+    description: "Azure storage account permits anonymous public blob reads."
+    remediation: "Set allowBlobPublicAccess to false on the Storage Account."
+
+# GCP Cloud Posture Rules
+gcp_rules:
+  - id: "GCP-GCS-001"
+    name: "GCS Bucket Shared with allUsers"
+    severity: "CRITICAL"
+    resource_type: "storage.googleapis.com/Bucket"
+    description: "Google Cloud Storage bucket has allUsers or allAuthenticatedUsers in IAM policy."
+    remediation: "Remove public identities from bucket IAM bindings."

@@ -1,0 +1,74 @@
+name: SENTINEL Enterprise CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+env:
+  PYTHON_VERSION: "3.11"
+  NODE_VERSION: "22"
+  SENTINEL_ENVIRONMENT: testing
+  SENTINEL_STORAGE_BACKEND: memory
+  SENTINEL_S3_BACKEND: local
+  SENTINEL_API_AUTH_REQUIRED: "false"
+
+jobs:
+  # ── Pipeline: Test, Lint & Docker Build ────────────────────────────────────
+  ci:
+    name: Sentinel Hardened CI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install Pinned Dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -r requirements.txt
+          pip install -e ".[dev]"
+
+      - name: Linting Check (Ruff)
+        run: ruff check .
+
+      - name: Verify Diary Rules
+        run: python verify_diary.py
+
+      - name: Run Pytest Test Suite
+        id: pytest
+        env:
+          SENTINEL_AUDIT_SIGNING_KEY: sentinel-ci-audit-key-32characters-long
+          SENTINEL_AUDIT_HMAC_KEY: sentinel-ci-audit-key-32characters-long
+        run: pytest -v --tb=short --cov=sentinel --cov-fail-under=85
+
+      # pytest may report a below-threshold summary while a plugin/session hook
+      # leaves the process exit code green. Enforce the recorded coverage in a
+      # separate process so the release gate cannot be masked by pytest hooks.
+      - name: Independently enforce minimum coverage
+        if: steps.pytest.outcome == 'success'
+        run: python -m coverage report --fail-under=85
+
+      - name: Setup Node.js for Dashboard Verification
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: apps/dashboard/package-lock.json
+
+      - name: Build Dashboard Assets
+        working-directory: apps/dashboard
+        run: |
+          npm ci
+          npm test -- --run
+          npm run build
+
+      - name: Verify Docker Container Build
+        run: |
+          docker build -t sentinel .

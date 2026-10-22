@@ -1,0 +1,73 @@
+{
+  "description": "Security rules, module restrictions, and guardrail constraints.",
+  "properties": {
+    "schema_version": {
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "allowed_module_classes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Allowed Module Classes",
+      "type": "array"
+    },
+    "allowed_action_classes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Allowed Action Classes",
+      "type": "array"
+    },
+    "rate_limit_rps": {
+      "default": 50,
+      "maximum": 1000,
+      "minimum": 1,
+      "title": "Rate Limit Rps",
+      "type": "integer"
+    },
+    "max_intensity": {
+      "default": 5,
+      "maximum": 10,
+      "minimum": 1,
+      "title": "Max Intensity",
+      "type": "integer"
+    },
+    "credential_handling_rules": {
+      "additionalProperties": true,
+      "title": "Credential Handling Rules",
+      "type": "object"
+    },
+    "require_approval_for_offensive": {
+      "default": true,
+      "title": "Require Approval For Offensive",
+      "type": "boolean"
+    },
+    "kill_switch_active": {
+      "default": false,
+      "title": "Kill Switch Active",
+      "type": "boolean"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "name"
+  ],
+  "title": "Policy",
+  "type": "object",
+  "schema_version": "1.0.0"
+}

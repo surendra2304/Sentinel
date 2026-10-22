@@ -1,0 +1,64 @@
+{
+  "$defs": {
+    "EventType": {
+      "enum": [
+        "task",
+        "action",
+        "evidence",
+        "finding",
+        "alert",
+        "status"
+      ],
+      "title": "EventType",
+      "type": "string"
+    }
+  },
+  "description": "Typed event envelope for asynchronous event bus dispatch.",
+  "properties": {
+    "schema_version": {
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "event_id": {
+      "title": "Event Id",
+      "type": "string"
+    },
+    "event_type": {
+      "$ref": "#/$defs/EventType"
+    },
+    "topic": {
+      "title": "Topic",
+      "type": "string"
+    },
+    "source": {
+      "title": "Source",
+      "type": "string"
+    },
+    "payload": {
+      "additionalProperties": true,
+      "title": "Payload",
+      "type": "object"
+    },
+    "correlation_id": {
+      "title": "Correlation Id",
+      "type": "string"
+    },
+    "timestamp": {
+      "format": "date-time",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "required": [
+    "event_id",
+    "event_type",
+    "topic",
+    "source",
+    "payload",
+    "correlation_id"
+  ],
+  "title": "Event",
+  "type": "object",
+  "schema_version": "1.0.0"
+}

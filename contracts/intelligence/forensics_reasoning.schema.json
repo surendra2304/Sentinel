@@ -1,0 +1,23 @@
+﻿{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ForensicsReasoningResponse",
+  "type": "object",
+  "required": ["reconstructed_sequence", "anomalies", "conclusion"],
+  "properties": {
+    "reconstructed_sequence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["timestamp", "event", "source", "confidence"],
+        "properties": {
+          "timestamp": {"type": "string"},
+          "event": {"type": "string"},
+          "source": {"type": "string"},
+          "confidence": {"type": "number"}
+        }
+      }
+    },
+    "anomalies": {"type": "array", "items": {"type": "string"}},
+    "conclusion": {"type": "string"}
+  }
+}

@@ -1,0 +1,44 @@
+﻿{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "FridayResultContract",
+  "type": "object",
+  "required": [
+    "delegation_id",
+    "task_id",
+    "task_status",
+    "progress_percentage",
+    "findings",
+    "blocked_actions",
+    "remediation_recommendations",
+    "human_summary"
+  ],
+  "properties": {
+    "delegation_id": { "type": "string" },
+    "task_id": { "type": "string" },
+    "task_status": { "type": "string" },
+    "progress_percentage": { "type": "number" },
+    "findings": { "type": "array" },
+    "evidence_references": { "type": "array" },
+    "blocked_actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["action_type", "target", "reason"],
+        "properties": {
+          "action_type": { "type": "string" },
+          "target": { "type": "string" },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "remediation_recommendations": { "type": "array" },
+    "report_artifacts": {
+      "type": "object",
+      "properties": {
+        "json_report_url": { "type": "string" },
+        "evidence_bundle_url": { "type": "string" }
+      }
+    },
+    "human_summary": { "type": "string" }
+  }
+}
