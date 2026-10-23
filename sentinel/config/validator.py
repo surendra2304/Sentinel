@@ -45,7 +45,9 @@ def validate_startup_configuration(settings: SentinelSettings) -> list[str]:
         if not signing_key or signing_key in {"dev-signing-key", "default", "sentinel-deterministic-key-fallback"}:
             errors.append("SENTINEL_AUDIT_SIGNING_KEY must be securely configured in production.")
 
-        if settings.storage_backend.strip().lower() not in {"memory", "sqlite", "postgresql", "oracle"}:
+        if settings.storage_backend.strip().lower() == "memory":
+            errors.append("In-memory storage backend is forbidden in production; use sqlite, postgresql, or oracle.")
+        elif settings.storage_backend.strip().lower() not in {"sqlite", "postgresql", "oracle"}:
             errors.append(f"Storage backend '{settings.storage_backend}' not supported.")
 
     return errors

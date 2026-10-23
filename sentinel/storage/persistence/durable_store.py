@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
 import sqlite3
 import threading
 import time
@@ -12,12 +13,22 @@ from pathlib import Path
 from sentinel.core.gateway.models import Approval, ApprovalStatus, ExecutionResult
 
 
+def get_default_sqlite_path() -> str:
+    env_path = os.getenv("SENTINEL_SQLITE_PATH", "").strip()
+    if env_path:
+        return env_path
+    if os.path.exists("/dev/shm") and os.access("/dev/shm", os.W_OK):
+        return "/dev/shm/sentinel_security.db"
+    return "data/sentinel_security.db"
+
+
 class SentinelPersistence:
     """SQLite durable store for idempotency, approvals, incidents and audit metadata."""
 
-    def __init__(self, db_path: str = "data/sentinel_security.db"):
-        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-        self.db = sqlite3.connect(db_path, check_same_thread=False)
+    def __init__(self, db_path: str | None = None):
+        resolved_path = db_path or get_default_sqlite_path()
+        Path(resolved_path).parent.mkdir(parents=True, exist_ok=True)
+        self.db = sqlite3.connect(resolved_path, check_same_thread=False)
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA busy_timeout=5000")
         self.lock = threading.RLock()
