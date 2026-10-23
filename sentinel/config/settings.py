@@ -44,7 +44,9 @@ class DatabaseSettings(BaseSettings):
     def async_url(self) -> str:
         url = os.environ.get("SENTINEL_DATABASE_URL") or os.environ.get("DATABASE_URL")
         if url:
-            if url.startswith("postgres://"):
+            if url.startswith("oracle+oracledb://"):
+                url = url.replace("oracle+oracledb://", "oracle+oracledb_async://", 1)
+            elif url.startswith("postgres://"):
                 url = url.replace("postgres://", "postgresql+asyncpg://", 1)
             elif url.startswith("postgresql://") and not url.startswith("postgresql+asyncpg://"):
                 url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
@@ -55,7 +57,9 @@ class DatabaseSettings(BaseSettings):
     def sync_url(self) -> str:
         url = os.environ.get("SENTINEL_DATABASE_URL") or os.environ.get("DATABASE_URL")
         if url:
-            if url.startswith("postgresql+asyncpg://"):
+            if url.startswith("oracle+oracledb_async://"):
+                url = url.replace("oracle+oracledb_async://", "oracle+oracledb://", 1)
+            elif url.startswith("postgresql+asyncpg://"):
                 url = url.replace("postgresql+asyncpg://", "postgresql://", 1)
             return url
         return f"postgresql://{self.user}:{self.password}@{self.host}:{self.port}/{self.name}"
