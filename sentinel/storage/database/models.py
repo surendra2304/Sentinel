@@ -14,12 +14,19 @@ from sqlalchemy import (
     Table,
     Text,
 )
+from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 
 class Base(DeclarativeBase):
     """Base declarative class for Sentinel database entities."""
     pass
+
+
+@compiles(JSON, "oracle")
+def _compile_json_oracle(type_, compiler, **kw):
+    """Oracle 23ai native JSON data type compilation hook."""
+    return "JSON"
 
 
 # Association table for TargetSet <-> Target (Many-to-Many)
