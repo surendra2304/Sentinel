@@ -30,6 +30,15 @@ def test_validator_fails_in_production_with_in_memory_or_weak_keys(monkeypatch):
         enforce_startup_configuration(settings, fail_fast=True)
 
 
+def test_validator_rejects_sqlite_storage_in_production():
+    settings = get_settings()
+    settings.environment = EnvironmentType.PRODUCTION
+    settings.storage_backend = "sqlite"
+
+    errors = validate_startup_configuration(settings)
+
+    assert any("SQLite storage backend is forbidden in production" in error for error in errors)
+
 def test_validator_invalid_port(monkeypatch):
     monkeypatch.setenv("PORT", "invalid_port")
     settings = get_settings()
