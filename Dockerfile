@@ -2,9 +2,9 @@
 FROM node:22-alpine AS dashboard-builder
 
 WORKDIR /dashboard
-COPY apps/dashboard/package.json apps/dashboard/package-lock.json ./
+COPY Sentinel/apps/dashboard/package.json Sentinel/apps/dashboard/package-lock.json ./
 RUN npm ci
-COPY apps/dashboard/ ./
+COPY Sentinel/apps/dashboard/ ./
 RUN npm run build
 
 # ── Stage 2: Python Application Image ────────────────────────────────────────
@@ -31,16 +31,17 @@ RUN useradd -m -u 1000 appuser
 WORKDIR /app
 
 # Install Python dependencies
-COPY requirements.txt pyproject.toml ./
+COPY Sentinel/requirements.txt Sentinel/pyproject.toml ./
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
 # Copy application source & contracts
-COPY --chown=appuser:appuser sentinel/ ./sentinel/
-COPY --chown=appuser:appuser contracts/ ./contracts/
-COPY --chown=appuser:appuser alembic.ini ./
-COPY --chown=appuser:appuser alembic/ ./alembic/
-COPY --chown=appuser:appuser docker/entrypoint.sh ./entrypoint.sh
+COPY --chown=appuser:appuser Sentinel/sentinel/ ./sentinel/
+COPY --chown=appuser:appuser Sentinel/contracts/ ./contracts/
+COPY --chown=appuser:appuser Sentinel/alembic.ini ./
+COPY --chown=appuser:appuser Sentinel/alembic/ ./alembic/
+COPY --chown=appuser:appuser Sentinel/docker/entrypoint.sh ./entrypoint.sh
+COPY --chown=appuser:appuser mesh/ ./mesh/
 
 # Copy compiled dashboard from stage 1
 COPY --from=dashboard-builder --chown=appuser:appuser /dashboard/dist ./apps/dashboard/dist
