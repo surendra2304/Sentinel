@@ -1,6 +1,7 @@
 """Unit and integration tests for External Threat Intelligence & Vulnerability Enrichment."""
 
 import pytest
+from pydantic import SecretStr
 from httpx import ASGITransport, AsyncClient, Response
 
 from sentinel.apps.api.main import app
@@ -10,9 +11,10 @@ from sentinel.modules.threat_intel import (
 
 
 @pytest.mark.asyncio
-async def test_shodan_enrichment_success_and_offline_mock():
+async def test_shodan_enrichment_success_and_offline_mock(monkeypatch):
     """Verify Shodan enrichment parses open ports, vulnerabilities, and formats verdict."""
     enricher = ExternalThreatIntelEnricher()
+    monkeypatch.setattr(enricher.settings, "shodan_api_key", SecretStr("unit-test-shodan-key"))
 
     mock_shodan_response = {
         "ip_str": "140.245.208.100",
@@ -47,9 +49,12 @@ async def test_shodan_enrichment_success_and_offline_mock():
 
 
 @pytest.mark.asyncio
-async def test_virustotal_enrichment_mock():
+async def test_virustotal_enrichment_mock(monkeypatch):
     """Verify VirusTotal hash reputation parsing and caching."""
     enricher = ExternalThreatIntelEnricher()
+    monkeypatch.setattr(
+        enricher.settings, "virustotal_api_key", SecretStr("unit-test-virustotal-key")
+    )
 
     mock_vt_response = {
         "data": {
