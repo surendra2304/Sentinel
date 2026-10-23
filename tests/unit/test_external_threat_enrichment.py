@@ -1,7 +1,7 @@
 """Unit and integration tests for External Threat Intelligence & Vulnerability Enrichment."""
 
-from httpx import ASGITransport, AsyncClient, Response
 import pytest
+from httpx import ASGITransport, AsyncClient, Response
 from pydantic import SecretStr
 
 from sentinel.apps.api.main import app
