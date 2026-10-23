@@ -10,8 +10,9 @@ from sentinel.modules.threat_intel import (
 
 
 @pytest.mark.asyncio
-async def test_shodan_enrichment_success_and_offline_mock():
+async def test_shodan_enrichment_success_and_offline_mock(monkeypatch):
     """Verify Shodan enrichment parses open ports, vulnerabilities, and formats verdict."""
+    monkeypatch.setenv("SENTINEL_SHODAN_API_KEY", "ci-only-shodan-test-key")
     enricher = ExternalThreatIntelEnricher()
 
     mock_shodan_response = {
@@ -47,8 +48,9 @@ async def test_shodan_enrichment_success_and_offline_mock():
 
 
 @pytest.mark.asyncio
-async def test_virustotal_enrichment_mock():
+async def test_virustotal_enrichment_mock(monkeypatch):
     """Verify VirusTotal hash reputation parsing and caching."""
+    monkeypatch.setenv("SENTINEL_VIRUSTOTAL_API_KEY", "ci-only-virustotal-test-key")
     enricher = ExternalThreatIntelEnricher()
 
     mock_vt_response = {
