@@ -13,6 +13,12 @@ Coordinates the full action lifecycle:
 import asyncio
 import time
 
+from mesh.heavy_task import (
+    HeavyTaskCoordinationError,
+    HeavyTaskCoordinator,
+    coordinator_from_environment,
+)
+
 from sentinel.audit.audit_logger import AuditLogger
 from sentinel.config.settings import get_settings
 from sentinel.core.events.bus import emit_event
@@ -105,6 +111,7 @@ class ExecutionEngine:
         evidence_store_inst: EvidenceStore | None = None,
         audit: AuditLogger | None = None,
         max_global_concurrency: int = 25,
+        heavy_task_coordinator: HeavyTaskCoordinator | None = None,
     ):
         self.registry = registry or adapter_registry
         self.policy = policy or policy_engine
@@ -116,8 +123,76 @@ class ExecutionEngine:
         )
         self.evidence_store = evidence_store_inst or (EvidenceStore(storage=self.storage, audit_logger=self.audit) if storage else evidence_store)
         self.concurrency_semaphore = asyncio.Semaphore(max_global_concurrency)
+        self.heavy_task_coordinator = (
+            heavy_task_coordinator
+            if heavy_task_coordinator is not None
+            else coordinator_from_environment()
+        )
+
+    @staticmethod
+    def _requires_shared_heavy_lease(action_type: str) -> bool:
+        """Classify expensive scan/build/audit actions for fleet-wide serialization."""
+        normalized = action_type.strip().lower().replace("-", "_").replace(".", "_")
+        markers = (
+            "scan",
+            "audit",
+            "vulnerability",
+            "dependency",
+            "static_analysis",
+            "codebase",
+        )
+        return any(marker in normalized for marker in markers)
 
     async def execute_action(
+        self,
+        action: ActionRequest,
+        task: Task,
+        max_retries: int = 2,
+    ) -> ActionResult:
+        """Serialize costly scan/audit actions before executing their side effects."""
+        if not self._requires_shared_heavy_lease(action.action_type):
+            return await self._execute_action_uncoordinated(action, task, max_retries)
+
+        coordinator = self.heavy_task_coordinator
+        if coordinator is None:
+            # Unconfigured coordination is allowed in development only. The
+            # production compose configuration sets the required-mode flag.
+            return await self._execute_action_uncoordinated(action, task, max_retries)
+
+        started = time.monotonic()
+
+        async def execute_with_lease(lease) -> ActionResult:
+            lease.ensure_valid()
+            result = await self._execute_action_uncoordinated(action, task, max_retries)
+            lease.ensure_valid()
+            return result
+
+        try:
+            return await coordinator.run(
+                task_id="sentinel:security-scan",
+                owner="sentinel",
+                operation=execute_with_lease,
+                wait_timeout=None,
+            )
+        except HeavyTaskCoordinationError as exc:
+            logger.error(
+                "Heavy security action failed closed because global coordination is unavailable",
+                extra={"action_id": action.id, "task_id": task.id, "error_type": type(exc).__name__},
+            )
+            action.status = ActionStatus.FAILED
+            return ActionResult(
+                action_id=action.id,
+                task_id=task.id,
+                success=False,
+                output_summary="FAILED: global heavy-task coordination could not be maintained",
+                duration_seconds=round(time.monotonic() - started, 3),
+                error_info={
+                    "code": "HEAVY_TASK_COORDINATION_FAILED",
+                    "error_type": type(exc).__name__,
+                },
+            )
+
+    async def _execute_action_uncoordinated(
         self,
         action: ActionRequest,
         task: Task,
