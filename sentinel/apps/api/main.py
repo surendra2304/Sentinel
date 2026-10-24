@@ -32,6 +32,20 @@ from sentinel.api.metrics import router as metrics_router
 from sentinel.api.security_audit import router as security_audit_router
 from sentinel.api.telemetry_routes import telemetry_router
 from sentinel.api.threat_intel_routes import threat_intel_router
+from sentinel.app.services.vulnerability_scanner import router as vuln_scanner_router
+from sentinel.app.services.realtime_threat_matcher import router as threat_matcher_router
+from sentinel.app.services.zero_trust_enforcer import router as zero_trust_router
+from sentinel.app.services.compliance_audit_trail import router as compliance_router
+from sentinel.app.services.behavioral_anomaly_detector import router as behavioral_router
+from sentinel.app.services.security_posture_assessor import router as posture_router
+from sentinel.app.services.automated_response_orchestrator import router as response_router
+from sentinel.app.services.vulnerability_management_system import router as vuln_mgmt_router
+from sentinel.app.services.siem_integration_bridge import router as siem_bridge_router
+from sentinel.api.incident_response_playbook import router as incident_playbook_router
+from sentinel.api.security_slade_engine import router as slade_engine_router
+from sentinel.api.threat_hunting_automation_engine import router as threat_hunt_router
+from sentinel.api.threat_intel_correlation_engine import router as intel_correlation_router
+from sentinel.api.security_incident_timeline import router as incident_timeline_router
 from sentinel.apps.api.middleware import APIKeyAuthMiddleware, RequestCapacityMiddleware
 from sentinel.audit.audit_logger import AuditLogger
 from sentinel.config.settings import EnvironmentType, get_settings
@@ -1660,6 +1674,20 @@ app.include_router(security_audit_router)
 app.include_router(threat_intel_router)
 app.include_router(incident_router)
 app.include_router(telemetry_router)
+app.include_router(vuln_scanner_router, prefix="/api/v1/sentinel")
+app.include_router(threat_matcher_router, prefix="/api/v1/sentinel")
+app.include_router(zero_trust_router, prefix="/api/v1/sentinel")
+app.include_router(compliance_router, prefix="/api/v1/sentinel")
+app.include_router(behavioral_router, prefix="/api/v1/sentinel")
+app.include_router(posture_router, prefix="/api/v1/sentinel")
+app.include_router(response_router, prefix="/api/v1/sentinel")
+app.include_router(vuln_mgmt_router, prefix="/api/v1/sentinel")
+app.include_router(siem_bridge_router, prefix="/api/v1/sentinel")
+app.include_router(incident_playbook_router, prefix="/api/v1/sentinel")
+app.include_router(slade_engine_router, prefix="/api/v1/sentinel")
+app.include_router(threat_hunt_router, prefix="/api/v1/sentinel")
+app.include_router(intel_correlation_router, prefix="/api/v1/sentinel")
+app.include_router(incident_timeline_router, prefix="/api/v1/sentinel")
 
 
 class SentinelInferenceRequest(BaseModel):
