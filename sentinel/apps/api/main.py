@@ -42,6 +42,7 @@ from sentinel.app.services.automated_response_orchestrator import router as resp
 from sentinel.app.services.vulnerability_management_system import router as vuln_mgmt_router
 from sentinel.app.services.siem_integration_bridge import router as siem_bridge_router
 from sentinel.api.incident_response_playbook import router as incident_playbook_router
+from sentinel.api.security_slade_engine import router as slade_engine_router
 from sentinel.apps.api.middleware import APIKeyAuthMiddleware, RequestCapacityMiddleware
 from sentinel.audit.audit_logger import AuditLogger
 from sentinel.config.settings import EnvironmentType, get_settings
@@ -1680,6 +1681,7 @@ app.include_router(response_router, prefix="/api/v1/sentinel")
 app.include_router(vuln_mgmt_router, prefix="/api/v1/sentinel")
 app.include_router(siem_bridge_router, prefix="/api/v1/sentinel")
 app.include_router(incident_playbook_router, prefix="/api/v1/sentinel")
+app.include_router(slade_engine_router, prefix="/api/v1/sentinel")
 
 
 class SentinelInferenceRequest(BaseModel):
