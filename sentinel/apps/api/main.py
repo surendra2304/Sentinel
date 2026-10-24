@@ -33,6 +33,7 @@ from sentinel.api.security_audit import router as security_audit_router
 from sentinel.api.telemetry_routes import telemetry_router
 from sentinel.api.threat_intel_routes import threat_intel_router
 from sentinel.app.services.vulnerability_scanner import router as vuln_scanner_router
+from sentinel.app.services.realtime_threat_matcher import router as threat_matcher_router
 from sentinel.apps.api.middleware import APIKeyAuthMiddleware, RequestCapacityMiddleware
 from sentinel.audit.audit_logger import AuditLogger
 from sentinel.config.settings import EnvironmentType, get_settings
@@ -1662,6 +1663,7 @@ app.include_router(threat_intel_router)
 app.include_router(incident_router)
 app.include_router(telemetry_router)
 app.include_router(vuln_scanner_router, prefix="/api/v1/sentinel")
+app.include_router(threat_matcher_router, prefix="/api/v1/sentinel")
 
 
 class SentinelInferenceRequest(BaseModel):
