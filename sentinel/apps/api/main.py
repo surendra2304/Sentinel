@@ -36,6 +36,7 @@ from sentinel.app.services.vulnerability_scanner import router as vuln_scanner_r
 from sentinel.app.services.realtime_threat_matcher import router as threat_matcher_router
 from sentinel.app.services.zero_trust_enforcer import router as zero_trust_router
 from sentinel.app.services.compliance_audit_trail import router as compliance_router
+from sentinel.app.services.behavioral_anomaly_detector import router as behavioral_router
 from sentinel.apps.api.middleware import APIKeyAuthMiddleware, RequestCapacityMiddleware
 from sentinel.audit.audit_logger import AuditLogger
 from sentinel.config.settings import EnvironmentType, get_settings
@@ -1668,6 +1669,7 @@ app.include_router(vuln_scanner_router, prefix="/api/v1/sentinel")
 app.include_router(threat_matcher_router, prefix="/api/v1/sentinel")
 app.include_router(zero_trust_router, prefix="/api/v1/sentinel")
 app.include_router(compliance_router, prefix="/api/v1/sentinel")
+app.include_router(behavioral_router, prefix="/api/v1/sentinel")
 
 
 class SentinelInferenceRequest(BaseModel):
