@@ -32,8 +32,12 @@ WORKDIR /app
 
 # Install Python dependencies
 COPY Sentinel/requirements.txt Sentinel/pyproject.toml ./
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+ENV PIP_DEFAULT_TIMEOUT=120 \
+    PIP_RETRIES=10 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+RUN python -m pip install --no-cache-dir --retries 10 --timeout 120 --upgrade pip && \
+    python -m pip install --no-cache-dir --retries 10 --timeout 120 -r requirements.txt
 
 # Copy application source & contracts
 COPY --chown=appuser:appuser Sentinel/sentinel/ ./sentinel/
