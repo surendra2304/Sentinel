@@ -178,5 +178,29 @@
     "published_date": 1792883882.8212464,
     "fixed_version": "",
     "status": "open"
+  },
+  "vuln_cbee1635885e": {
+    "vuln_id": "vuln_cbee1635885e",
+    "cve_id": "AUTO-5a364d64",
+    "severity": "critical",
+    "title": "Code injection via eval()",
+    "description": "Code injection via eval()",
+    "cvss_score": 9.0,
+    "affected_product": "unknown",
+    "published_date": 1792883924.2074633,
+    "fixed_version": "",
+    "status": "open"
+  },
+  "vuln_658d2c3d1501": {
+    "vuln_id": "vuln_658d2c3d1501",
+    "cve_id": "AUTO-5c5d3c26",
+    "severity": "critical",
+    "title": "Code injection via eval()",
+    "description": "Code injection via eval()",
+    "cvss_score": 9.0,
+    "affected_product": "unknown",
+    "published_date": 1792883945.7680304,
+    "fixed_version": "",
+    "status": "open"
   }
 }
