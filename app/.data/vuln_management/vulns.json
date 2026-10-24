@@ -1,0 +1,38 @@
+{
+  "vuln_07b0d3ad696b": {
+    "vuln_id": "vuln_07b0d3ad696b",
+    "cve_id": "CVE-2024-0001",
+    "severity": "high",
+    "title": "Test",
+    "description": "Test",
+    "cvss_score": 7.5,
+    "affected_product": "App",
+    "published_date": 1792883607.4641495,
+    "fixed_version": "",
+    "status": "open"
+  },
+  "vuln_6a98a25566ae": {
+    "vuln_id": "vuln_6a98a25566ae",
+    "cve_id": "CVE-2024-0001",
+    "severity": "high",
+    "title": "Test",
+    "description": "Test",
+    "cvss_score": 7.5,
+    "affected_product": "App",
+    "published_date": 1792883630.7650092,
+    "fixed_version": "",
+    "status": "open"
+  },
+  "vuln_3887de79138a": {
+    "vuln_id": "vuln_3887de79138a",
+    "cve_id": "CVE-2024-0001",
+    "severity": "high",
+    "title": "Test",
+    "description": "Test",
+    "cvss_score": 7.5,
+    "affected_product": "App",
+    "published_date": 1792883712.3213947,
+    "fixed_version": "",
+    "status": "open"
+  }
+}
