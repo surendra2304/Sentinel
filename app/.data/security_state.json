@@ -215,6 +215,2246 @@
         "",
         ""
       ]
+    },
+    {
+      "threat_id": "thr_937ae2ce1db4",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884032.534951,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_3b341555fab2",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884032.535496,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_bc2487254994",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884032.5361211,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_111e5fae5ef0",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884032.5368745,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_df89cee0e61f",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884032.5374467,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_307079dde7ff",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884032.5379312,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_79aa50d5768f",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884032.538416,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_1c4a18f414fe",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884032.5388365,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_843241c908bf",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884032.5392313,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_010ee51fa568",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884032.539662,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_9caf25b85e1c",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884086.3563595,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_9abcdb95807d",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884086.3569646,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_4bdb44258223",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884086.3575869,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_06199fb2de9d",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884086.3581223,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_204a35629599",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884086.3586028,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_c8d464186c78",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884086.3591213,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_08bc5dfa0a8a",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884086.359662,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_29018ef7c235",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884086.3603303,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_038c47fdd45f",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884086.36087,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_b668f59acac0",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884086.3614519,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_68ddddbbcc9a",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884127.0649593,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_6d565c08ae92",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884127.0661528,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_bd9ba85cfb49",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884127.0673928,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_418521be4511",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884127.0684655,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_33b33826384d",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884127.0694695,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_2546a972b3bf",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884127.0704703,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_565164039d0c",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884127.07143,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_e5d428a07f9e",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884127.0727267,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_857538f9d0f6",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884127.0739098,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_ba7113d9a3dc",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884127.0768192,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_787989692fde",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884143.3610485,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_43e2058fa76b",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884143.3619525,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_88c9d921d652",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884143.3627498,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_2006628b6c50",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884143.364412,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_a6eb38460771",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884143.365176,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_a7113c814873",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884143.3659697,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_a3e42f5e489d",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884143.3667805,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_07c5ac9aed31",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884143.367649,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_64adb937a853",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884143.3686123,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_10fa933d982b",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884143.3694327,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_65dab5f72cd3",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.2460647,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_c70919d487f6",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.2468576,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_3fa1d0008105",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.2478652,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_ef64e35c5ea0",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.2487414,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_f9c86a0582e9",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.2496161,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_a29056da0471",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.2505643,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_368c6aff6c07",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.251427,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_8491835affe7",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.252414,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_1fe381b926da",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.2532763,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_0a588b53592b",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.2541735,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_3c1fcdf1a0bb",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.255063,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_598d65e80ba6",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.2560086,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_586d6a9dcc35",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.25698,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_e2d288f110f6",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.257972,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_a7bf1b5f504c",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.2589562,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_32ff642a186d",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.260063,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_552f8b4ccfb0",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.2610836,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_c6c20483a2d2",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.262558,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_23b9096efd29",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.2635717,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_e077f352072e",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.264583,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_c3c8d4d38bf6",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.2656827,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_164a4158716b",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.267307,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_e6aa5a0c9eca",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.2688677,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_41375b9f0203",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.2700303,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_e7b7ed62ffc3",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.2711258,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_e3d40304fe33",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.2721982,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_debff18ad4c6",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.2732081,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_619ed0ada3df",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.27421,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_371efae65807",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.2752862,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_e79b2b4772f3",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.2763693,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_10301772d0aa",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.2775228,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_0b92afbea2ef",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.2785923,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_b9e85d36e995",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.279678,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_d4ae2f0805d4",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.2808175,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_a367ba7efdc1",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.281914,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_305a617ed5de",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.2830951,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_1a2172f54e8b",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.2842948,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_f6284c88911b",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.285529,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_36c7ba6d0cbf",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.2867336,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_2abd9bd8009f",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.2879064,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_d3e53503b93c",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.2891676,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_a33669b3be8e",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.2903934,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_ae98a1bccf45",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.2917767,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_3f5bca980aba",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.2929513,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_81c6ab6cc582",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.2941072,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_33dfbf6c65e4",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.2953768,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_a6ccb8555328",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.2966144,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_5b1881c21f30",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.297843,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_e9fe4064da77",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.2991302,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_f25b6acbbd1a",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3005307,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_7ee2440f4502",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3017745,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_4c359552892a",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3030841,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_cc282a568495",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3043952,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_1abccba87789",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.305652,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_f428129a32a5",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.307001,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_5a8c23d2ab96",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3083212,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_69ad34984ef2",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3096054,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_9d2c104812f4",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3108985,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_ed948f040f04",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3122888,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_7300854cf602",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3135917,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_199900e24b80",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.31498,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_4284e476db3e",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3164845,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_820833aa0781",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3178856,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_3cd3b732b8bd",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3192658,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_ba2ce0182d1c",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3206296,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_584d32f5e353",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3219514,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_820bc3dd7487",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3232617,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_61766876f714",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3246534,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_00db0ca5d399",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3260608,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_c5c133e772a9",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.327494,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_e2a7b9794d4b",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3289144,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_87c9c42ad2af",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3303413,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_a734be3787e8",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.331737,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_e95a8b13e525",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.333155,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_547ce032d7cd",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.334704,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_a9911f9418e6",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3362591,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_ac4554e400e5",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3379617,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_856e680b7da2",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3396542,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_479af7ee90cb",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3411713,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_8cc2114a89d8",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3427017,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_fe5835cc5de2",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3442316,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_f40198ca0ecb",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3457747,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_b82e9cb819d7",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3472662,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_f5f0c3dc98ae",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3489614,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_d860d1e15b94",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.350633,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_2f2a7fdb6ea0",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3521442,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_684351e2f494",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3537588,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_2562d578be56",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3553329,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_7e33c71674aa",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3569076,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_000b3b855e96",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3584707,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_64aa65f7a2f7",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3600137,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_6ba5a6800916",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.361658,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_9ffc3676111c",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3632488,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_6d4670722e33",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3649206,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_ada5bb3ea457",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.366595,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_4eb1b7dd5690",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.368203,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_a4c778d91dd7",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3697937,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_d47fb45b2c67",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3714027,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_ba534933a473",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3729727,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    },
+    {
+      "threat_id": "thr_9973de13e3ed",
+      "threat_type": "command_injection",
+      "severity": "critical",
+      "description": "Detected command_injection pattern: ",
+      "source": "unknown",
+      "confidence": 0.95,
+      "timestamp": 1792884144.3746896,
+      "indicators": [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
     }
   ],
   "vulnerabilities": [],
