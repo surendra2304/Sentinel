@@ -320,12 +320,30 @@ class SecurityPostureAssessor:
     def _detection_coverage(self) -> dict:
         """Compute real-time detection coverage against active threat matcher rules."""
         try:
-            from app.services.cyber_skills_service import get_service
+            try:
+                from app.services.cyber_skills_service import get_service
+            except (ImportError, ModuleNotFoundError):
+                import importlib.util
+                from pathlib import Path
+                path = Path(__file__).resolve().parent / "cyber_skills_service.py"
+                spec = importlib.util.spec_from_file_location("sentinel_cyber_skills_service", path)
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                get_service = mod.get_service
             service = get_service()
         except Exception:
             return {"available": False}
         try:
-            from app.services.realtime_threat_matcher import threat_matcher
+            try:
+                from app.services.realtime_threat_matcher import threat_matcher
+            except (ImportError, ModuleNotFoundError):
+                import importlib.util
+                from pathlib import Path
+                path = Path(__file__).resolve().parent / "realtime_threat_matcher.py"
+                spec = importlib.util.spec_from_file_location("sentinel_threat_matcher", path)
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                threat_matcher = mod.threat_matcher
             rules = []
             for sig_id, sig in getattr(threat_matcher, "_signatures", {}).items():
                 cat = getattr(sig, "category", "") or ""
@@ -361,7 +379,16 @@ class SecurityPostureAssessor:
         numbers drive both the internal score and the external framework view.
         """
         try:
-            from app.services.cyber_skills_service import get_service
+            try:
+                from app.services.cyber_skills_service import get_service
+            except (ImportError, ModuleNotFoundError):
+                import importlib.util
+                from pathlib import Path
+                path = Path(__file__).resolve().parent / "cyber_skills_service.py"
+                spec = importlib.util.spec_from_file_location("sentinel_cyber_skills_service", path)
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                get_service = mod.get_service
         except Exception:  # pragma: no cover - optional dependency
             return {"available": False}
         try:
