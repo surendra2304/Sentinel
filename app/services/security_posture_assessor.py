@@ -298,15 +298,61 @@ class SecurityPostureAssessor:
                 for s in self._scores[-10:]
             ],
             "nist_csf": self._csf_alignment(latest),
+            "detection_coverage": self._detection_coverage(),
         }
 
     @staticmethod
     def _maturity(rate: float) -> int:
-        """Normalise a compliance rate (0-1 or 0-100) onto the 1-5 CSF scale."""
+        """Normalise a compliance rate (ratio 0-1, 1-5 scale, or percentage 0-100) onto the 1-5 CSF scale."""
         value = float(rate or 0.0)
+        if value <= 0.0:
+            return 1
         if value <= 1.0:
+            # Ratio: e.g. 0.8 -> 80% -> 4
             value *= 100.0
+            return max(1, min(5, int(round(value / 20.0)) or 1))
+        if value <= 5.0:
+            # Already on 1-5 scale
+            return max(1, min(5, int(round(value))))
+        # Percentage (0-100): e.g. 80.0 -> 4
         return max(1, min(5, int(round(value / 20.0)) or 1))
+
+    def _detection_coverage(self) -> dict:
+        """Compute real-time detection coverage against active threat matcher rules."""
+        try:
+            from app.services.cyber_skills_service import get_service
+            service = get_service()
+        except Exception:
+            return {"available": False}
+        try:
+            from app.services.realtime_threat_matcher import threat_matcher
+            rules = []
+            for sig_id, sig in getattr(threat_matcher, "_signatures", {}).items():
+                cat = getattr(sig, "category", "") or ""
+                techs = [cat] if cat.startswith("T") else []
+                cat_lower = cat.lower()
+                if "sql" in cat_lower or "injection" in cat_lower:
+                    techs.append("T1190")
+                elif "xss" in cat_lower:
+                    techs.append("T1059")
+                elif "port" in cat_lower or "scan" in cat_lower:
+                    techs.append("T1046")
+                elif "brute" in cat_lower:
+                    techs.append("T1110")
+                else:
+                    techs.append("T1059")
+                rules.append({
+                    "id": sig_id,
+                    "name": getattr(sig, "name", sig_id),
+                    "techniques": techs,
+                    "fidelity": 0.85 if getattr(sig, "severity", "") == "high" else 0.65,
+                    "enabled": True,
+                })
+            eval_techniques = ["T1059", "T1190", "T1046", "T1110", "T1078", "T1566"]
+            coverage_result = service.detection_coverage(eval_techniques, rules=rules)
+            return {"available": True, "rules_count": len(rules), **coverage_result}
+        except Exception as exc:  # pragma: no cover
+            return {"available": False, "error": f"{type(exc).__name__}: {exc}"}
 
     def _csf_alignment(self, latest: "PostureScore") -> dict:
         """Map the posture score onto NIST CSF 2.0 functions via Sentinel's skills.

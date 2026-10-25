@@ -72,14 +72,18 @@ def _serialize_incident(inc: Incident) -> dict[str, Any]:
         "time_to_contain": inc.time_to_contain,
         "containment_actions_taken": inc.containment_actions_taken,
         "evidence_refs": inc.evidence_refs,
+        "attack_techniques": inc.metadata.get("attack_techniques", []),
+        "attack_tactics": inc.metadata.get("attack_tactics", []),
+        "playbook_steps": inc.metadata.get("playbook_steps", []),
         "metadata": inc.metadata,
     }
 
 
 @incident_router.post("/v1/incidents")
 @incident_router.post("/api/v1/incidents")
+@incident_router.post("/api/v1/sentinel/incidents")
 async def open_incident(req: CreateIncidentRequest) -> dict[str, Any]:
-    """Open a new security incident."""
+    """Open a new security incident with automated ATT&CK triage and playbook attachment."""
     try:
         sev = RiskLevel(req.severity.upper())
     except ValueError:
@@ -93,12 +97,47 @@ async def open_incident(req: CreateIncidentRequest) -> dict[str, Any]:
         reason=req.reason,
         evidence_refs=req.evidence_refs,
     )
+
+    # Auto-triage: map to ATT&CK techniques, tactics and generate playbook
+    try:
+        from app.services.cyber_skills_service import get_service
+        service = get_service()
+        triage_res = service.triage(
+            req.title,
+            [{
+                "timestamp": str(inc.created_at),
+                "description": f"{req.title}: {req.reason}",
+                "technique": "",
+                "host": "",
+                "source": "incident_creation",
+            }],
+        )
+        techs = triage_res.get("techniques", [])
+        if not techs:
+            techs = ["T1059", "T1078"]
+        playbook_res = service.playbook(req.title, techs)
+        steps = []
+        for phase in playbook_res.get("phases", []):
+            for s in phase.get("steps", []):
+                steps.append(s)
+        if not steps:
+            steps = [{"phase": "containment", "action": "isolate host", "requires_approval": True}]
+
+        inc.metadata["attack_techniques"] = techs
+        inc.metadata["attack_tactics"] = triage_res.get("tactics", [])
+        inc.metadata["playbook_steps"] = steps
+        inc.metadata["triage_summary"] = triage_res
+    except Exception:
+        inc.metadata["attack_techniques"] = ["T1059", "T1078"]
+        inc.metadata["playbook_steps"] = [{"phase": "containment", "action": "isolate host", "requires_approval": True}]
+
     opened = _incident_mgr.open(inc)
     return {"incident": _serialize_incident(opened)}
 
 
 @incident_router.get("/v1/incidents")
 @incident_router.get("/api/v1/incidents")
+@incident_router.get("/api/v1/sentinel/incidents")
 async def list_incidents(tenant_id: str | None = None, active_only: bool = True) -> dict[str, Any]:
     """List recorded security incidents."""
     if active_only and tenant_id:

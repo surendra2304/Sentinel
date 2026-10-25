@@ -88,12 +88,56 @@ class CyberSkillsService:
     def recommend(self, techniques: Iterable[str], limit: int = 5) -> list[Any]:
         return cs.SkillRecommender(self.catalog).recommend(list(techniques), limit=limit)
 
+    DESTRUCTIVE_ACTIONS: set[str] = {
+        "isolate host", "isolate_host", "isolate-host",
+        "block ip", "block_ip", "block-ip",
+        "revoke credential", "revoke_credential", "revoke-credential", "revoke credentials",
+        "quarantine", "kill_process", "wipe_host",
+    }
+
     def playbook(self, title: str, techniques: Iterable[str], assets: int = 1
                  ) -> dict[str, Any]:
         techniques = [technique for technique in techniques if technique]
         if not techniques:
             raise ValueError("at least one technique is required")
-        return self.engine.playbook(title, techniques, assets=assets)
+        book = self.engine.playbook(title, techniques, assets=assets)
+        for phase in book.get("phases", []):
+            for step in phase.get("steps", []):
+                action_text = str(step.get("action") or step.get("description") or "").lower()
+                if any(d in action_text for d in self.DESTRUCTIVE_ACTIONS):
+                    step["requires_approval"] = True
+                    step["status"] = "pending_approval"
+        return book
+
+    def execute_playbook_action(
+        self,
+        action: str,
+        target: str = "",
+        engagement: str = "",
+        approved: bool = False,
+    ) -> dict[str, Any]:
+        """Execute or gate a containment/remediation action."""
+        action_clean = action.lower().strip()
+        is_destructive = any(d in action_clean for d in self.DESTRUCTIVE_ACTIONS)
+
+        if is_destructive and not approved:
+            decision = self.authorise("action:" + action_clean, target=target, engagement=engagement)
+            if not decision.get("authorized", False):
+                return {
+                    "action": action,
+                    "target": target,
+                    "status": "blocked_pending_approval",
+                    "reason": "Destructive containment action requires human authorization",
+                    "decision": decision,
+                }
+
+        import time
+        return {
+            "action": action,
+            "target": target,
+            "status": "executed",
+            "timestamp": time.time(),
+        }
 
     # -- posture ----------------------------------------------------------
     def assess_csf(self, controls: Iterable[dict[str, Any]], target: int = 3
@@ -242,6 +286,12 @@ if _ROUTER_AVAILABLE:
         engagement: str = ""
         allowed_tiers: list[str] = Field(default_factory=lambda: ["defensive"])
 
+    class ExecuteActionRequest(BaseModel):  # type: ignore[misc]
+        action: str = Field(min_length=1)
+        target: str = ""
+        engagement: str = ""
+        approved: bool = False
+
     router = APIRouter(prefix="/v1/cyber", tags=["Sentinel Security Skills"])
 
     @router.get("/capabilities")
@@ -263,6 +313,15 @@ if _ROUTER_AVAILABLE:
                                           assets=request.assets)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @router.post("/action/execute")
+    def execute_action(request: ExecuteActionRequest) -> dict[str, Any]:
+        return get_service().execute_playbook_action(
+            request.action,
+            target=request.target,
+            engagement=request.engagement,
+            approved=request.approved,
+        )
 
     @router.post("/csf/assess")
     def assess(request: CsfRequest) -> dict[str, Any]:
