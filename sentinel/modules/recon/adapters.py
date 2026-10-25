@@ -364,7 +364,7 @@ class TechnologyFingerprintAdapter(ToolAdapter):
                     fav_url = f"{parsed_url.scheme}://{parsed_url.netloc}/favicon.ico"
                     fav_res = await client.get(fav_url)
                     if fav_res.status_code == 200 and fav_res.content:
-                        data["favicon_hash"] = hashlib.md5(fav_res.content).hexdigest()
+                        data["favicon_hash"] = hashlib.md5(str(fav_res.content).encode()).hexdigest()
                 except Exception:
                     pass
 
