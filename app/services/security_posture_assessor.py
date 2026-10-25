@@ -297,7 +297,45 @@ class SecurityPostureAssessor:
                 {"score": s.overall_score, "rating": s.rating, "trend": s.trend}
                 for s in self._scores[-10:]
             ],
+            "nist_csf": self._csf_alignment(latest),
         }
+
+    @staticmethod
+    def _maturity(rate: float) -> int:
+        """Normalise a compliance rate (0-1 or 0-100) onto the 1-5 CSF scale."""
+        value = float(rate or 0.0)
+        if value <= 1.0:
+            value *= 100.0
+        return max(1, min(5, int(round(value / 20.0)) or 1))
+
+    def _csf_alignment(self, latest: "PostureScore") -> dict:
+        """Map the posture score onto NIST CSF 2.0 functions via Sentinel's skills.
+
+        1-5 maturity levels are derived from the live posture inputs so the same
+        numbers drive both the internal score and the external framework view.
+        """
+        try:
+            from app.services.cyber_skills_service import get_service
+        except Exception:  # pragma: no cover - optional dependency
+            return {"available": False}
+        try:
+            overall = float(getattr(latest, "overall_score", 0.0) or 0.0)
+            maturity = max(1, min(5, int(round(overall / 20.0)) or 1))
+            patch_rate = self._maturity(getattr(self._patch, "compliance_rate", 0.0))
+            drift_rate = self._maturity(getattr(self._config, "compliance_rate", 0.0))
+            controls = [
+                {"category": "ID.AM", "maturity": maturity,
+                 "owner": "asset-management", "evidence": ["posture assessor"]},
+                {"category": "PR.PS", "maturity": patch_rate,
+                 "owner": "platform", "evidence": ["patch compliance"]},
+                {"category": "PR.IR", "maturity": drift_rate,
+                 "owner": "platform", "evidence": ["config drift"]},
+                {"category": "DE.CM", "maturity": maturity,
+                 "owner": "soc", "evidence": ["control effectiveness"]},
+            ]
+            return {"available": True, **get_service().assess_csf(controls)}
+        except Exception as exc:  # pragma: no cover - optional enrichment
+            return {"available": False, "error": f"{type(exc).__name__}: {exc}"}
 
 
 posture_assessor = SecurityPostureAssessor()

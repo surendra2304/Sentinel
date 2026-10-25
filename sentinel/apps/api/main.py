@@ -41,6 +41,7 @@ from app.services.security_posture_assessor import router as posture_router
 from app.services.automated_response_orchestrator import router as response_router
 from app.services.vulnerability_management_system import router as vuln_mgmt_router
 from app.services.siem_integration_bridge import router as siem_bridge_router
+from app.services.cyber_skills_service import router as cyber_skills_router
 from sentinel.apps.api.src.sentinel_api.incident_response_playbook import router as incident_playbook_router
 from sentinel.apps.api.src.sentinel_api.security_slade_engine import router as slade_engine_router
 from sentinel.apps.api.src.sentinel_api.threat_hunting_automation_engine import router as threat_hunt_router
@@ -1672,6 +1673,7 @@ async def verify_policy_action(request: Request) -> dict[str, Any]:
 app.include_router(metrics_router, prefix=settings.api_prefix)
 app.include_router(security_audit_router)
 app.include_router(threat_intel_router)
+app.include_router(cyber_skills_router)  # /v1/cyber/* — ATT&CK/NIST CSF/D3FEND skills
 app.include_router(incident_router)
 app.include_router(telemetry_router)
 app.include_router(vuln_scanner_router, prefix="/api/v1/sentinel")

@@ -123,7 +123,25 @@ async def triage_incident(incident_id: str, req: TriageIncidentRequest) -> dict[
     inc = _incident_mgr.triage(incident_id, assigned_to=req.assigned_to, notes=req.notes)
     if not inc:
         raise HTTPException(status_code=404, detail=f"Incident '{incident_id}' not found.")
-    return {"incident": _serialize_incident(inc)}
+    payload: dict[str, Any] = {"incident": _serialize_incident(inc)}
+    # Security-skills crosswalk: severity, ATT&CK techniques/tactics and the
+    # response skills that apply. Best-effort so triage never fails on it.
+    try:
+        from app.services.cyber_skills_service import get_service
+
+        payload["crosswalk"] = get_service().triage(
+            inc.title,
+            [{
+                "timestamp": str(getattr(inc, "opened_at", "") or ""),
+                "description": f"{inc.title}: {inc.reason}",
+                "technique": "",
+                "host": "",
+                "source": "incident",
+            }],
+        )
+    except Exception as exc:  # pragma: no cover - optional enrichment
+        payload["crosswalk"] = {"error": f"{type(exc).__name__}: {exc}"}
+    return payload
 
 
 @incident_router.post("/v1/incidents/{incident_id}/contain")
