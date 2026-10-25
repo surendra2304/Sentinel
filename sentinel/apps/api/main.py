@@ -41,11 +41,11 @@ from app.services.security_posture_assessor import router as posture_router
 from app.services.automated_response_orchestrator import router as response_router
 from app.services.vulnerability_management_system import router as vuln_mgmt_router
 from app.services.siem_integration_bridge import router as siem_bridge_router
-from sentinel.api.incident_response_playbook import router as incident_playbook_router
-from sentinel.api.security_slade_engine import router as slade_engine_router
-from sentinel.api.threat_hunting_automation_engine import router as threat_hunt_router
-from sentinel.api.threat_intel_correlation_engine import router as intel_correlation_router
-from sentinel.api.security_incident_timeline import router as incident_timeline_router
+from sentinel.apps.api.src.sentinel_api.incident_response_playbook import router as incident_playbook_router
+from sentinel.apps.api.src.sentinel_api.security_slade_engine import router as slade_engine_router
+from sentinel.apps.api.src.sentinel_api.threat_hunting_automation_engine import router as threat_hunt_router
+from sentinel.apps.api.src.sentinel_api.threat_intel_correlation_engine import router as intel_correlation_router
+from sentinel.apps.api.src.sentinel_api.security_incident_timeline import router as incident_timeline_router
 from sentinel.apps.api.middleware import APIKeyAuthMiddleware, RequestCapacityMiddleware
 from sentinel.audit.audit_logger import AuditLogger
 from sentinel.config.settings import EnvironmentType, get_settings
