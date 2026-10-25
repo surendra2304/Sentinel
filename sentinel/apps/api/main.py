@@ -32,15 +32,15 @@ from sentinel.api.metrics import router as metrics_router
 from sentinel.api.security_audit import router as security_audit_router
 from sentinel.api.telemetry_routes import telemetry_router
 from sentinel.api.threat_intel_routes import threat_intel_router
-from sentinel.app.services.vulnerability_scanner import router as vuln_scanner_router
-from sentinel.app.services.realtime_threat_matcher import router as threat_matcher_router
-from sentinel.app.services.zero_trust_enforcer import router as zero_trust_router
-from sentinel.app.services.compliance_audit_trail import router as compliance_router
-from sentinel.app.services.behavioral_anomaly_detector import router as behavioral_router
-from sentinel.app.services.security_posture_assessor import router as posture_router
-from sentinel.app.services.automated_response_orchestrator import router as response_router
-from sentinel.app.services.vulnerability_management_system import router as vuln_mgmt_router
-from sentinel.app.services.siem_integration_bridge import router as siem_bridge_router
+from app.services.vulnerability_scanner import router as vuln_scanner_router
+from app.services.realtime_threat_matcher import router as threat_matcher_router
+from app.services.zero_trust_enforcer import router as zero_trust_router
+from app.services.compliance_audit_trail import router as compliance_router
+from app.services.behavioral_anomaly_detector import router as behavioral_router
+from app.services.security_posture_assessor import router as posture_router
+from app.services.automated_response_orchestrator import router as response_router
+from app.services.vulnerability_management_system import router as vuln_mgmt_router
+from app.services.siem_integration_bridge import router as siem_bridge_router
 from sentinel.api.incident_response_playbook import router as incident_playbook_router
 from sentinel.api.security_slade_engine import router as slade_engine_router
 from sentinel.api.threat_hunting_automation_engine import router as threat_hunt_router
