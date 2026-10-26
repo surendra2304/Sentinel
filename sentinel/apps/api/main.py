@@ -1692,7 +1692,7 @@ app.include_router(threat_hunt_router, prefix="/api/v1/sentinel")
 app.include_router(intel_correlation_router, prefix="/api/v1/sentinel")
 app.include_router(incident_timeline_router, prefix="/api/v1/sentinel")
 app.include_router(real_engines_router)
-
+from sentinel.api.real_services_routes import real_services_routerapp.include_router(real_services_router)
 
 class SentinelInferenceRequest(BaseModel):
     question: str
