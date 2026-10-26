@@ -32,6 +32,7 @@ from sentinel.api.metrics import router as metrics_router
 from sentinel.api.security_audit import router as security_audit_router
 from sentinel.api.telemetry_routes import telemetry_router
 from sentinel.api.threat_intel_routes import threat_intel_router
+from sentinel.api.real_engines_routes import real_engines_router
 from app.services.vulnerability_scanner import router as vuln_scanner_router
 from app.services.realtime_threat_matcher import router as threat_matcher_router
 from app.services.zero_trust_enforcer import router as zero_trust_router
@@ -1690,6 +1691,7 @@ app.include_router(slade_engine_router, prefix="/api/v1/sentinel")
 app.include_router(threat_hunt_router, prefix="/api/v1/sentinel")
 app.include_router(intel_correlation_router, prefix="/api/v1/sentinel")
 app.include_router(incident_timeline_router, prefix="/api/v1/sentinel")
+app.include_router(real_engines_router)
 
 
 class SentinelInferenceRequest(BaseModel):
