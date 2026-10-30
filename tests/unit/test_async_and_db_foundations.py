@@ -41,7 +41,14 @@ async def test_crypto_gatekeeper_async_offloading_and_cache():
 
 
 @pytest.mark.asyncio
-async def test_database_engine_and_clean_disposal():
+async def test_database_engine_and_clean_disposal(monkeypatch):
+    # Engine construction is lazy; a placeholder Oracle DSN is enough and keeps
+    # the test independent of any real database or legacy PostgreSQL defaults.
+    pytest.importorskip("oracledb")
+    monkeypatch.setenv(
+        "SENTINEL_DATABASE_URL",
+        "oracle+oracledb://SENTINEL:placeholder@adb.example.com:1522/?service_name=TEST",
+    )
     engine = get_async_engine()
     assert engine is not None
     await close_async_engine()
@@ -49,6 +56,6 @@ async def test_database_engine_and_clean_disposal():
 
 def test_durable_store_lifecycle(tmp_path):
     db_file = tmp_path / "test_lifecycle.db"
-    store = SentinelPersistence(str(db_file))
+    store = SentinelPersistence(f"sqlite:///{db_file.as_posix()}")
     assert store.db is not None
     store.close()

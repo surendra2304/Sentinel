@@ -5,7 +5,12 @@ from __future__ import annotations
 import logging
 import os
 
-from sentinel.config.settings import EnvironmentType, SentinelSettings
+from sentinel.config.settings import (
+    DURABLE_STORAGE_BACKENDS,
+    REMOVED_STORAGE_BACKENDS,
+    EnvironmentType,
+    SentinelSettings,
+)
 
 logger = logging.getLogger("sentinel.config.validator")
 
@@ -45,10 +50,30 @@ def validate_startup_configuration(settings: SentinelSettings) -> list[str]:
         if not signing_key or signing_key in {"dev-signing-key", "default", "sentinel-deterministic-key-fallback"}:
             errors.append("SENTINEL_AUDIT_SIGNING_KEY must be securely configured in production.")
 
-        if settings.storage_backend.strip().lower() == "memory":
-            errors.append("In-memory storage backend is forbidden in production; use sqlite, postgresql, or oracle.")
-        elif settings.storage_backend.strip().lower() not in {"sqlite", "postgresql", "oracle"}:
+        backend = (settings.storage_backend or "").strip().lower()
+        if backend == "memory":
+            errors.append(
+                "In-memory storage backend is forbidden in production; "
+                "use oracle (default) or the legacy postgresql backend."
+            )
+        elif backend in REMOVED_STORAGE_BACKENDS:
+            errors.append(
+                f"Storage backend '{settings.storage_backend}' is not durable and is no longer "
+                f"supported; configure DATABASE_URL=oracle+oracledb://... and use "
+                f"SENTINEL_STORAGE_BACKEND=oracle."
+            )
+        elif backend not in DURABLE_STORAGE_BACKENDS:
             errors.append(f"Storage backend '{settings.storage_backend}' not supported.")
+
+        if backend in DURABLE_STORAGE_BACKENDS and not settings.database_url_configured:
+            errors.append(
+                "No database URL is configured for storage_backend="
+                f"'{settings.storage_backend}'. Set DATABASE_URL="
+                "oracle+oracledb://SENTINEL:<password>@<adb-host>:1522/"
+                "?service_name=<service> (or SENTINEL_ORACLE_DSN / "
+                "SENTINEL_ORACLE_HOST + SENTINEL_ORACLE_SERVICE_NAME). "
+                "SQLite is no longer supported."
+            )
 
     return errors
 

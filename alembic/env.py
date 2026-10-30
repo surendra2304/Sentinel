@@ -64,9 +64,18 @@ async def run_async_migrations(url: str) -> None:
     await connectable.dispose()
 
 
+def _is_async_url(url: str) -> bool:
+    """True for driver URLs that require an async engine."""
+    scheme = url.split("://", 1)[0].lower()
+    return any(
+        marker in scheme
+        for marker in ("+asyncpg", "+aiosqlite", "+oracledb_async", "+asyncmy", "+aiomysql")
+    )
+
+
 def run_migrations_online() -> None:
     url = get_url()
-    if "+asyncpg" in url or "+aiosqlite" in url:
+    if _is_async_url(url):
         asyncio.run(run_async_migrations(url))
     else:
         configuration = config.get_section(config.config_ini_section, {})

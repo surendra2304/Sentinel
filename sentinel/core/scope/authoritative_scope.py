@@ -142,8 +142,11 @@ async def seed_sovereign_scope_into_database() -> bool:
     from sentinel.config.settings import get_settings
 
     settings = get_settings()
-    if settings.storage_backend != "postgres":
-        logger.info("Storage backend is in-memory; sovereign scope registered in memory.")
+    if not settings.uses_database_backend:
+        logger.info(
+            "Storage backend '%s' is process-local; sovereign scope registered in memory.",
+            settings.storage_backend_normalized,
+        )
         return True
 
     try:

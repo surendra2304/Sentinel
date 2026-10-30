@@ -126,8 +126,8 @@ async def check_targets_in_scope(targets: list[str]) -> list[str]:
     settings = get_settings()
     allowed_patterns: set[str] = set()
 
-    # Query sentinel_scopes table if postgres is configured
-    if getattr(settings, "storage_backend", "memory") == "postgres":
+    # Query sentinel_scopes table when a durable database backend is configured
+    if getattr(settings, "uses_database_backend", False):
         try:
             from sqlalchemy import select
 

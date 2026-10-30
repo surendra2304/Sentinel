@@ -34,6 +34,8 @@ async def test_api_runtime_database_persistence_across_app_restarts(tmp_path, mo
     monkeypatch.setenv("SENTINEL_STORAGE_BACKEND", "postgres")
     monkeypatch.setenv("SENTINEL_DB_HOST", "localhost")
     monkeypatch.setenv("SENTINEL_DB_NAME", str(db_file))
+    monkeypatch.setenv("DATABASE_URL", db_url)
+    monkeypatch.setenv("SENTINEL_DATABASE_URL", db_url)
     get_settings.cache_clear()
 
     # Reset repository singletons & engine

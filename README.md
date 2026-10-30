@@ -58,7 +58,7 @@ graph TD
     
     subgraph Storage Layer
         Crypto --> Audit[Durable Audit Store]
-        Policy --> SQLite[(SQLite WAL Database: busy_timeout=5000ms)]
+        Policy --> OracleDB[(Oracle Autonomous Database)]
     end
     
     subgraph Outbound Mesh Resilience
@@ -142,7 +142,7 @@ curl -s -X GET "https://friday-universe.duckdns.org/sentinel/health"
 
 ### 4.2 Readiness Probe (`/ready`)
 
-Verifies that essential subsystems (cryptographic signing keys, SQLite WAL storage, audit hash continuity) are fully initialized before routing mesh traffic.
+Verifies that essential subsystems (cryptographic signing keys, Oracle Autonomous Database storage, audit hash continuity) are fully initialized before routing mesh traffic.
 
 * **Method**: `GET`
 * **Path**: `/ready` (also `/api/v1/ready`)
@@ -169,7 +169,7 @@ curl -s -X GET "https://friday-universe.duckdns.org/sentinel/ready"
   },
   "modules_active": 8,
   "event_bus": "LocalEventBus",
-  "storage_backend": "postgres",
+  "storage_backend": "oracle",
   "peer_connectivity": "not_checked"
 }
 ```
@@ -322,7 +322,7 @@ curl -s -X GET "https://friday-universe.duckdns.org/sentinel/audit"
   "chain_valid": true,
   "entry_count": 42,
   "last_hash": "2c02a453f438ed5b91e51ce87b4343a1a1d9695f51849bf02496c0f02f9adae2",
-  "storage_backend": "postgres",
+  "storage_backend": "oracle",
   "storage_durable": true,
   "observed_at": "2026-10-14T16:20:12.000000+00:00"
 }
@@ -344,12 +344,11 @@ curl -s -X GET "https://friday-universe.duckdns.org/sentinel/audit"
 | `SENTINEL_AUDIT_SIGNING_KEY` | String (Secret) | — | Alias/fallback for `SENTINEL_AUDIT_HMAC_KEY` |
 | `SENTINEL_CAPABILITY_SIGNING_KEY` | String (Secret) | — | 32+ char key for capability token authentication |
 | `SENTINEL_ECDSA_PRIVATE_KEY` | String (Secret) | *(derived)* | Optional PEM-encoded ECDSA SECP256R1 private key |
-| `SENTINEL_STORAGE_BACKEND` | String | `postgres` | Persistence backend: `postgres` (durable) or `memory` |
-| `SENTINEL_DB_HOST` | String | `postgres` | PostgreSQL hostname within Docker network |
-| `SENTINEL_DB_PORT` | Integer | `5432` | PostgreSQL port |
-| `SENTINEL_DB_USER` | String | `sentinel` | PostgreSQL username |
-| `SENTINEL_DB_PASSWORD` | String (Secret) | — | PostgreSQL user password |
-| `SENTINEL_DB_NAME` | String | `sentinel_db` | PostgreSQL database name |
+| `SENTINEL_STORAGE_BACKEND` | String | `oracle` | Persistence backend: `oracle` (durable) or `memory` (tests only). SQLite is rejected and PostgreSQL is legacy/unsupported. |
+| `SENTINEL_DATABASE_URL` | String (Secret) | — | Oracle Autonomous Database DSN (`SENTINEL` login/schema). PostgreSQL and SQLite are not supported. |
+| `SENTINEL_ORACLE_DSN` | String (Secret) | — | Alternative to `SENTINEL_DATABASE_URL`; wallet-based Oracle DSN |
+| `SENTINEL_ORACLE_HOST` / `SENTINEL_ORACLE_SERVICE_NAME` | String | — | Oracle coordinates when no full DSN is supplied |
+| `SENTINEL_ORACLE_USER` / `SENTINEL_ORACLE_PASSWORD` | String (Secret) | — | Oracle login for the `SENTINEL` schema |
 | `SENTINEL_S3_BACKEND` | String | `s3` | Evidence artifact backend: `s3` or `local` |
 | `SENTINEL_S3_ENDPOINT` | String | `minio:9000` | S3/MinIO service endpoint |
 | `SENTINEL_S3_BUCKET_NAME` | String | `sentinel-evidence` | Evidence bundle object storage bucket |

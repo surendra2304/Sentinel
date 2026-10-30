@@ -2,11 +2,11 @@
 
 ## Local Docker Compose
 
-The development Compose stack runs PostgreSQL, MinIO, the API, and the dashboard. The API is configured to use PostgreSQL and MinIO rather than silently falling back to process memory or local files. Database migrations run before the API starts; a migration error stops startup.
+The development Compose stack runs MinIO, the API, and the dashboard; the API connects to Oracle Autonomous Database (`SENTINEL_DATABASE_URL`, or the `SENTINEL_ORACLE_*` variables) and MinIO rather than silently falling back to process memory or local files. Database migrations run before the API starts; a migration error stops startup.
 
 ```bash
 cp .env.example .env
-# Set SENTINEL_DB_PASSWORD, SENTINEL_S3_ACCESS_KEY,
+# Set SENTINEL_DATABASE_URL (or SENTINEL_ORACLE_*), SENTINEL_S3_ACCESS_KEY,
 # SENTINEL_S3_SECRET_KEY, SENTINEL_AUDIT_SIGNING_KEY, and
 # SENTINEL_CAPABILITY_SIGNING_KEY to unique local values.
 docker compose up --build
@@ -22,7 +22,7 @@ SENTINEL_API_PROXY_TARGET=http://127.0.0.1:8000 npm run dev --prefix apps/dashbo
 
 ## Production Compose
 
-`docker-compose.production.yml` uses PostgreSQL, MinIO, a durable audit-log volume, required API/capability/audit signing keys, and fail-closed migrations. The API port is bound to host loopback (`127.0.0.1:8000`) intentionally. Place a separately managed, certificate-backed TLS reverse proxy in front of it before allowing remote operator access; this repository does not provision certificates or a public TLS edge.
+`docker-compose.production.yml` uses Oracle Autonomous Database, MinIO, a durable audit-log volume, required API/capability/audit signing keys, and fail-closed migrations. The API port is bound to host loopback (`127.0.0.1:8000`) intentionally. Place a separately managed, certificate-backed TLS reverse proxy in front of it before allowing remote operator access; this repository does not provision certificates or a public TLS edge.
 
 The application currently runs orchestration and rate limiting in one API process. The Compose manifest does not advertise unimplemented Celery/Redis workers or horizontal API replicas. HTTP admission is bounded per process by `SENTINEL_MAX_HTTP_CONCURRENCY` (default 256); `/health` and `/ready` use a separate `SENTINEL_MAX_HEALTH_CONCURRENCY` budget (default 16). Requests beyond either budget receive HTTP 503 with `Retry-After: 1`, rather than being queued without bound. These are starting limits, not capacity guarantees; tune them from measured deployment load. They are not shared across processes or hosts. Agent work is separately bounded by `SENTINEL_MAX_AGENT_PROPOSALS_PER_TASK` (8), `SENTINEL_MAX_PLAN_STEPS_PER_ITERATION` (16), `SENTINEL_MAX_ACTIONS_PER_AGENT_PER_TASK` (32), `SENTINEL_MAX_AGENT_ANALYSIS_SECONDS` (15), and `SENTINEL_MAX_TASK_ITERATIONS` (10). These are safety ceilings, not throughput guarantees. See [GAPS.md](../GAPS.md) for distributed-work and scaling limits.
 
@@ -33,7 +33,7 @@ The application currently runs orchestration and rate limiting in one API proces
 - Third-party reconnaissance enrichment is disabled by default. Explicitly authorize it in the task scope or pass the CLI opt-in only when target metadata may be shared externally.
 - `/health` reports process liveness. `/ready` reports local dependency checks; in production, an in-memory storage backend is not considered durable or ready.
 
-Container execution and live PostgreSQL migration behavior must be verified in the deployment environment. A local or SQLite test does not establish that Docker, PostgreSQL, MinIO, external TLS, or multi-instance operation is configured correctly.
+Container execution and live Oracle migration behavior must be verified in the deployment environment. A local or in-memory test does not establish that Docker, Oracle Autonomous Database, MinIO, external TLS, or multi-instance operation is configured correctly.
 
 ## Local pressure test
 

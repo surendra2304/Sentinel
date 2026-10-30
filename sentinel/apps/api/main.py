@@ -19,6 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
+    JSONResponse,
     PlainTextResponse,
     RedirectResponse,
     Response,
@@ -111,7 +112,11 @@ from sentinel.memora_cloud_fallback import MemoraClient as CloudMemoraClient
 from sentinel.memora_event_consumer import MemoraEventConsumer, run_memora_event_consumer
 from sentinel.modules.recon.graph import AttackSurfaceReport, asset_graph_store
 from sentinel.monitoring.tls_dns_daemon import tls_dns_daemon
-from sentinel.storage.database.session import close_async_engine
+from sentinel.storage.database.session import (
+    close_async_engine,
+    init_database,
+    probe_database,
+)
 from sentinel.storage.evidence.store import evidence_store
 
 settings = get_settings()
@@ -131,6 +136,11 @@ async def lifespan(app: FastAPI):
 
     # Initialize shared resilient connection-pooled mesh client
     app.state.mesh_client = ResilientMeshClient(timeout=10.0)
+
+    # Startup: create the Oracle schema (unqualified tables in the SENTINEL
+    # owner) before any repository can read or write. This fails closed when a
+    # durable backend is selected without a database URL.
+    await init_database()
 
     # Startup: recover non-terminal tasks from unexpected restarts
     recovered = await lifecycle_manager.recover_tasks_on_startup()
@@ -361,8 +371,9 @@ async def dashboard_page() -> Response:
 # record in process memory, so a redeploy discards findings, evidence and
 # approvals while the audit chain still verifies -- an empty chain is trivially
 # intact. /api/v1/health/ready already reports this honestly; /health and /ready
-# must not imply otherwise.
-_DURABLE_STORAGE_BACKENDS = frozenset({"postgres"})
+# must not imply otherwise. "postgres"/"postgresql" stay listed only until the
+# Oracle cut-over completes.
+_DURABLE_STORAGE_BACKENDS = frozenset({"oracle", "postgres", "postgresql"})
 
 
 def _storage_is_durable() -> bool:
@@ -407,6 +418,24 @@ async def readiness_check() -> dict[str, Any]:
     except Exception:
         crypto_ok = False
 
+    # Database backend from SQLAlchemy / storage engine when available
+    db_backend = "unconfigured"
+    try:
+        from sentinel.storage.database.session import session_local
+        engine = getattr(session_local, "bind", None) or getattr(session_local, "engine", None)
+        if engine is not None and hasattr(engine, "dialect"):
+            db_backend = str(getattr(engine.dialect, "name", "unconfigured"))
+    except Exception:
+        pass
+    if db_backend == "unconfigured" and hasattr(settings, "database_url"):
+        url = str(getattr(settings, "database_url", "")).lower()
+        if "oracle" in url:
+            db_backend = "oracle"
+        elif "postgresql" in url:
+            db_backend = "postgresql"
+        elif "sqlite" in url:
+            db_backend = "sqlite"
+
     checks = {
         "crypto_keys": crypto_ok,
         "database_wal": True,
@@ -419,7 +448,10 @@ async def readiness_check() -> dict[str, Any]:
         "audit_durable": durable if is_production else True,
     }
     ready = all(checks.values())
-    return {
+    if is_production and db_backend != "oracle" and ready:
+        ready = False
+    status_code = 200 if ready else 503
+    payload = {
         "status": "READY" if ready else "DEGRADED",
         "ready": ready,
         "evidence_class": "local_readiness_checks",
@@ -427,9 +459,12 @@ async def readiness_check() -> dict[str, Any]:
         "checks": checks,
         "modules_active": sum(1 for v in modules.values() if v),
         "event_bus": type(event_bus).__name__ if event_bus is not None else "unavailable",
+        "database": "connected" if (checks.get("database_wal") and checks.get("audit_integrity")) else "unavailable",
+        "database_backend": db_backend,
         "storage_backend": settings.storage_backend,
         "peer_connectivity": "not_checked",
     }
+    return JSONResponse(content=payload, status_code=status_code)
 
 
 @app.api_route("/status", methods=["GET", "HEAD"], tags=["System"])
@@ -1527,12 +1562,24 @@ class IncidentRequest(BaseModel):
 @app.get(f"{settings.api_prefix}/health/ready", tags=["Security Governance"])
 async def security_readiness_check() -> dict[str, Any]:
     """Fail-closed security readiness probe verifying audit chain, keys, and policies."""
-    # The production manifest currently selects the in-memory backend and this
-    # module has no durable-store health probe. Configuration alone cannot prove
-    # persistence, so keep this security readiness gate closed until that exists.
+    # Configuration alone cannot prove persistence: a durable backend is only
+    # reported as verified after the database answers a live query. Process-local
+    # backends stay fail-closed with the "no durable store probe" evidence label.
+    persistence_ok = False
+    persistence_evidence = "unverified_no_durable_store_probe"
+    if settings.uses_database_backend:
+        try:
+            persistence_ok = await probe_database()
+        except Exception as exc:  # noqa: BLE001 - readiness must never 500
+            logger.warning("Persistence probe failed: %s", exc)
+            persistence_ok = False
+        persistence_evidence = (
+            "verified" if persistence_ok else "database_probe_failed"
+        )
+
     rep = fail_closed_health.check(
         audit_ok=audit_logger.verify_integrity(),
-        persistence_ok=False,
+        persistence_ok=persistence_ok,
         signing_key_ok=len(settings.audit.signing_key.encode("utf-8")) >= 24,
         policy_loaded=policy_engine is not None,
     )
@@ -1542,7 +1589,7 @@ async def security_readiness_check() -> dict[str, Any]:
             detail={
                 "status": "DEGRADED",
                 "evidence_class": "security_readiness_checks",
-                "persistence_evidence": "unverified_no_durable_store_probe",
+                "persistence_evidence": persistence_evidence,
                 "checks": rep.checks,
                 "observed_at": datetime.fromtimestamp(rep.generated_at, UTC).isoformat(),
             },
@@ -1550,7 +1597,7 @@ async def security_readiness_check() -> dict[str, Any]:
     return {
         "status": "READY",
         "evidence_class": "security_readiness_checks",
-        "persistence_evidence": "verified",
+        "persistence_evidence": persistence_evidence,
         "checks": rep.checks,
         "observed_at": datetime.fromtimestamp(rep.generated_at, UTC).isoformat(),
     }

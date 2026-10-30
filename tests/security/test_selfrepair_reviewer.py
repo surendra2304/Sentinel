@@ -28,7 +28,7 @@ PASSING = {"command": "pytest -q", "passed": True}
 
 @pytest.fixture
 def reviewer(tmp_path):
-    store = SentinelPersistence(db_path=str(tmp_path / "sentinel.db"))
+    store = SentinelPersistence(f"sqlite:///{(tmp_path / 'sentinel.db').as_posix()}")
     return SelfRepairReviewer(approvals=ApprovalManager(store), signing_key=KEY)
 
 
@@ -82,7 +82,7 @@ def test_document_hash_ignores_the_signature_field():
 def test_refuses_to_sign_without_a_configured_key(tmp_path, monkeypatch):
     monkeypatch.delenv("SENTINEL_AUDIT_HMAC_KEY", raising=False)
     monkeypatch.delenv("SENTINEL_AUDIT_SIGNING_KEY", raising=False)
-    store = SentinelPersistence(db_path=str(tmp_path / "s.db"))
+    store = SentinelPersistence(f"sqlite:///{(tmp_path / 's.db').as_posix()}")
     with pytest.raises(RuntimeError, match="Refusing to sign with a default key"):
         SelfRepairReviewer(approvals=ApprovalManager(store))
 

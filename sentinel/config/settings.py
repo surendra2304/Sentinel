@@ -1,11 +1,145 @@
-"""Sentinel Typed Configuration System using pydantic-settings."""
+"""Sentinel Typed Configuration System using pydantic-settings.
 
+Durable persistence targets Oracle Autonomous Database (26ai / 23.26). SQLite is
+no longer an accepted backend: a filesystem database cannot hold the hash-chained
+audit record across redeploys, and it was the silent default in earlier releases.
+"""
+
+import logging
 import os
 from enum import StrEnum
 from functools import lru_cache
+from typing import Any
+from urllib.parse import quote_plus
 
-from pydantic import AliasChoices, Field, SecretStr
+from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger("sentinel.config.settings")
+
+#: The only first-class durable backend.
+ORACLE_STORAGE_BACKEND = "oracle"
+#: Retained only so an existing deployment does not hard-crash before its
+#: DATABASE_URL is flipped to Oracle. Repositories are still SQLAlchemy-backed.
+LEGACY_DATABASE_BACKENDS = frozenset({"postgres", "postgresql"})
+#: Process-local; allowed for tests and local development only.
+NON_DURABLE_STORAGE_BACKENDS = frozenset({"memory"})
+#: Backends that survive a restart.
+DURABLE_STORAGE_BACKENDS = frozenset({ORACLE_STORAGE_BACKEND}) | LEGACY_DATABASE_BACKENDS
+#: Backends that were accepted before the Oracle migration and are now refused.
+REMOVED_STORAGE_BACKENDS = frozenset({"sqlite", "sqlite3", "aiosqlite"})
+
+
+class DatabaseNotConfiguredError(RuntimeError):
+    """Raised when no database URL is configured for a durable backend.
+
+    Sentinel fails closed here rather than falling back to a filesystem database:
+    silently writing the security record to a local file is how findings,
+    evidence and approvals were lost on every redeploy.
+    """
+
+
+def database_url_from_environment() -> str:
+    """Return an explicitly configured database URL, or an empty string."""
+    for key in (
+        "SENTINEL_DATABASE_URL",
+        "DATABASE_URL",
+        "SENTINEL_ORACLE_URL",
+        "ORACLE_DATABASE_URL",
+    ):
+        value = os.environ.get(key, "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _swapscheme(url: str, *, asynchronous: bool) -> str:
+    """Normalise a database URL onto the requested Oracle/Postgres driver."""
+    if url.startswith("oracle+oracledb_async://"):
+        return url.replace("oracle+oracledb_async://", "oracle+oracledb://", 1) if not asynchronous else url
+    if url.startswith("oracle+oracledb://"):
+        return url if not asynchronous else url.replace("oracle+oracledb://", "oracle+oracledb_async://", 1)
+    if url.startswith("oracle://"):
+        suffix = url[len("oracle://"):]
+        scheme = "oracle+oracledb_async" if asynchronous else "oracle+oracledb"
+        return f"{scheme}://{suffix}"
+    if asynchronous:
+        if url.startswith("postgres://"):
+            return url.replace("postgres://", "postgresql+asyncpg://", 1)
+        if url.startswith("postgresql://"):
+            return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return url
+    if url.startswith("postgresql+asyncpg://"):
+        return url.replace("postgresql+asyncpg://", "postgresql://", 1)
+    return url
+
+
+class OracleSettings(BaseSettings):
+    """Oracle Autonomous Database connection settings (``SENTINEL_ORACLE_*``).
+
+    Used only when neither ``SENTINEL_DATABASE_URL`` nor ``DATABASE_URL`` is set.
+    Either a TNS alias (``dsn``, as shipped in the Autonomous Database wallet) or
+    an explicit ``host`` + ``service_name`` pair must be supplied.
+    """
+
+    model_config = SettingsConfigDict(
+        env_prefix="SENTINEL_ORACLE_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    dsn: str = ""
+    host: str = ""
+    port: int = 1522
+    service_name: str = ""
+    user: str = "SENTINEL"
+    password: SecretStr = Field(default=SecretStr(""))
+    #: Wallet/keystore directory for mTLS connections to Autonomous Database.
+    wallet_location: str = ""
+    wallet_password: SecretStr = Field(default=SecretStr(""))
+    #: Schema (database user) that owns the Sentinel tables. Names are written
+    #: unqualified, so this must match the user Sentinel connects as.
+    schema: str = "SENTINEL"
+    echo: bool = False
+    pool_size: int = 8
+    max_overflow: int = 8
+    pool_recycle: int = 1800
+    pool_timeout: int = 30
+
+    @property
+    def owner(self) -> str:
+        """Upper-case schema owner used for the startup ownership check."""
+        return (self.schema or self.user or "SENTINEL").strip().upper()
+
+    def build_url(self, *, asynchronous: bool = True) -> str:
+        """Compose an ``oracle+oracledb[+_async]://`` URL from the settings."""
+        driver = "oracle+oracledb_async" if asynchronous else "oracle+oracledb"
+        if not self.dsn and not (self.host and self.service_name):
+            raise DatabaseNotConfiguredError(
+                "No database URL is configured. Set DATABASE_URL="
+                "oracle+oracledb://SENTINEL:<password>@<adb-host>:1522/?service_name=<service> "
+                "(or SENTINEL_DATABASE_URL), or provide SENTINEL_ORACLE_DSN / "
+                "SENTINEL_ORACLE_HOST + SENTINEL_ORACLE_SERVICE_NAME together with "
+                "SENTINEL_ORACLE_USER and SENTINEL_ORACLE_PASSWORD. SQLite is no longer supported."
+            )
+
+        user = quote_plus(self.user or "SENTINEL")
+        password = quote_plus(self.password.get_secret_value())
+        query: list[tuple[str, str]] = []
+        if self.dsn:
+            location = self.dsn
+        else:
+            location = f"{self.host}:{self.port}"
+            query.append(("service_name", self.service_name))
+        if self.wallet_location:
+            query.append(("config_dir", self.wallet_location))
+        if self.wallet_password.get_secret_value():
+            query.append(("wallet_password", self.wallet_password.get_secret_value()))
+        query_string = "&".join(f"{key}={quote_plus(value)}" for key, value in query)
+        return f"{driver}://{user}:{password}@{location}/?{query_string}" if query_string else (
+            f"{driver}://{user}:{password}@{location}"
+        )
 
 
 class EnvironmentType(StrEnum):
@@ -24,45 +158,76 @@ class LogLevel(StrEnum):
 
 
 class DatabaseSettings(BaseSettings):
-    """PostgreSQL Async Database configuration."""
+    """Database configuration.
+
+    ``DATABASE_URL`` / ``SENTINEL_DATABASE_URL`` is the authoritative source;
+    ``SENTINEL_ORACLE_*`` is the second supported form. The legacy
+    ``SENTINEL_DB_*`` host/port/user/name fields are parsed for backward
+    compatibility only and never produce a connection URL. PostgreSQL and SQLite
+    are not supported backends.
+    """
     model_config = SettingsConfigDict(
         env_prefix="SENTINEL_DB_",
         env_file=".env",
         extra="ignore",
     )
 
-    host: str = "dokploy-postgres"
-    port: int = 5432
-    user: str = "sentinel_user"
-    password: str = "uyNl63UsjQqe1tI16G68fylb"
-    name: str = "sentinel_db"
+    host: str = ""
+    port: int = 0
+    user: str = ""
+    password: str = ""
+    name: str = ""
     echo: bool = False
     pool_size: int = 20
     max_overflow: int = 10
+    #: Set by the owning ``Settings`` instance so URL resolution uses *its*
+    #: ``database_url`` rather than the process-wide cached settings.
+    _parent: Any = None
+
+    def resolved_url(self, *, asynchronous: bool) -> str:
+        """Resolve the configured URL, failing closed when nothing is configured.
+
+        Resolution order:
+        1. ``SENTINEL_DATABASE_URL`` / ``DATABASE_URL`` (process env or owning settings).
+        2. ``SENTINEL_ORACLE_*`` settings composed into an ``oracle+oracledb://`` URL.
+        3. Fail closed. PostgreSQL and SQLite are not supported backends.
+        """
+        raw = database_url_from_environment()
+        settings = self._parent or get_settings()
+        if not raw:
+            configured = (settings.database_url or "").strip()
+            if configured:
+                raw = configured
+            elif settings.oracle.dsn or settings.oracle.host:
+                return settings.oracle.build_url(asynchronous=asynchronous)
+            elif settings.storage_backend.strip().lower() in DURABLE_STORAGE_BACKENDS:
+                # Durable backend but nothing to connect to: fail closed instead of
+                # opening a local file. The legacy PG defaults are only a fallback
+                # for an explicitly configured legacy backend.
+                raise DatabaseNotConfiguredError(
+                    "No database URL is configured for storage_backend="
+                    f"'{settings.storage_backend}'. Set DATABASE_URL=oracle+oracledb://"
+                    "SENTINEL:<password>@<adb-host>:1522/?service_name=<service> "
+                    "(accepts oracle+oracledb:// and oracle+oracledb_async://) or the "
+                    "SENTINEL_ORACLE_DSN / SENTINEL_ORACLE_HOST + SENTINEL_ORACLE_SERVICE_NAME "
+                    "pair. SQLite is no longer supported."
+                )
+            else:
+                raise DatabaseNotConfiguredError(
+                    "No database URL is configured. Set DATABASE_URL=oracle+oracledb://"
+                    "SENTINEL:<password>@<adb-host>:1522/?service_name=<service> or the "
+                    "SENTINEL_ORACLE_DSN / SENTINEL_ORACLE_HOST + SENTINEL_ORACLE_SERVICE_NAME "
+                    "pair. PostgreSQL and SQLite are not supported backends."
+                )
+        return _swapscheme(raw, asynchronous=asynchronous)
 
     @property
     def async_url(self) -> str:
-        url = os.environ.get("SENTINEL_DATABASE_URL") or os.environ.get("DATABASE_URL")
-        if url:
-            if url.startswith("oracle+oracledb://"):
-                url = url.replace("oracle+oracledb://", "oracle+oracledb_async://", 1)
-            elif url.startswith("postgres://"):
-                url = url.replace("postgres://", "postgresql+asyncpg://", 1)
-            elif url.startswith("postgresql://") and not url.startswith("postgresql+asyncpg://"):
-                url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
-            return url
-        return f"postgresql+asyncpg://{self.user}:{self.password}@{self.host}:{self.port}/{self.name}"
+        return self.resolved_url(asynchronous=True)
 
     @property
     def sync_url(self) -> str:
-        url = os.environ.get("SENTINEL_DATABASE_URL") or os.environ.get("DATABASE_URL")
-        if url:
-            if url.startswith("oracle+oracledb_async://"):
-                url = url.replace("oracle+oracledb_async://", "oracle+oracledb://", 1)
-            elif url.startswith("postgresql+asyncpg://"):
-                url = url.replace("postgresql+asyncpg://", "postgresql://", 1)
-            return url
-        return f"postgresql://{self.user}:{self.password}@{self.host}:{self.port}/{self.name}"
+        return self.resolved_url(asynchronous=False)
 
 
 class ObjectStorageSettings(BaseSettings):
@@ -145,12 +310,21 @@ class Settings(BaseSettings):
 
     # Sub-configurations
     db: DatabaseSettings = Field(default_factory=DatabaseSettings)
+    oracle: OracleSettings = Field(default_factory=OracleSettings)
     storage: ObjectStorageSettings = Field(default_factory=ObjectStorageSettings)
     audit: AuditSettings = Field(default_factory=AuditSettings)
     modules: ModuleFlags = Field(default_factory=ModuleFlags)
 
-    # Persistence Backend: "memory" (fast tests/dev) | "postgres" (durable production)
-    storage_backend: str = "memory"
+    # Authoritative database URL. Accepts oracle+oracledb:// and
+    # oracle+oracledb_async:// (plus the legacy postgresql+asyncpg:// form).
+    database_url: str = Field(
+        default="",
+        validation_alias=AliasChoices("SENTINEL_DATABASE_URL", "DATABASE_URL", "SENTINEL_ORACLE_URL"),
+    )
+
+    # Persistence backend: "oracle" (durable, default) | "postgres" (legacy) |
+    # "memory" (tests/dev only). "sqlite" is rejected: it is not durable.
+    storage_backend: str = ORACLE_STORAGE_BACKEND
 
     # External Threat Intelligence Feeds
     shodan_api_key: SecretStr = Field(
@@ -194,6 +368,83 @@ class Settings(BaseSettings):
     max_actions_per_agent_per_task: int = Field(default=32, ge=1, le=1_000)
     max_agent_analysis_seconds: float = Field(default=15.0, gt=0.0, le=300.0)
     max_task_iterations: int = Field(default=10, ge=1, le=100)
+
+    @model_validator(mode="after")
+    def _link_database_settings(self) -> "Settings":
+        """Let the nested database settings resolve this instance's URL.
+
+        ``DatabaseSettings`` used to fall back to the process-wide cached
+        ``Settings`` for ``database_url``, so a directly constructed
+        ``Settings(database_url=...)`` silently resolved the ``.env`` value.
+        """
+        self.db._parent = self
+        return self
+
+    @field_validator("storage_backend", mode="before")
+    @classmethod
+    def _validate_storage_backend(cls, value: object) -> str:
+        """Normalise the backend name and refuse SQLite outright."""
+        if value is None:
+            return ORACLE_STORAGE_BACKEND
+        normalised = str(value).strip().lower()
+        if not normalised:
+            return ORACLE_STORAGE_BACKEND
+        if normalised in REMOVED_STORAGE_BACKENDS:
+            raise ValueError(
+                "SQLite storage is no longer supported: it discards the security record on "
+                "every redeploy. Configure DATABASE_URL=oracle+oracledb://... (or the "
+                "SENTINEL_ORACLE_* variables) and leave SENTINEL_STORAGE_BACKEND unset or set "
+                "it to 'oracle'."
+            )
+        if normalised in {"oracledb", "oracle+oracledb", "oracle+oracledb_async"}:
+            return ORACLE_STORAGE_BACKEND
+        if normalised not in DURABLE_STORAGE_BACKENDS | NON_DURABLE_STORAGE_BACKENDS:
+            raise ValueError(
+                f"Unsupported storage_backend '{value}': use 'oracle' (default), 'postgres' "
+                "(legacy) or 'memory' (tests/dev only)."
+            )
+        return normalised
+
+    @property
+    def storage_backend_normalized(self) -> str:
+        return (self.storage_backend or ORACLE_STORAGE_BACKEND).strip().lower()
+
+    @property
+    def database_url_configured(self) -> bool:
+        """True when a database URL or SENTINEL_ORACLE_* coordinates are configured."""
+        return bool(
+            database_url_from_environment()
+            or (self.database_url or "").strip()
+            or self.oracle.dsn
+            or (self.oracle.host and self.oracle.service_name)
+        )
+
+    @property
+    def database_url_resolved(self) -> str:
+        """The configured async database URL; raises when nothing is configured."""
+        return self.db.resolved_url(asynchronous=True)
+
+    @property
+    def database_dialect(self) -> str:
+        """Dialect selected by the configured URL (``oracle`` or ``postgresql``)."""
+        try:
+            url = self.database_url_resolved
+        except DatabaseNotConfiguredError:
+            return ""
+        if url.startswith("oracle"):
+            return "oracle"
+        if url.startswith("postgres"):
+            return "postgresql"
+        return url.split("://", 1)[0].split("+", 1)[0]
+
+    @property
+    def is_oracle_database(self) -> bool:
+        return self.database_dialect == "oracle"
+
+    @property
+    def uses_database_backend(self) -> bool:
+        """True when a durable, database-backed storage backend is selected."""
+        return self.storage_backend_normalized in DURABLE_STORAGE_BACKENDS
 
 
 @lru_cache

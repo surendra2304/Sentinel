@@ -33,13 +33,9 @@ services:
       SENTINEL_MAX_ACTIONS_PER_AGENT_PER_TASK: ${SENTINEL_MAX_ACTIONS_PER_AGENT_PER_TASK:-32}
       SENTINEL_MAX_AGENT_ANALYSIS_SECONDS: ${SENTINEL_MAX_AGENT_ANALYSIS_SECONDS:-15}
       SENTINEL_MAX_TASK_ITERATIONS: ${SENTINEL_MAX_TASK_ITERATIONS:-10}
-      SENTINEL_STORAGE_BACKEND: postgres
+      SENTINEL_STORAGE_BACKEND: oracle
+      SENTINEL_DATABASE_URL: ${SENTINEL_DATABASE_URL:?SENTINEL_DATABASE_URL must be an Oracle DSN}
       SENTINEL_S3_BACKEND: s3
-      SENTINEL_DB_HOST: postgres
-      SENTINEL_DB_PORT: "5432"
-      SENTINEL_DB_USER: ${SENTINEL_DB_USER:-sentinel}
-      SENTINEL_DB_PASSWORD: ${SENTINEL_DB_PASSWORD:?SENTINEL_DB_PASSWORD is required}
-      SENTINEL_DB_NAME: ${SENTINEL_DB_NAME:-sentinel_db}
       SENTINEL_S3_ENDPOINT: minio:9000
       SENTINEL_S3_ACCESS_KEY: ${SENTINEL_S3_ACCESS_KEY:?SENTINEL_S3_ACCESS_KEY is required}
       SENTINEL_S3_SECRET_KEY: ${SENTINEL_S3_SECRET_KEY:?SENTINEL_S3_SECRET_KEY is required}
@@ -47,31 +43,12 @@ services:
     ports:
       - "8007:8000"
     depends_on:
-      postgres:
-        condition: service_healthy
       minio:
         condition: service_healthy
     volumes:
       - audit_logs:/app/logs
     networks:
       - friday_mesh
-      - default
-
-  postgres:
-    image: postgres:18-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${SENTINEL_DB_USER:-sentinel}
-      POSTGRES_PASSWORD: ${SENTINEL_DB_PASSWORD:?SENTINEL_DB_PASSWORD is required}
-      POSTGRES_DB: ${SENTINEL_DB_NAME:-sentinel_db}
-    volumes:
-      - postgres_data:/var/lib/postgresql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
       - default
 
   minio:
@@ -97,6 +74,5 @@ networks:
   default:
 
 volumes:
-  postgres_data:
   minio_data:
   audit_logs:

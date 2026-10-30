@@ -18,7 +18,7 @@ def _make_action(act_id="act_1", actor="agent_a", tenant="tenant_1"):
     )
 
 def test_approval_request_decide_consume(tmp_path):
-    store = SentinelPersistence(str(tmp_path / "sec.db"))
+    store = SentinelPersistence(f"sqlite:///{(tmp_path / 'sec.db').as_posix()}")
     mgr = ApprovalManager(store)
     action = _make_action()
 
@@ -32,7 +32,7 @@ def test_approval_request_decide_consume(tmp_path):
     assert consumed.status == ApprovalStatus.CONSUMED
 
 def test_approval_double_consumption_prevented(tmp_path):
-    store = SentinelPersistence(str(tmp_path / "sec.db"))
+    store = SentinelPersistence(f"sqlite:///{(tmp_path / 'sec.db').as_posix()}")
     mgr = ApprovalManager(store)
     action = _make_action()
 
@@ -44,7 +44,7 @@ def test_approval_double_consumption_prevented(tmp_path):
         mgr.consume(action)
 
 def test_approval_actor_swap_rejected(tmp_path):
-    store = SentinelPersistence(str(tmp_path / "sec.db"))
+    store = SentinelPersistence(f"sqlite:///{(tmp_path / 'sec.db').as_posix()}")
     mgr = ApprovalManager(store)
     action = _make_action(actor="agent_legit")
 
@@ -56,7 +56,7 @@ def test_approval_actor_swap_rejected(tmp_path):
         mgr.consume(hijacked)
 
 def test_approval_mutation_after_approval_rejected(tmp_path):
-    store = SentinelPersistence(str(tmp_path / "sec.db"))
+    store = SentinelPersistence(f"sqlite:///{(tmp_path / 'sec.db').as_posix()}")
     mgr = ApprovalManager(store)
     action = _make_action()
 

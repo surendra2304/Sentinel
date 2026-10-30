@@ -1,4 +1,12 @@
-"""Repository Provider Factory for Sentinel."""
+"""Repository Provider Factory for Sentinel.
+
+The backend is chosen from ``settings.storage_backend``:
+
+* ``oracle`` (default) — ``Oracle*`` subclasses of the SQLAlchemy repositories.
+* ``postgres`` / ``postgresql`` — the legacy SQLAlchemy repositories, retained
+  only until an existing deployment finishes its cut-over.
+* ``memory`` — process-local repositories for tests and local development.
+"""
 
 from sentinel.config.settings import get_settings
 from sentinel.storage.repositories.in_memory import (
@@ -19,6 +27,15 @@ from sentinel.storage.repositories.interfaces import (
     RiskRepository,
     TaskRepository,
 )
+from sentinel.storage.repositories.oracle import (
+    OracleApprovalRepository,
+    OracleAuditRepository,
+    OracleEventRepository,
+    OracleEvidenceRepository,
+    OracleFindingRepository,
+    OracleRiskRepository,
+    OracleTaskRepository,
+)
 from sentinel.storage.repositories.postgres import (
     PostgresApprovalRepository,
     PostgresAuditRepository,
@@ -38,78 +55,73 @@ _audit_repo: AuditRepository | None = None
 _event_repo: EventRepository | None = None
 
 
+def _durable_repository(oracle_repo: type, legacy_repo: type, memory_repo: type):
+    """Pick the repository class for the configured backend."""
+    settings = get_settings()
+    if not getattr(settings, "uses_database_backend", False):
+        return memory_repo
+    if getattr(settings, "is_oracle_database", False):
+        return oracle_repo
+    return legacy_repo
+
+
 def get_task_repository() -> TaskRepository:
     global _task_repo
     if _task_repo is None:
-        settings = get_settings()
-        if getattr(settings, "storage_backend", "memory") == "postgres":
-            _task_repo = PostgresTaskRepository()
-        else:
-            _task_repo = InMemoryTaskRepository()
+        repo = _durable_repository(OracleTaskRepository, PostgresTaskRepository, InMemoryTaskRepository)
+        _task_repo = repo()
     return _task_repo
 
 
 def get_finding_repository() -> FindingRepository:
     global _finding_repo
     if _finding_repo is None:
-        settings = get_settings()
-        if getattr(settings, "storage_backend", "memory") == "postgres":
-            _finding_repo = PostgresFindingRepository()
-        else:
-            _finding_repo = InMemoryFindingRepository()
+        repo = _durable_repository(
+            OracleFindingRepository, PostgresFindingRepository, InMemoryFindingRepository
+        )
+        _finding_repo = repo()
     return _finding_repo
 
 
 def get_evidence_repository() -> EvidenceRepository:
     global _evidence_repo
     if _evidence_repo is None:
-        settings = get_settings()
-        if getattr(settings, "storage_backend", "memory") == "postgres":
-            _evidence_repo = PostgresEvidenceRepository()
-        else:
-            _evidence_repo = InMemoryEvidenceRepository()
+        repo = _durable_repository(
+            OracleEvidenceRepository, PostgresEvidenceRepository, InMemoryEvidenceRepository
+        )
+        _evidence_repo = repo()
     return _evidence_repo
 
 
 def get_approval_repository() -> ApprovalRepository:
     global _approval_repo
     if _approval_repo is None:
-        settings = get_settings()
-        if getattr(settings, "storage_backend", "memory") == "postgres":
-            _approval_repo = PostgresApprovalRepository()
-        else:
-            _approval_repo = InMemoryApprovalRepository()
+        repo = _durable_repository(
+            OracleApprovalRepository, PostgresApprovalRepository, InMemoryApprovalRepository
+        )
+        _approval_repo = repo()
     return _approval_repo
 
 
 def get_risk_repository() -> RiskRepository:
     global _risk_repo
     if _risk_repo is None:
-        settings = get_settings()
-        if getattr(settings, "storage_backend", "memory") == "postgres":
-            _risk_repo = PostgresRiskRepository()
-        else:
-            _risk_repo = InMemoryRiskRepository()
+        repo = _durable_repository(OracleRiskRepository, PostgresRiskRepository, InMemoryRiskRepository)
+        _risk_repo = repo()
     return _risk_repo
 
 
 def get_audit_repository() -> AuditRepository:
     global _audit_repo
     if _audit_repo is None:
-        settings = get_settings()
-        if getattr(settings, "storage_backend", "memory") == "postgres":
-            _audit_repo = PostgresAuditRepository()
-        else:
-            _audit_repo = InMemoryAuditRepository()
+        repo = _durable_repository(OracleAuditRepository, PostgresAuditRepository, InMemoryAuditRepository)
+        _audit_repo = repo()
     return _audit_repo
 
 
 def get_event_repository() -> EventRepository:
     global _event_repo
     if _event_repo is None:
-        settings = get_settings()
-        if getattr(settings, "storage_backend", "memory") == "postgres":
-            _event_repo = PostgresEventRepository()
-        else:
-            _event_repo = InMemoryEventRepository()
+        repo = _durable_repository(OracleEventRepository, PostgresEventRepository, InMemoryEventRepository)
+        _event_repo = repo()
     return _event_repo

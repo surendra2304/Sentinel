@@ -3,7 +3,7 @@ from sentinel.storage.persistence.durable_store import SentinelPersistence
 
 
 def test_idempotency_store_and_replay(tmp_path):
-    store = SentinelPersistence(str(tmp_path / "sec.db"))
+    store = SentinelPersistence(f"sqlite:///{(tmp_path / 'sec.db').as_posix()}")
     action = ActionRequest(
         id="act_1",
         task_id="t1",
@@ -23,7 +23,7 @@ def test_idempotency_store_and_replay(tmp_path):
     assert cached_res.replayed is True
 
 def test_idempotency_collision_fails_closed(tmp_path):
-    store = SentinelPersistence(str(tmp_path / "sec.db"))
+    store = SentinelPersistence(f"sqlite:///{(tmp_path / 'sec.db').as_posix()}")
     action1 = ActionRequest(
         id="act_1", task_id="t1", actor=Actor("agent"), kind=ActionKind.EXECUTE,
         action_type="scan", parameters={"target": "site1"}, idempotency_key="key_collide",
