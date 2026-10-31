@@ -17,7 +17,7 @@ pyjwt==2.13.0
 
 # Database & Object Storage Persistence
 sqlalchemy[asyncio]==2.0.52
-asyncpg==0.31.0
+oracledb==2.5.0
 alembic==1.19.1
 minio==7.2.20
 aiofiles==25.1.0

@@ -2,10 +2,12 @@
 
 The backend is chosen from ``settings.storage_backend``:
 
-* ``oracle`` (default) — ``Oracle*`` subclasses of the SQLAlchemy repositories.
-* ``postgres`` / ``postgresql`` — the legacy SQLAlchemy repositories, retained
-  only until an existing deployment finishes its cut-over.
+* ``oracle`` (default, and the only durable backend) — the ``Oracle*`` SQLAlchemy
+  repositories.
 * ``memory`` — process-local repositories for tests and local development.
+
+SQLite and PostgreSQL are not supported: both silently lose the security record
+on redeploy or move it to a database Sentinel does not own.
 """
 
 from sentinel.config.settings import get_settings
@@ -36,15 +38,6 @@ from sentinel.storage.repositories.oracle import (
     OracleRiskRepository,
     OracleTaskRepository,
 )
-from sentinel.storage.repositories.postgres import (
-    PostgresApprovalRepository,
-    PostgresAuditRepository,
-    PostgresEventRepository,
-    PostgresEvidenceRepository,
-    PostgresFindingRepository,
-    PostgresRiskRepository,
-    PostgresTaskRepository,
-)
 
 _task_repo: TaskRepository | None = None
 _finding_repo: FindingRepository | None = None
@@ -55,20 +48,24 @@ _audit_repo: AuditRepository | None = None
 _event_repo: EventRepository | None = None
 
 
-def _durable_repository(oracle_repo: type, legacy_repo: type, memory_repo: type):
-    """Pick the repository class for the configured backend."""
+def _durable_repository(oracle_repo: type, memory_repo: type):
+    """Pick the repository class for the configured backend.
+
+    A durable backend means Oracle, and Oracle is the only durable backend. There
+    is no fallback: ``settings.uses_database_backend`` is true only for
+    ``storage_backend=oracle`` and the Oracle settings fail closed when no DSN is
+    configured.
+    """
     settings = get_settings()
     if not getattr(settings, "uses_database_backend", False):
         return memory_repo
-    if getattr(settings, "is_oracle_database", False):
-        return oracle_repo
-    return legacy_repo
+    return oracle_repo
 
 
 def get_task_repository() -> TaskRepository:
     global _task_repo
     if _task_repo is None:
-        repo = _durable_repository(OracleTaskRepository, PostgresTaskRepository, InMemoryTaskRepository)
+        repo = _durable_repository(OracleTaskRepository, InMemoryTaskRepository)
         _task_repo = repo()
     return _task_repo
 
@@ -76,9 +73,7 @@ def get_task_repository() -> TaskRepository:
 def get_finding_repository() -> FindingRepository:
     global _finding_repo
     if _finding_repo is None:
-        repo = _durable_repository(
-            OracleFindingRepository, PostgresFindingRepository, InMemoryFindingRepository
-        )
+        repo = _durable_repository(OracleFindingRepository, InMemoryFindingRepository)
         _finding_repo = repo()
     return _finding_repo
 
@@ -86,9 +81,7 @@ def get_finding_repository() -> FindingRepository:
 def get_evidence_repository() -> EvidenceRepository:
     global _evidence_repo
     if _evidence_repo is None:
-        repo = _durable_repository(
-            OracleEvidenceRepository, PostgresEvidenceRepository, InMemoryEvidenceRepository
-        )
+        repo = _durable_repository(OracleEvidenceRepository, InMemoryEvidenceRepository)
         _evidence_repo = repo()
     return _evidence_repo
 
@@ -96,9 +89,7 @@ def get_evidence_repository() -> EvidenceRepository:
 def get_approval_repository() -> ApprovalRepository:
     global _approval_repo
     if _approval_repo is None:
-        repo = _durable_repository(
-            OracleApprovalRepository, PostgresApprovalRepository, InMemoryApprovalRepository
-        )
+        repo = _durable_repository(OracleApprovalRepository, InMemoryApprovalRepository)
         _approval_repo = repo()
     return _approval_repo
 
@@ -106,7 +97,7 @@ def get_approval_repository() -> ApprovalRepository:
 def get_risk_repository() -> RiskRepository:
     global _risk_repo
     if _risk_repo is None:
-        repo = _durable_repository(OracleRiskRepository, PostgresRiskRepository, InMemoryRiskRepository)
+        repo = _durable_repository(OracleRiskRepository, InMemoryRiskRepository)
         _risk_repo = repo()
     return _risk_repo
 
@@ -114,7 +105,7 @@ def get_risk_repository() -> RiskRepository:
 def get_audit_repository() -> AuditRepository:
     global _audit_repo
     if _audit_repo is None:
-        repo = _durable_repository(OracleAuditRepository, PostgresAuditRepository, InMemoryAuditRepository)
+        repo = _durable_repository(OracleAuditRepository, InMemoryAuditRepository)
         _audit_repo = repo()
     return _audit_repo
 
@@ -122,6 +113,6 @@ def get_audit_repository() -> AuditRepository:
 def get_event_repository() -> EventRepository:
     global _event_repo
     if _event_repo is None:
-        repo = _durable_repository(OracleEventRepository, PostgresEventRepository, InMemoryEventRepository)
+        repo = _durable_repository(OracleEventRepository, InMemoryEventRepository)
         _event_repo = repo()
     return _event_repo
