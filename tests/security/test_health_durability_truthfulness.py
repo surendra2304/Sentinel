@@ -36,7 +36,7 @@ async def test_health_reports_memory_backend_as_non_durable(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_health_reports_durable_backend_honestly(monkeypatch):
-    monkeypatch.setattr(api_main.settings, "storage_backend", "postgres")
+    monkeypatch.setattr(api_main.settings, "storage_backend", "oracle")
     async with _client() as c:
         body = (await c.get("/health")).json()
     assert body["audit_durable"] is True
@@ -81,7 +81,7 @@ async def test_production_readiness_fails_closed_on_memory_backend(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_production_readiness_ready_with_durable_backend(monkeypatch):
-    monkeypatch.setattr(api_main.settings, "storage_backend", "postgres")
+    monkeypatch.setattr(api_main.settings, "storage_backend", "oracle")
     monkeypatch.setattr(api_main.settings, "environment", EnvironmentType.PRODUCTION)
     async with _client() as c:
         body = (await c.get("/ready")).json()

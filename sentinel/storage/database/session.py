@@ -54,12 +54,6 @@ def _engine_options(url: str) -> dict[str, object]:
             pool_recycle=settings.oracle.pool_recycle,
             pool_timeout=settings.oracle.pool_timeout,
         )
-    elif url.startswith(("postgresql", "postgres")):
-        options.update(
-            pool_size=settings.db.pool_size,
-            max_overflow=settings.db.max_overflow,
-            pool_recycle=1800,
-        )
     return options
 
 

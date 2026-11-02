@@ -34,7 +34,7 @@ def _run_entrypoint(
     env = {
         **os.environ,
         "PATH": f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}",
-        "SENTINEL_STORAGE_BACKEND": "postgres",
+        "SENTINEL_STORAGE_BACKEND": "oracle",
         "SENTINEL_TEST_EVENTS": str(events_path),
         "MOCK_MIGRATION_STATUS": str(migration_status),
         "PORT": port,

@@ -54,7 +54,7 @@ def validate_startup_configuration(settings: SentinelSettings) -> list[str]:
         if backend == "memory":
             errors.append(
                 "In-memory storage backend is forbidden in production; "
-                "use oracle (default) or the legacy postgresql backend."
+                "use oracle."
             )
         elif backend in REMOVED_STORAGE_BACKENDS:
             errors.append(

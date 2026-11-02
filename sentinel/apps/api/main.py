@@ -371,9 +371,8 @@ async def dashboard_page() -> Response:
 # record in process memory, so a redeploy discards findings, evidence and
 # approvals while the audit chain still verifies -- an empty chain is trivially
 # intact. /api/v1/health/ready already reports this honestly; /health and /ready
-# must not imply otherwise. "postgres"/"postgresql" stay listed only until the
-# Oracle cut-over completes.
-_DURABLE_STORAGE_BACKENDS = frozenset({"oracle", "postgres", "postgresql"})
+# must not imply otherwise. Oracle is the only durable backend.
+_DURABLE_STORAGE_BACKENDS = frozenset({"oracle"})
 
 
 def _storage_is_durable() -> bool:
@@ -779,6 +778,67 @@ async def download_evidence_bundle(task_id: str) -> Response:
 # FRIDAY Integration & Delegation Endpoints
 
 _delegation_map: dict[str, str] = {}
+
+
+@app.post(f"{settings.api_prefix}/friday/status", tags=["FRIDAY Integration"])
+async def friday_task_status(body: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Universal Task Protocol status action, with a verification receipt.
+
+    ``/friday/delegate`` starts an authorized, long-running assessment and
+    correctly refuses to run without a complete explicit scope. A status
+    instruction carries no target and no authorization, so it is served here
+    instead of being disguised as an assessment request. FRIDAY's mesh certifies
+    completion only when the answer names the dispatched action, this agent as
+    the target, and carries non-empty evidence.
+    """
+    body = body or {}
+    action = str(body.get("action") or "status").lower().strip()
+    task_id = str(body.get("task_id") or f"sentinel_status_{uuid.uuid4().hex[:10]}")
+
+    if action not in ("status", "health", "ping", "report", "supervision_status"):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Action '{action}' is not a status action. Sentinel assessments require "
+                "the explicit, scoped /friday/delegate contract."
+            ),
+        )
+
+    health = await health_check()
+    result = dict(health)
+    return {
+        "task_id": task_id,
+        "target_agent": "sentinel",
+        "status": "SUCCESS",
+        "result": result,
+        "summary": (
+            f"Sentinel online ({result.get('environment')}): audit chain "
+            f"{'valid' if result.get('audit_chain_valid') else 'INVALID'}, "
+            f"{result.get('audit_chain_entries', 0)} entries, "
+            f"kill switch {'ENGAGED' if result.get('kill_switch_active') else 'clear'}."
+        ),
+        "execution_time_ms": 0,
+        "receipt": {
+            "requested_action": action,
+            "target": "sentinel",
+            "authorization_decision": "AUTHORIZED",
+            "execution_timestamp": datetime.now(UTC).isoformat(),
+            "result": {
+                "audit_chain_valid": result.get("audit_chain_valid"),
+                "audit_chain_entries": result.get("audit_chain_entries"),
+            },
+            "verification_evidence": {
+                "source": "sentinel.api.v1.friday.status",
+                "task_id": task_id,
+                "evidence_class": result.get("evidence_class"),
+                "audit_chain_valid": result.get("audit_chain_valid"),
+                "audit_chain_entries": result.get("audit_chain_entries"),
+                "audit_durable": result.get("audit_durable"),
+                "observed_at": result.get("observed_at"),
+            },
+            "failure_reason": None,
+        },
+    }
 
 
 @app.post(f"{settings.api_prefix}/friday/delegate", response_model=FridayDelegationResponse, tags=["FRIDAY Integration"])

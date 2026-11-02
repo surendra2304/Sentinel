@@ -42,7 +42,6 @@ FRIDAY_UNIVERSE_ALLOWED_TARGETS: list[str] = [
     "http://intelx:8000",
     "http://futuris:8000",
     "http://vyralx:8000",
-    "dokploy-postgres:5432",
     "172.16.0.0/12",
     "friday",
     "inference",
@@ -54,7 +53,6 @@ FRIDAY_UNIVERSE_ALLOWED_TARGETS: list[str] = [
     "intelx",
     "futuris",
     "vyralx",
-    "dokploy-postgres",
 
     # C. Local Development Workstation
     "127.0.0.1",
